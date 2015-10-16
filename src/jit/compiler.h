@@ -4613,6 +4613,7 @@ private:
     int                 fgInlQMarkCount;
 
 #ifdef DEBUG
+    unsigned            fgInlinedSites; // Number of call sites scanned so far for inlining
     unsigned            fgInlinedCount; // Number of successful inline expansion of this method.
 #endif
     
@@ -8242,6 +8243,7 @@ public:
 #define NATIVE_SIZE_INVALID  (-10000)                
 
     static bool             s_compInSamplingMode;
+    static DWORD            s_inlineKLimit;
     bool                    compIsMethodForLRSampling;  // Is this the method suitable as a sample for the linear regression?
     int                     compNativeSizeEstimate;     // The estimated native size of this method.
     InlInlineHints          compInlineeHints;           // Inlining hints from the inline candidate.

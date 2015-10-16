@@ -418,15 +418,17 @@ const bool          Compiler::Options::compNoPInvokeInlineCB      = false;
 #endif
 
 #if defined(DEBUG)
-//static ConfigDWORD  fJitLRSampling;
+static ConfigDWORD  fJitLRSampling;
 /* static */
-//bool   Compiler::s_compInSamplingMode = (fJitLRSampling.val(CLRConfig::EXTERNAL_JitLRSampling) != 0);
-bool   Compiler::s_compInSamplingMode = false;    
+bool   Compiler::s_compInSamplingMode = (fJitLRSampling.val(CLRConfig::EXTERNAL_JitLRSampling) != 0);
+// bool   Compiler::s_compInSamplingMode = false;    
 #else
 /* static */
 bool   Compiler::s_compInSamplingMode = false;    
 #endif
 
+static ConfigDWORD fJitKLimit;
+DWORD Compiler::s_inlineKLimit = fJitKLimit.val(CLRConfig::EXTERNAL_JitKLimit);
 
 /*****************************************************************************
  *
@@ -434,8 +436,7 @@ bool   Compiler::s_compInSamplingMode = false;
  */
 
 /* static */
-void                Compiler::compStartup()
-{
+void                Compiler::compStartup() {
 #if DISPLAY_SIZES
     grossVMsize =
     grossNCsize =

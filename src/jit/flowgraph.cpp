@@ -32,6 +32,7 @@ void                Compiler::fgInit()
 
 #ifdef DEBUG
     fgInlinedCount               = 0;
+    fgInlinedSites               = 0;
 #endif // DEBUG
 
     /* We haven't yet computed the bbPreds lists */
@@ -21333,6 +21334,11 @@ void                Compiler::fgInline()
     if (!opts.OptEnabled(CLFLG_INLINING))
         return;
 
+    if (s_inlineKLimit != (DWORD) -1) {
+      printf("***** INLINER K= %d \n", s_inlineKLimit);
+
+    }
+
 #ifdef DEBUG
     if  (verbose)
         printf("*************** In fgInline()\n");
@@ -21354,6 +21360,7 @@ void                Compiler::fgInline()
              stmt != nullptr;
              stmt = stmt->gtNextStmt)
         {
+            fgInlinedSites++;
             expr = stmt->gtStmtExpr;
 
             // See if we can expand the inline candidate.

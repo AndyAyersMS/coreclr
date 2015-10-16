@@ -4969,6 +4969,12 @@ GenTreePtr          Compiler::fgMorphCallInline(GenTreePtr node)
         goto InlineFailed;
     }
 
+    if ((s_inlineKLimit != (DWORD)-1) && (s_inlineKLimit != fgInlinedSites))
+    {
+      inlineFailReason = "K Limit";
+      goto InlineFailed;
+    }
+
     /* If the caller's stack frame is marked, then we can't do any inlining. Period.
        Although we have checked this in impCanInline, it is possible that later IL instructions
        might cause compNeedSecurityCheck to be set. Therefore we need to check it here again.
