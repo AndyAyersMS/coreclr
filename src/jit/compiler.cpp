@@ -1564,6 +1564,23 @@ void Compiler::compShutdown()
 #endif // DEBUG
     fprintf(fout, "   NYI:                 %u\n", fatal_NYI);
 #endif // MEASURE_FATAL
+
+#if defined(JIT_ADHOC_PROBES)
+
+    if (s_adHocProfileBuffer != nullptr)
+    {
+        fprintf(fout, "*** Ad-hoc probe data ***\n");
+        // Created probes... 
+
+        for (unsigned i = 0; i < s_adHocProfileIndex; i++)
+        {
+            unsigned* data = &s_adHocProfileBuffer[i * 4];
+            fprintf(fout, "%08X %08X %llu\n", data[0], data[1], 
+                *((unsigned long long*)&data[2]));
+        }
+    }
+
+#endif // defined(JIT_ADHOC_PROBES)
 }
 
 /*****************************************************************************
@@ -4178,6 +4195,10 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
     fgRemoveEH();
 #endif // !FEATURE_EH
 
+#if defined(JIT_ADHOC_PROBES)
+    fgInstrumentMethodAdHoc();
+#endif // defined(JIT_ADHOC_PROBES)
+
     if (compileFlags->IsSet(JitFlags::JIT_FLAG_BBINSTR))
     {
         fgInstrumentMethod();
@@ -4881,9 +4902,9 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
 
 #endif
 
-#if defined(DEBUG) || defined(INLINE_DATA)
+#if defined(DEBUG) || defined(INLINE_DATA) || defined(ADHOC_JIT_PROBES)
     info.compMethodHashPrivate = 0;
-#endif // defined(DEBUG) || defined(INLINE_DATA)
+#endif // defined(DEBUG) || defined(INLINE_DATA) || defined(ADHOC_JIT_PROBES)
 
 #if FUNC_INFO_LOGGING
     LPCWSTR tmpJitFuncInfoFilename = JitConfig.JitFuncInfoFile();
@@ -5104,7 +5125,7 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
         return param.result;
 }
 
-#if defined(DEBUG) || defined(INLINE_DATA)
+#if defined(DEBUG) || defined(INLINE_DATA) || defined(JIT_ADHOC_PROBES)
 unsigned Compiler::Info::compMethodHash() const
 {
     if (compMethodHashPrivate == 0)
@@ -5113,7 +5134,7 @@ unsigned Compiler::Info::compMethodHash() const
     }
     return compMethodHashPrivate;
 }
-#endif // defined(DEBUG) || defined(INLINE_DATA)
+#endif // defined(DEBUG) || defined(INLINE_DATA) || defined(JIT_ADHOC_PROBES)
 
 void Compiler::compCompileFinish()
 {

@@ -253,100 +253,78 @@ bool Compiler::fgGetProfileWeightForBasicBlock(IL_OFFSET offset, unsigned* weigh
 
 void Compiler::fgInstrumentMethod()
 {
+    // fixme
+}
+
+#if defined(JIT_ADHOC_PROBES)
+
+unsigned* Compiler::s_adHocProfileBuffer;
+unsigned  Compiler::s_adHocProfileIndex;
+
+void Compiler::fgInstrumentMethodAdHoc()
+{
     noway_assert(!compIsForInlining());
 
-    // Count the number of basic blocks in the method
-
-    int         countOfBlocks = 0;
-    BasicBlock* block;
-    for (block = fgFirstBB; block; block = block->bbNext)
+    if ((opts.eeFlags & CORJIT_FLG_PREJIT) != 0)
     {
-        if (!(block->bbFlags & BBF_IMPORTED) || (block->bbFlags & BBF_INTERNAL))
-        {
-            continue;
-        }
-        countOfBlocks++;
+        // Only instrument jitted code
+        return;
     }
 
-    // Allocate the profile buffer
+    const unsigned methodCount = 1024;
+    const unsigned entryCount = 4;
+    const unsigned entrySize = entryCount * sizeof(unsigned);
+    const unsigned allocSize = methodCount * entrySize;
+    const unsigned allocCount = allocSize / sizeof(ICorJitInfo::ProfileBuffer);
 
-    ICorJitInfo::ProfileBuffer* bbProfileBuffer;
+    // See if we've set up a profile buffer. If not, do so now.
 
-    HRESULT res = info.compCompHnd->allocBBProfileBuffer(countOfBlocks, &bbProfileBuffer);
-
-    ICorJitInfo::ProfileBuffer* bbProfileBufferStart = bbProfileBuffer;
-
-    GenTreePtr stmt;
-
-    if (!SUCCEEDED(res))
+    if (s_adHocProfileBuffer == nullptr)
     {
-        // The E_NOTIMPL status is returned when we are profiling a generic method from a different assembly
-        if (res == E_NOTIMPL)
-        {
-            // In such cases we still want to add the method entry callback node
+        // By default we instrument entry counts for the first N
+        // methods Each count is 64 bits. We also write out 32 bit
+        // method token and hash.  So each entry is actually 128 bits
+        // or 32 bytes.
 
-            GenTreeArgList* args = gtNewArgList(gtNewIconEmbMethHndNode(info.compMethodHnd));
-            GenTreePtr      call = gtNewHelperCallNode(CORINFO_HELP_BBT_FCN_ENTER, TYP_VOID, 0, args);
+        HRESULT res = info.compCompHnd->allocBBProfileBuffer(allocCount, 
+            (ICorJitInfo::ProfileBuffer**)&s_adHocProfileBuffer);
 
-            stmt = gtNewStmt(call);
-        }
-        else
+        if (!SUCCEEDED(res))
         {
-            noway_assert(!"Error:  failed to allocate bbProfileBuffer");
+            // No cookies for you!
             return;
         }
     }
-    else
+
+    // See if there's room left for this method.
+    unsigned thisMethodIndex = InterlockedIncrement((LONG*) &s_adHocProfileIndex) - 1;
+
+    if (thisMethodIndex >= methodCount)
     {
-        // Assign a buffer entry for each basic block
-
-        for (block = fgFirstBB; block; block = block->bbNext)
-        {
-            if (!(block->bbFlags & BBF_IMPORTED) || (block->bbFlags & BBF_INTERNAL))
-            {
-                continue;
-            }
-
-            bbProfileBuffer->ILOffset = block->bbCodeOffs;
-
-            GenTreePtr addr;
-            GenTreePtr value;
-
-            value = gtNewOperNode(GT_IND, TYP_INT, gtNewIconEmbHndNode((void*)&bbProfileBuffer->ExecutionCount, nullptr,
-                                                                       GTF_ICON_BBC_PTR));
-            value = gtNewOperNode(GT_ADD, TYP_INT, value, gtNewIconNode(1));
-
-            addr = gtNewOperNode(GT_IND, TYP_INT, gtNewIconEmbHndNode((void*)&bbProfileBuffer->ExecutionCount, nullptr,
-                                                                      GTF_ICON_BBC_PTR));
-
-            addr = gtNewAssignNode(addr, value);
-
-            fgInsertStmtAtBeg(block, addr);
-
-            countOfBlocks--;
-            bbProfileBuffer++;
-        }
-        noway_assert(countOfBlocks == 0);
-
-        // Add the method entry callback node
-
-        GenTreeArgList* args = gtNewArgList(gtNewIconEmbMethHndNode(info.compMethodHnd));
-        GenTreePtr      call = gtNewHelperCallNode(CORINFO_HELP_BBT_FCN_ENTER, TYP_VOID, 0, args);
-
-        GenTreePtr handle =
-            gtNewIconEmbHndNode((void*)&bbProfileBufferStart->ExecutionCount, nullptr, GTF_ICON_BBC_PTR);
-        GenTreePtr value = gtNewOperNode(GT_IND, TYP_INT, handle);
-        GenTreePtr relop = gtNewOperNode(GT_NE, TYP_INT, value, gtNewIconNode(0, TYP_INT));
-        relop->gtFlags |= GTF_RELOP_QMARK;
-        GenTreePtr colon = new (this, GT_COLON) GenTreeColon(TYP_VOID, gtNewNothingNode(), call);
-        GenTreePtr cond  = gtNewQmarkNode(TYP_VOID, relop, colon);
-        stmt             = gtNewStmt(cond);
+        // Not cookies for you, either!
+        return;
     }
 
-    fgEnsureFirstBBisScratch();
+    // Set up buffer, initialize count to zero
+    unsigned* buffer = &s_adHocProfileBuffer[thisMethodIndex * entryCount];
+    buffer[0] = info.compCompHnd->getMethodDefFromMethod(info.compMethodHnd);
+    buffer[1] = info.compCompHnd->getMethodHash(info.compMethodHnd);
+    buffer[2] = 0;
+    buffer[3] = 0;
 
-    fgInsertStmtAtEnd(fgFirstBB, stmt);
+    // Add code to entry to increment count.
+    GenTreePtr oldValue = gtNewOperNode(GT_IND, TYP_LONG, 
+        gtNewIconEmbHndNode((void*) &buffer[2], NULL, GTF_ICON_BBC_PTR));
+    GenTreePtr newValue = gtNewOperNode(GT_ADD, TYP_LONG, oldValue, gtNewIconNode(1));
+    GenTreePtr address  = gtNewOperNode(GT_IND, TYP_LONG,
+        gtNewIconEmbHndNode((void*) &buffer[2], NULL, GTF_ICON_BBC_PTR));
+    GenTreePtr result   = gtNewAssignNode(address, newValue);
+
+    fgEnsureFirstBBisScratch();
+    fgInsertStmtAtEnd(fgFirstBB, result);
 }
+
+#endif // defined(JIT_ADHOC_PROBES)
 
 /*****************************************************************************
  *

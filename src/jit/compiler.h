@@ -7839,12 +7839,12 @@ public:
         const char* compFullName;
 #endif // defined(DEBUG) || defined(LATE_DISASM)
 
-#if defined(DEBUG) || defined(INLINE_DATA)
+#if defined(DEBUG) || defined(INLINE_DATA) || defined(JIT_ADHOC_PROBES)
         // Method hash is logcally const, but computed
         // on first demand.
         mutable unsigned compMethodHashPrivate;
         unsigned         compMethodHash() const;
-#endif // defined(DEBUG) || defined(INLINE_DATA)
+#endif // defined(DEBUG) || defined(INLINE_DATA) || defined(JIT_ADHOC_PROBES)
 
 #ifdef PSEUDORANDOM_NOP_INSERTION
         // things for pseudorandom nop insertion
@@ -8966,6 +8966,14 @@ public:
 
     void fgMorphMultiregStructArgs(GenTreeCall* call);
     GenTreePtr fgMorphMultiregStructArg(GenTreePtr arg, fgArgTabEntryPtr fgEntryPtr);
+
+#if defined(JIT_ADHOC_PROBES)
+
+    void fgInstrumentMethodAdHoc();
+    static unsigned* Compiler::s_adHocProfileBuffer;
+    static unsigned  Compiler::s_adHocProfileIndex;
+
+#endif // defined(JIT_ADHOC_PROBES)
 
 }; // end of class Compiler
 
