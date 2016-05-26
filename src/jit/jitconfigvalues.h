@@ -268,6 +268,10 @@ CONFIG_INTEGER(JitInlinePolicyModel, W("JitInlinePolicyModel"), 0)
 
 CONFIG_INTEGER(JitEECallTimingInfo, W("JitEECallTimingInfo"), 0)
 
+#if defined(DEBUG) || defined(JIT_ADHOC_PROBES)
+CONFIG_INTEGER(JitMeasureEntryCounts, W("JitMeasureEntryCounts"), 0)
+#endif // defined(DEBUG) || defined(JIT_ADHOC_PROBES)
+
 #undef CONFIG_INTEGER
 #undef CONFIG_STRING
 #undef CONFIG_METHODSET

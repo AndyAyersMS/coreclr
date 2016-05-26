@@ -263,11 +263,21 @@ unsigned  Compiler::s_adHocProfileIndex;
 
 void Compiler::fgInstrumentMethodAdHoc()
 {
-    noway_assert(!compIsForInlining());
+    // Only instrument if enabled
+    if (JitConfig.JitMeasureEntryCounts() == 0)
+    {
+        return;
+    }
 
+    // Only instrument root methods
+    if (compIsForInlining())
+    {
+        return;
+    }
+
+    // Only instrument jitted code
     if ((opts.eeFlags & CORJIT_FLG_PREJIT) != 0)
     {
-        // Only instrument jitted code
         return;
     }
 
@@ -278,14 +288,12 @@ void Compiler::fgInstrumentMethodAdHoc()
     const unsigned allocCount = allocSize / sizeof(ICorJitInfo::ProfileBuffer);
 
     // See if we've set up a profile buffer. If not, do so now.
-
     if (s_adHocProfileBuffer == nullptr)
     {
         // By default we instrument entry counts for the first N
         // methods Each count is 64 bits. We also write out 32 bit
         // method token and hash.  So each entry is actually 128 bits
         // or 32 bytes.
-
         HRESULT res = info.compCompHnd->allocBBProfileBuffer(allocCount, 
             (ICorJitInfo::ProfileBuffer**)&s_adHocProfileBuffer);
 
@@ -312,7 +320,7 @@ void Compiler::fgInstrumentMethodAdHoc()
     buffer[2] = 0;
     buffer[3] = 0;
 
-    // Add code to entry to increment count.
+    // Create code to entry to increment count.
     GenTreePtr oldValue = gtNewOperNode(GT_IND, TYP_LONG, 
         gtNewIconEmbHndNode((void*) &buffer[2], NULL, GTF_ICON_BBC_PTR));
     GenTreePtr newValue = gtNewOperNode(GT_ADD, TYP_LONG, oldValue, gtNewIconNode(1));
@@ -320,6 +328,7 @@ void Compiler::fgInstrumentMethodAdHoc()
         gtNewIconEmbHndNode((void*) &buffer[2], NULL, GTF_ICON_BBC_PTR));
     GenTreePtr result   = gtNewAssignNode(address, newValue);
 
+    // Add to scratch entry block
     fgEnsureFirstBBisScratch();
     fgInsertStmtAtEnd(fgFirstBB, result);
 }
