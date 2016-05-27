@@ -1566,16 +1566,15 @@ void Compiler::compShutdown()
 #endif // MEASURE_FATAL
 
 #if defined(JIT_ADHOC_PROBES)
-
+    
+    // Dump as xml...
     if (s_adHocProfileBuffer != nullptr)
     {
-        fprintf(fout, "*** Ad-hoc probe data ***\n");
-        // Created probes... 
-
+        fprintf(stderr, "*** Ad-hoc probe data ***\n");
         for (unsigned i = 0; i < s_adHocProfileIndex; i++)
         {
             unsigned* data = &s_adHocProfileBuffer[i * 4];
-            fprintf(fout, "%08X %08X %llu\n", data[0], data[1], 
+            fprintf(stderr, "%08X,%08X,%llu\n", data[0], data[1], 
                 *((unsigned long long*)&data[2]));
         }
     }
