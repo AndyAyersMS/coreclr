@@ -281,7 +281,7 @@ void Compiler::fgInstrumentMethodAdHoc()
         return;
     }
 
-    const unsigned methodCount = 1024;
+    const unsigned methodCount = TABLE_SIZE;
     const unsigned entryCount = 4;
     const unsigned entrySize = entryCount * sizeof(unsigned);
     const unsigned allocSize = methodCount * entrySize;

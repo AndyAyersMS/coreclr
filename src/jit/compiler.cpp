@@ -1571,7 +1571,8 @@ void Compiler::compShutdown()
     if (s_adHocProfileBuffer != nullptr)
     {
         fprintf(stderr, "*** Ad-hoc probe data ***\n");
-        for (unsigned i = 0; i < s_adHocProfileIndex; i++)
+        unsigned endIndex = min(s_adHocProfileIndex, TABLE_SIZE);
+        for (unsigned i = 0; i < endIndex; i++)
         {
             unsigned* data = &s_adHocProfileBuffer[i * 4];
             fprintf(stderr, "%08X,%08X,%llu\n", data[0], data[1], 

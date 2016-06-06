@@ -8970,6 +8970,7 @@ public:
 #if defined(JIT_ADHOC_PROBES)
 
     void fgInstrumentMethodAdHoc();
+    enum { TABLE_SIZE = 16384 };
     static unsigned* Compiler::s_adHocProfileBuffer;
     static unsigned  Compiler::s_adHocProfileIndex;
 

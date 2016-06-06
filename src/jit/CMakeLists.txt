@@ -7,6 +7,9 @@ include_directories("../inc")
 # Enable the following for UNIX altjit on Windows
 # add_definitions(-DALT_JIT)
 
+add_definitions(-DINLINE_DATA) 
+add_definitions(-DJIT_ADHOC_PROBES)
+
 if (CLR_CMAKE_TARGET_ARCH_AMD64)
   add_definitions(-DFEATURE_SIMD)
   add_definitions(-DFEATURE_AVX_SUPPORT)
