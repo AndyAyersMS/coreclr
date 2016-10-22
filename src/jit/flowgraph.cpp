@@ -4777,6 +4777,12 @@ void Compiler::fgFindJumpTargets(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
             }
         }
 
+        // Determine if call site is within a try.
+        if (isInlining && impInlineInfo->iciBlock->hasTryIndex())
+        {
+            compInlineResult->Note(InlineObservation::CALLSITE_IN_TRY_REGION);
+        }
+
         // If the inline is viable and discretionary, do the
         // profitability screening.
         if (compInlineResult->IsDiscretionaryCandidate())
@@ -5765,12 +5771,14 @@ void Compiler::fgFindBasicBlocks()
         compHndBBtabCount    = impInlineInfo->InlinerCompiler->compHndBBtabCount;
         info.compXcptnsCount = impInlineInfo->InlinerCompiler->info.compXcptnsCount;
 
-        if (info.compRetNativeType != TYP_VOID && retBlocks > 1)
+        // Use a spill temp for the return value if there are multiple return blocks.
+        if ((info.compRetNativeType != TYP_VOID) && (retBlocks > 1))
         {
             // The lifetime of this var might expand multiple BBs. So it is a long lifetime compiler temp.
             lvaInlineeReturnSpillTemp = lvaGrabTemp(false DEBUGARG("Inline candidate multiple BBJ_RETURN spill temp"));
             lvaTable[lvaInlineeReturnSpillTemp].lvType = info.compRetNativeType;
         }
+
         return;
     }
 
@@ -21680,11 +21688,8 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
         }
     }
 
-    //
     // Prepend statements.
-    //
-    GenTreePtr stmtAfter;
-    stmtAfter = fgInlinePrependStatements(pInlineInfo);
+    GenTreePtr stmtAfter = fgInlinePrependStatements(pInlineInfo);
 
 #ifdef DEBUG
     if (verbose)
@@ -21718,6 +21723,7 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
                 noway_assert((inlineeBlockFlags & BBF_KEEP_BBJ_ALWAYS) == 0);
                 iciBlock->bbFlags |= inlineeBlockFlags;
             }
+
 #ifdef DEBUG
             if (verbose)
             {
@@ -21740,6 +21746,10 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
                 }
             }
 #endif // DEBUG
+
+            // Append statements to unpin, if necessary.
+            fgInlineAppendStatements(pInlineInfo, iciBlock, stmtAfter);
+
             goto _Done;
         }
     }
@@ -21748,10 +21758,8 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
     // ======= Inserting inlinee's basic blocks ===============
     //
 
-    BasicBlock* topBlock;
-    BasicBlock* bottomBlock;
-
-    topBlock = iciBlock;
+    BasicBlock* topBlock = iciBlock;
+    BasicBlock* bottomBlock = nullptr;
 
     bottomBlock = fgNewBBafter(topBlock->bbJumpKind, topBlock, true);
     bottomBlock->bbRefs = 1;
@@ -21913,6 +21921,9 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
     //
     fgBBcount += InlineeCompiler->fgBBcount;
 
+    // Append statements to unpin if necessary.
+    fgInlineAppendStatements(pInlineInfo, bottomBlock, nullptr);
+
 #ifdef DEBUG
     if (verbose)
     {
@@ -21978,8 +21989,15 @@ _Done:
     iciStmt->gtStmt.gtStmtExpr = gtNewNothingNode();
 }
 
-// Prepend the statements that are needed before the inlined call.
-// Return the last statement that is prepended.
+//------------------------------------------------------------------------
+// fgInlinePrependStatements: Prepend statements that are needed
+// before the inlined call. 
+//
+// Arguments:
+//    inlineInfo - information about the inline
+//
+// Return Value:
+//    The last statement that was prepended.
 
 GenTreePtr      Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
 {
@@ -22260,6 +22278,89 @@ GenTreePtr      Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
     return afterStmt;
 }
 
+//------------------------------------------------------------------------
+// fgInlineAppendStatements: Append statements that are needed
+// after the inlined call. 
+//
+// Arguments:
+//    inlineInfo - information about the inline
+//    block      - basic block for the new statements
+//    stmtAfter  - (optional) insertion point for mid-block cases
+
+void Compiler::fgInlineAppendStatements(InlineInfo* inlineInfo, BasicBlock* block, GenTreePtr stmtAfter)
+{
+    // Null out any inline pinned locals
+    if (!inlineInfo->hasPinnedLocals)
+    {
+        // No pins, nothing to do
+        return;
+    }
+
+    JITDUMP("Unpin inlinee locals:\n");
+
+    GenTreePtr callStmt  = inlineInfo->iciStmt;
+    IL_OFFSETX callILOffset = callStmt->gtStmt.gtStmtILoffsx;
+    CORINFO_METHOD_INFO* InlineeMethodInfo = InlineeCompiler->info.compMethodInfo;
+    unsigned lclCnt = InlineeMethodInfo->locals.numArgs;
+    InlLclVarInfo*    lclVarInfo = inlineInfo->lclVarInfo;
+
+    noway_assert(callStmt->gtOper == GT_STMT);
+
+    for (unsigned lclNum = 0; lclNum < lclCnt; lclNum++)
+    {
+        unsigned tmpNum = inlineInfo->lclTmpNum[lclNum];
+
+        // Is the local used at all?
+        if (tmpNum == BAD_VAR_NUM)
+        {
+            // Nope, nothing to unpin.
+            continue;
+        }
+
+        // Is the local pinned?
+        if (!lvaTable[tmpNum].lvPinned)
+        {
+            // Nope, nothing to unpin.
+            continue;
+        }
+
+#ifdef DEBUG
+        // Does the local we're about to unpin appear in the return
+        // expression?  If so we somehow messed up and didn't properly
+        // spill the return value. See impInlineFetchLocal.
+        GenTreePtr retExpr = inlineInfo->retExpr;
+        if (retExpr != nullptr)
+        {
+            const bool interferesWithReturn = gtHasRef(inlineInfo->retExpr, tmpNum, false);
+            assert(!interferesWithReturn);
+        }
+#endif // DEBUG
+
+        // Emit the unpin.
+        var_types lclTyp = (var_types)lvaTable[tmpNum].lvType;
+        noway_assert(lclTyp == lclVarInfo[lclNum + inlineInfo->argCnt].lclTypeInfo);
+        noway_assert(!varTypeIsStruct(lclTyp));
+        GenTreePtr unpinExpr = gtNewTempAssign(tmpNum, gtNewZeroConNode(genActualType(lclTyp)));
+        GenTreePtr unpinStmt = gtNewStmt(unpinExpr, callILOffset);
+
+        if (stmtAfter == nullptr)
+        {
+            stmtAfter = fgInsertStmtAtBeg(block, unpinStmt);
+        }
+        else
+        {
+            stmtAfter = fgInsertStmtAfter(block, stmtAfter, unpinStmt);
+        }
+
+#ifdef DEBUG
+        if (verbose)
+        {
+            gtDispTree(unpinStmt);
+        }
+#endif // DEBUG
+
+    }
+}
 
 /*****************************************************************************/
 /*static*/
