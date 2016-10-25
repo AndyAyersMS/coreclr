@@ -21699,6 +21699,9 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
     }
 #endif // DEBUG
 
+    BasicBlock* topBlock = iciBlock;
+    BasicBlock* bottomBlock = nullptr;
+
     if (InlineeCompiler->fgBBcount == 1)
     {
         // When fgBBCount is 1 we will always have a non-NULL fgFirstBB
@@ -21757,9 +21760,6 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
     //
     // ======= Inserting inlinee's basic blocks ===============
     //
-
-    BasicBlock* topBlock = iciBlock;
-    BasicBlock* bottomBlock = nullptr;
 
     bottomBlock = fgNewBBafter(topBlock->bbJumpKind, topBlock, true);
     bottomBlock->bbRefs = 1;
@@ -22336,7 +22336,7 @@ void Compiler::fgInlineAppendStatements(InlineInfo* inlineInfo, BasicBlock* bloc
         }
 #endif // DEBUG
 
-        // Emit the unpin.
+        // Emit the unpin, by assigning null to the local.
         var_types lclTyp = (var_types)lvaTable[tmpNum].lvType;
         noway_assert(lclTyp == lclVarInfo[lclNum + inlineInfo->argCnt].lclTypeInfo);
         noway_assert(!varTypeIsStruct(lclTyp));
