@@ -16851,6 +16851,12 @@ void Compiler::impCheckCanInline(GenTreePtr             call,
                 pParam->result->NoteFatal(InlineObservation::CALLEE_IS_JIT_NOINLINE);
                 goto _exit;
             }
+
+            if (InlineStrategy::IsNoInline(pParam->pThis->info.compCompHnd, pParam->fncHandle))
+            {
+                pParam->result->NoteFatal(InlineObservation::CALLEE_IS_JIT_NOINLINE);
+                goto _exit;
+            }
 #endif
 
             /* Try to get the code address/size for the method */
@@ -17735,11 +17741,11 @@ void Compiler::impMarkInlineCandidate(GenTreePtr             callNode,
     }
 
     // Don't inline if inlining into root method is disabled.
-    if (InlineStrategy::IsNoInline(info.compCompHnd, info.compMethodHnd))
-    {
-        inlineResult.NoteFatal(InlineObservation::CALLER_IS_JIT_NOINLINE);
-        return;
-    }
+//    if (InlineStrategy::IsNoInline(info.compCompHnd, info.compMethodHnd))
+//    {
+//        inlineResult.NoteFatal(InlineObservation::CALLER_IS_JIT_NOINLINE);
+//        return;
+//    }
 
     // Inlining candidate determination needs to honor only IL tail prefix.
     // Inlining takes precedence over implicit tail call optimization (if the call is not directly recursive).
