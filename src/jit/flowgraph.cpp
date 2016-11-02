@@ -276,7 +276,7 @@ void Compiler::fgInstrumentMethodAdHoc()
     }
 
     // Only instrument jitted code
-    if ((opts.eeFlags & CORJIT_FLG_PREJIT) != 0)
+    if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
     {
         return;
     }
