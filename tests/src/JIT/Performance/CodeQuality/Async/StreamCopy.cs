@@ -25,6 +25,8 @@ public class StreamCopy
     static Stream sourceStream;
     static Stream destStream;
     static bool isSetup = false;
+    static int canaryIndex;
+    static byte canary = 0x33;
 
     public static void Setup()
     {
@@ -33,16 +35,24 @@ public class StreamCopy
             byte[] source = new byte[size];
             sourceStream = new MemoryStream(source);
             destStream = File.Create(Path.GetTempFileName(), 4096, FileOptions.DeleteOnClose);
+            canaryIndex = size/2;
+            source[canaryIndex] = canary;
             isSetup = true;
         }
+    }
+
+    public static bool Validate()
+    {
+        destStream.Seek(canaryIndex, SeekOrigin.Begin);
+        return (destStream.ReadByte() == canary);
     }
 
     public static int Main(string[] args)
     {
         Setup();
-        CopyTo(sourceStream, destStream);
-        CopyToAsync(sourceStream, destStream);
-        return 100;
+        bool copyResult = CopyTo(sourceStream, destStream);
+        bool copyAsyncResult = CopyToAsync(sourceStream, destStream);
+        return (copyResult && copyAsyncResult? 100 : -1);
     }
 
     [Benchmark]
@@ -57,13 +67,15 @@ public class StreamCopy
         }
     }
 
-    static void CopyTo(Stream s, Stream d)
+    static bool CopyTo(Stream s, Stream d)
     {
         for (int j = 0; j < Iterations; j++)
         {
             s.CopyTo(d);
             d.Seek(0, SeekOrigin.Begin);
         }
+        
+        return Validate();
     }
 
     [Benchmark]
@@ -78,13 +90,15 @@ public class StreamCopy
         }
     }
 
-    static void CopyToAsync(Stream s, Stream d)
+    static bool CopyToAsync(Stream s, Stream d)
     {
         for (int j = 0; j < Iterations; j++)
         {
             s.CopyToAsync(d);
             d.Seek(0, SeekOrigin.Begin);
         }
+
+        return Validate();
     }
 }
 }
