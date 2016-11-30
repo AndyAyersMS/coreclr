@@ -14,88 +14,77 @@ namespace Async
 
 public class StreamCopy
 {
+
 #if DEBUG
     public const int Iterations = 1;
 #else
-    public const int Iterations = 1000;
+    public const int Iterations = 1000 * 1000;
 #endif
 
     static int size = 8 * 4096;
+    static Stream sourceStream;
+    static Stream destStream;
+    static bool isSetup = false;
+
+    public static void Setup()
+    {
+        if (!isSetup)
+        {
+            byte[] source = new byte[size];
+            sourceStream = new MemoryStream(source);
+            destStream = File.Create(Path.GetTempFileName(), 4096, FileOptions.DeleteOnClose);
+            isSetup = true;
+        }
+    }
 
     public static int Main(string[] args)
     {
-        byte[] source = new byte[size];
-        byte[] dest   = new byte[size];
-        byte canary = 0xEE;
-        int canaryIndex = size / 2;
-        source[canaryIndex] = canary;
-        MemoryStream sourceStream = new MemoryStream(source);
-        MemoryStream destStream = new MemoryStream(dest, true);
-        bool copyToResult = CopyTo(sourceStream, destStream, canaryIndex, canary);
-        bool copyToAsyncResult = CopyToAsync(sourceStream, destStream, canaryIndex, canary);
-        return (copyToResult && copyToAsyncResult ? 100 : -1);
+        Setup();
+        CopyTo(sourceStream, destStream);
+        CopyToAsync(sourceStream, destStream);
+        return 100;
     }
 
     [Benchmark]
     public static void TestCopyTo() 
     {
-        byte[] source = new byte[size];
-        byte[] dest   = new byte[size];
-        byte canary = 0xEE;
-        int canaryIndex = size / 2;
-        source[canaryIndex] = canary;
-        MemoryStream sourceStream = new MemoryStream(source);
-        MemoryStream destStream = new MemoryStream(dest, true);
+        Setup();
 
         foreach (var iteration in Benchmark.Iterations) {
             using (iteration.StartMeasurement()) {
-                for (int i = 0; i < Iterations; i++) {
-                    CopyTo(sourceStream, destStream, canaryIndex, canary);
-                }
+                CopyTo(sourceStream, destStream);
             }
         }
     }
 
-    static bool CopyTo(MemoryStream s, MemoryStream d, int i, int c)
+    static void CopyTo(Stream s, Stream d)
     {
         for (int j = 0; j < Iterations; j++)
         {
             s.CopyTo(d);
+            d.Seek(0, SeekOrigin.Begin);
         }
-
-        d.Seek(i, SeekOrigin.Begin);
-        return d.ReadByte() == c;
     }
 
     [Benchmark]
     public static void TestCopyToAsync() 
     {
-        byte[] source = new byte[size];
-        byte[] dest   = new byte[size];
-        byte canary = 0xEE;
-        int canaryIndex = size / 2;
-        source[canaryIndex] = canary;
-        MemoryStream sourceStream = new MemoryStream(source);
-        MemoryStream destStream = new MemoryStream(dest, true);
+        Setup();
 
         foreach (var iteration in Benchmark.Iterations) {
             using (iteration.StartMeasurement()) {
-                for (int i = 0; i < Iterations; i++) {
-                    CopyToAsync(sourceStream, destStream, canaryIndex, canary);
-                }
+                CopyToAsync(sourceStream, destStream);
             }
         }
     }
 
-    static bool CopyToAsync(MemoryStream s, MemoryStream d, int i, int c)
+    static void CopyToAsync(Stream s, Stream d)
     {
         for (int j = 0; j < Iterations; j++)
         {
             s.CopyToAsync(d);
+            d.Seek(0, SeekOrigin.Begin);
         }
-
-        d.Seek(i, SeekOrigin.Begin);
-        return d.ReadByte() == c;
     }
 }
 }
