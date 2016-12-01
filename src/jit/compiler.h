@@ -3495,6 +3495,8 @@ public:
 
     void fgInline();
 
+    void fgCloneFinally();
+
     GenTreePtr fgGetCritSectOfStaticMethod();
 
 #if !defined(_TARGET_X86_)
