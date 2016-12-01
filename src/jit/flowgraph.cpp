@@ -8550,8 +8550,12 @@ void Compiler::fgAddInternal()
 GenTreeStmt* Compiler::fgNewStmtFromTree(GenTreePtr tree, BasicBlock* block, IL_OFFSETX offs)
 {
     GenTreeStmt* stmt = gtNewStmt(tree, offs);
-    gtSetStmtInfo(stmt);
-    fgSetStmtSeq(stmt);
+
+    if (fgStmtListThreaded)
+    {
+        gtSetStmtInfo(stmt);
+        fgSetStmtSeq(stmt);
+    }
 
 #if DEBUG
     if (block != nullptr)
@@ -22469,5 +22473,365 @@ void Compiler::fgLclFldAssign(unsigned lclNum)
     if (lvaTable[lclNum].lvPromoted && lvaTable[lclNum].lvFieldCnt > 1)
     {
         lvaSetVarDoNotEnregister(lclNum DEBUGARG(DNER_LocalField));
+    }
+}
+
+
+// TODO -- make sure this runs after sync method transmogrification
+// done by fgAddInternal.
+
+void Compiler::fgCloneFinally()
+{
+    JITDUMP("\n*************** In fgCloneFinally()\n");
+
+    if (compHndBBtabCount == 0)
+    {
+        JITDUMP("No EH in this method, no cloning.\n");
+        return;
+    }
+
+    if (opts.MinOpts())
+    {
+        JITDUMP("Method compiled with minOpts, no cloning.\n");
+        return;
+    }
+
+    if (opts.compDbgCode)
+    {
+        JITDUMP("Method compiled with debug codegen, no cloning.\n");
+        return;
+    }
+
+#ifdef DEBUG
+    if (verbose)
+    {
+        printf("\n*************** Before fgCloneFinally()\n");
+        fgDispBasicBlocks();
+        fgDispHandlerTab();
+        printf("\n");
+    }
+#endif // DEBUG
+
+    // Look for finallys that are not contained within other handlers,
+    // and which do not themselves contain EH.
+    // 
+    // Note these cases potentially could be handled, but are less
+    // obviously profitable and require modification of the handler
+    // table.
+    unsigned XTnum = 0;
+    EHblkDsc* HBtab = compHndBBtab;
+    unsigned cloneCount = 0;
+    for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
+    {
+        // Check if this is a try/finally
+        if (!HBtab->HasFinallyHandler())
+        {
+            JITDUMP("EH region %u is not a try-finally; skipping.\n", XTnum);
+            continue;
+        }
+
+        // Check if enclosed by another handler.
+        const unsigned enclosingHandlerRegion = ehGetEnclosingHndIndex(XTnum);
+        
+        if (enclosingHandlerRegion != EHblkDsc::NO_ENCLOSING_INDEX)
+        {
+            JITDUMP("Try-finally EH region %u is enclosed by handler region %u; skipping.\n", 
+                XTnum, enclosingHandlerRegion);
+            continue;
+        }
+
+        bool containsEH = false;
+        unsigned exampleEnclosedHandlerRegion = 0;
+
+        for (unsigned i = 0; i < compHndBBtabCount; i++)
+        {
+            if (ehGetEnclosingHndIndex(i) == XTnum)
+            {
+                exampleEnclosedHandlerRegion = i;
+                containsEH = true;
+                break;
+            }
+        }
+
+        if (containsEH)
+        {
+            JITDUMP("Finally for EH region %u encloses handler region %u; skipping.\n", 
+                XTnum, exampleEnclosedHandlerRegion);
+            continue;
+        }
+
+        // Look at blocks involved.
+        BasicBlock* const firstBlock = HBtab->ebdHndBeg;
+        BasicBlock* const lastBlock = HBtab->ebdHndLast;
+        assert(firstBlock != nullptr);
+        assert(lastBlock != nullptr);
+        BasicBlock* const prevBlock = firstBlock->bbPrev;
+        BasicBlock* const nextBlock = lastBlock->bbNext;
+        assert(prevBlock != nullptr);
+        unsigned regionBBCount = 0;
+        unsigned regionStmtCount = 0;
+        bool hasFinallyRet = false;
+        bool isAllRare = true;
+        bool hasSwitch = false;
+
+        for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
+        {
+            if (block->bbJumpKind == BBJ_SWITCH)
+            {
+                hasSwitch = true;
+                break;
+            }
+
+            regionBBCount++;
+
+            // Should we compute statement cost here, or is it
+            // premature...? For now just count statements I guess.
+            for (GenTreeStmt* stmt = block->firstStmt(); stmt != nullptr; stmt = stmt->gtNextStmt)
+            {
+                regionStmtCount++;
+            }
+
+            hasFinallyRet |= (block->bbJumpKind == BBJ_EHFINALLYRET);
+            isAllRare &= block->isRunRarely();
+        }
+
+        // Skip cloning if the finally has a switch.
+        if (hasSwitch)
+        {
+            JITDUMP("Finally in EH region %u has a switch; skipping.\n", XTnum);
+            continue;
+        }
+
+        // Skip cloning if the finally must throw.
+        if (!hasFinallyRet)
+        {
+            JITDUMP("Finally in EH region %u does not return; skipping.\n", XTnum);
+            continue;
+        }
+
+        // Skip cloning if the finally is rarely run code.
+        if (isAllRare)
+        {
+            JITDUMP("Finally in EH region %u is run rarely; skipping.\n", XTnum);
+            continue;
+        }
+
+        JITDUMP("Try-finally EH region %u is a candidate for finally cloning: \n" 
+            "%u blocks, %u statements\n", XTnum, regionBBCount, regionStmtCount);
+
+        // Find all the call finallys that invoke this finally. Note
+        // some of them may only be reachable via an exceptional path.
+        BasicBlock* firstCallFinallyBlock = nullptr;
+        BasicBlock* lastCallFinallyBlock = nullptr;
+        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &lastCallFinallyBlock);
+
+        // Keep track of the blocks where the normally invoked
+        // (non-exceptional) finally is called from and returns to.
+        // Determine where to put the cloned finally, and what
+        // protected region (if any) it belongs to. Note because of
+        // the screening above, we know the finally is not inside any
+        // other handler region.
+        BasicBlock* normalCallFinallyBlock = nullptr;        
+        BasicBlock* normalCallFinallyReturn = nullptr;
+        BasicBlock* cloneInsertAfter = nullptr;
+        bool        finallyInTryRegion = false;
+        unsigned    finallyTryRegionIndex = 0;
+        
+        for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
+        {
+            if (block->isBBCallAlwaysPair())
+            {
+                // How to tell if this is a "normal" try exit or something else??
+                // Presumably the first one is the normal case...
+                if (block->bbJumpDest == firstBlock)
+                {
+                    BasicBlock* finallyReturnBlock = block->bbNext;
+                    BasicBlock* postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
+
+                    normalCallFinallyBlock = block;
+                    cloneInsertAfter = finallyReturnBlock;
+                    normalCallFinallyReturn = postTryFinallyBlock;
+
+                    assert(!block->hasHndIndex());
+
+                    if (block->hasTryIndex())
+                    {
+                        finallyInTryRegion = true;
+                        finallyTryRegionIndex = block->getTryIndex();
+                    }
+
+                    JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n",
+                        block->bbNum, postTryFinallyBlock->bbNum);
+
+                    break;
+                }
+            }
+        }
+
+        // Grr, can't be sure the first callfinally is really the
+        // normal one, can we? (say the try unconditionally throws, we
+        // might not bother processing the leave that follows).
+        if (normalCallFinallyBlock == nullptr)
+        {
+            JITDUMP("No calls from the try to the finally, skipping.\n");
+            continue;
+        }
+
+        // Clone the finally and retarget the normal return path and
+        // any other path that happens to share that same return
+        // point. For instance a construct like:
+        //
+        //  try { } catch { } finally { }
+        // 
+        // will have two call finally blocks, one for the normal exit
+        // from the try, and the the other for the exit from the
+        // catch. They'll both pass the same return point which is the
+        // statement after the finally, so they can share the clone.
+
+        // Clone the finally body, and splice it into the flow graph
+        // after the first call finally/always pair.
+
+        // TODO: weight maintenance (~all should go to clone)
+
+        BlockToBlockMap blockMap(getAllocator());
+        BasicBlock* insertAfter = cloneInsertAfter;
+        bool clonedOk = true;
+
+        for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
+        {
+            const bool extendRegion = true;
+            BasicBlock* newBlock = fgNewBBafter(block->bbJumpKind, insertAfter, extendRegion);
+            blockMap.Set(block, newBlock);
+            insertAfter = newBlock;
+            clonedOk |= BasicBlock::CloneBlockState(this, newBlock, block);
+            if (finallyInTryRegion)
+            {
+                newBlock->setTryIndex(finallyTryRegionIndex);
+            }
+            newBlock->clearHndIndex(); // or mark as dup?
+
+            if (!clonedOk)
+            {
+                break;
+            }
+
+            // Jump dests are set in a post-pass; make sure CloneBlockState hasn't tried to set them.
+            assert(newBlock->bbJumpDest == nullptr);
+        }
+
+        if (!clonedOk)
+        {
+            JITDUMP("Unable to clone the finally; skipping.\n");
+            continue;
+        }
+
+        JITDUMP("Cloned finally blocks are: BB%2u ... BB%2u\n", 
+            blockMap[firstBlock]->bbNum, blockMap[lastBlock]->bbNum);
+
+        // Redirect redirect any branches within the newly-cloned
+        // finally, and any finally returns to jump to the return
+        // point.
+        for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
+        {
+            BasicBlock* newBlock = blockMap[block];
+
+            if (block->bbJumpKind == BBJ_EHFINALLYRET)
+            {
+                GenTreeStmt* finallyRet = newBlock->lastStmt();
+                GenTreePtr   finallyRetExpr = finallyRet->gtStmtExpr;
+                assert(finallyRetExpr->gtOper == GT_RETFILT);
+                fgRemoveStmt(newBlock, finallyRet);
+                newBlock->bbJumpKind = BBJ_ALWAYS;
+                newBlock->bbJumpDest = normalCallFinallyReturn;
+
+                fgAddRefPred(normalCallFinallyReturn, newBlock);
+            }
+            else
+            {
+                optCopyBlkDest(block, newBlock);
+                optRedirectBlock(newBlock, &blockMap);
+            }
+        }
+
+        // Modify the targeting callfinallies to branch to the cloned
+        // finally. Make a note if we see some calls that can't be
+        // retartged (since they want to return to other places).
+        BasicBlock* const firstCloneBlock = blockMap[firstBlock];
+        bool retargetedAllCalls = true;
+
+        for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
+        {
+            if (block->isBBCallAlwaysPair())
+            {
+                if (block->bbJumpDest == firstBlock)
+                {
+                    BasicBlock* finallyReturnBlock = block->bbNext;
+                    BasicBlock* postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
+
+                    if (postTryFinallyBlock == normalCallFinallyReturn)
+                    {
+                        // This call returns to the expected spot, so
+                        // retarget it to branch to the clone.
+                        block->bbJumpDest = firstCloneBlock;
+                        block->bbJumpKind = BBJ_ALWAYS;
+
+                        // For some reason finally entry blocks sometimes
+                        // run a ref count deficit... sigh.
+                        assert(firstBlock->bbRefs > 0);
+
+                        fgRemoveRefPred(firstBlock, block);
+                        fgAddRefPred(firstCloneBlock, block);
+                    }
+                    else
+                    {
+                        // We can't retarget this call since it
+                        // returns somewhere else.
+                        retargetedAllCalls = false;
+                    }
+
+                    // Todo -- delete the paired block?
+                }
+            }
+        }
+
+        // If we retargeted all calls, modify EH descriptor to be
+        // try/fault instead of try finally, and then non-cloned
+        // finally catch type to be fault.
+        if (retargetedAllCalls)
+        {
+            JITDUMP("All callfinallies retargeted; changing finally to fault.\n");
+            HBtab->ebdHandlerType = EH_HANDLER_FAULT;
+            firstBlock->bbCatchTyp = BBCT_FAULT;
+        }
+        else
+        {
+            JITDUMP("Some callfinallies *not* retargeted, so region must remain as a finally.\n");
+        }
+
+        // Modify first block of cloned finally to be a "normal" block.
+        BasicBlock* firstClonedBlock = blockMap[firstBlock];
+        firstClonedBlock->bbCatchTyp = BBCT_NONE;
+
+        // Todo -- mark cloned blocks as a duplicated finally....
+
+        // Done!
+        JITDUMP("\nDone with region %u\n\n", XTnum);
+        cloneCount++;
+    }
+
+    if (cloneCount > 0)
+    {
+        JITDUMP("fgCloneFinally() cloned %u finally handlers\n", cloneCount);
+
+#ifdef DEBUG
+        if (verbose)
+        {
+            printf("\n*************** After fgCloneFinally()\n");
+            fgDispBasicBlocks();
+            fgDispHandlerTab();
+            printf("\n");
+        }
+#endif // DEBUG
+
     }
 }
