@@ -22517,6 +22517,7 @@ void Compiler::fgCloneFinally()
     // table.
     unsigned XTnum = 0;
     EHblkDsc* HBtab = compHndBBtab;
+    bool clonedSomething = false;
     for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
     {
         // Check if this is a try/finally
@@ -22531,7 +22532,7 @@ void Compiler::fgCloneFinally()
         
         if (enclosingHandlerRegion != EHblkDsc::NO_ENCLOSING_INDEX)
         {
-            JITDUMP("Try-finally EH region %u is enclosed by handler for EH region %u; skipping.\n", 
+            JITDUMP("Try-finally EH region %u is enclosed by handler region %u; skipping.\n", 
                 XTnum, enclosingHandlerRegion);
             continue;
         }
@@ -22551,7 +22552,7 @@ void Compiler::fgCloneFinally()
 
         if (containsEH)
         {
-            JITDUMP("Finally for EH region %u encloses EH region %u; skippping\n", 
+            JITDUMP("Finally for EH region %u encloses handler region %u; skipping.\n", 
                 XTnum, exampleEnclosedHandlerRegion);
             continue;
         }
@@ -22598,7 +22599,7 @@ void Compiler::fgCloneFinally()
         // Skip cloning if the finally is rarely run code.
         if (isAllRare)
         {
-            JITDUMP("Finally in EH region %u is all run rarely; skipping.\n", XTnum);
+            JITDUMP("Finally in EH region %u is run rarely; skipping.\n", XTnum);
             continue;
         }
 
@@ -22611,14 +22612,17 @@ void Compiler::fgCloneFinally()
         BasicBlock* lastCallFinallyBlock = nullptr;
         ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &lastCallFinallyBlock);
 
-        // Count up number of calls and number of return points. Note
-        // there may be more of the former.
-        unsigned finallyCallCount = 0;
-        BitVecTraits blockVecTraits(fgBBNumMax + 1, this);
-        BitVec       BITVEC_INIT_NOCOPY(postTryFinallyBlocks, BitVecOps::MakeEmpty(&blockVecTraits));
+        // Keep track of the blocks where the normally invoked
+        // (non-exceptional) finally is called from and returns to.
+        // Determine where to put the cloned finally, and what
+        // protected region (if any) it belongs to. Note because of
+        // the screening above, we know the finally is not inside any
+        // other handler region.
         BasicBlock* normalCallFinallyBlock = nullptr;        
         BasicBlock* normalCallFinallyReturn = nullptr;
         BasicBlock* cloneInsertAfter = nullptr;
+        bool        finallyInTryRegion = false;
+        unsigned    finallyTryRegionIndex = 0;
         
         for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
         {
@@ -22628,22 +22632,25 @@ void Compiler::fgCloneFinally()
                 // Presumably the first one is the normal case...
                 if (block->bbJumpDest == firstBlock)
                 {
-                    finallyCallCount++;
                     BasicBlock* finallyReturnBlock = block->bbNext;
                     BasicBlock* postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
 
-                    bool isNormal = false;
-                    if (normalCallFinallyBlock == nullptr)
+                    normalCallFinallyBlock = block;
+                    cloneInsertAfter = finallyReturnBlock;
+                    normalCallFinallyReturn = postTryFinallyBlock;
+
+                    assert(!block->hasHndIndex());
+
+                    if (block->hasTryIndex())
                     {
-                        isNormal = true;
-                        normalCallFinallyBlock = block;
-                        cloneInsertAfter = finallyReturnBlock;
-                        normalCallFinallyReturn = postTryFinallyBlock;
+                        finallyInTryRegion = true;
+                        finallyTryRegionIndex = block->getTryIndex();
                     }
 
-                    JITDUMP("BB%02u calls this finally; the call returns to BB%02u%s\n", 
-                        block->bbNum, postTryFinallyBlock->bbNum, isNormal ? " (normal path)" : "");
-                    BitVecOps::AddElemD(&blockVecTraits, postTryFinallyBlocks, postTryFinallyBlock->bbNum);
+                    JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n",
+                        block->bbNum, postTryFinallyBlock->bbNum);
+
+                    break;
                 }
             }
         }
@@ -22653,15 +22660,9 @@ void Compiler::fgCloneFinally()
         // might not bother processing the leave that follows).
         if (normalCallFinallyBlock == nullptr)
         {
-            JITDUMP("No calls to the finally, skipping\n");
+            JITDUMP("No calls from the try to the finally, skipping.\n");
             continue;
         }
-
-        unsigned finallyReturnCount = BitVecOps::Count(&blockVecTraits, postTryFinallyBlocks);
-        unsigned netCloneStmtCount = finallyReturnCount * regionStmtCount;
-
-        JITDUMP("The finally has %u call sites, %u return points. Cloning cost %u\n",
-            finallyCallCount, finallyReturnCount, netCloneStmtCount);
 
         // Clone the finally and retarget the normal return path and
         // any other path that happens to share that same return
@@ -22686,12 +22687,13 @@ void Compiler::fgCloneFinally()
             const bool extendRegion = true;
             BasicBlock* newBlock = fgNewBBafter(block->bbJumpKind, insertAfter, extendRegion);
             blockMap.Set(block, newBlock);
-
             insertAfter = newBlock;
-
             clonedOk |= BasicBlock::CloneBlockState(this, newBlock, block);
-            
-            // Todo -- update enclosing TRY region (can't be an enclosing handler region...)
+            if (finallyInTryRegion)
+            {
+                newBlock->setTryIndex(finallyTryRegionIndex);
+            }
+            newBlock->clearHndIndex(); // or mark as dup?
 
             if (!clonedOk)
             {
@@ -22717,8 +22719,6 @@ void Compiler::fgCloneFinally()
         for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
         {
             BasicBlock* newBlock = blockMap[block];
-
-            if (block->
 
             if (block->bbJumpKind == BBJ_EHFINALLYRET)
             {
@@ -22770,8 +22770,29 @@ void Compiler::fgCloneFinally()
         HBtab->ebdHandlerType = EH_HANDLER_FAULT;
         firstBlock->bbCatchTyp = BBCT_FAULT;
 
+        // Modify first block of cloned finally to be a "normal" block.
+        BasicBlock* firstClonedBlock = blockMap[firstBlock];
+        firstClonedBlock->bbCatchTyp = BBCT_NONE;
+
         // Todo -- mark cloned blocks as a duplicated finally....
 
         // Done!
+        clonedSomething = true;
+    }
+
+    if (clonedSomething)
+    {
+        JITDUMP("fgCloneFinally() did some cloning\n");
+
+#ifdef DEBUG
+        if (verbose)
+        {
+            printf("\n*************** After fgCloneFinally()\n");
+            fgDispBasicBlocks();
+            fgDispHandlerTab();
+            printf("\n");
+        }
+#endif // DEBUG
+
     }
 }
