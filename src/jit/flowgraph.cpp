@@ -22517,7 +22517,7 @@ void Compiler::fgCloneFinally()
     // table.
     unsigned XTnum = 0;
     EHblkDsc* HBtab = compHndBBtab;
-    bool clonedSomething = false;
+    unsigned cloneCount = 0;
     for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
     {
         // Check if this is a try/finally
@@ -22760,7 +22760,7 @@ void Compiler::fgCloneFinally()
                         fgAddRefPred(firstCloneBlock, block);
                     }
 
-                    // Todo -- delete the paired block
+                    // Todo -- delete the paired block?
                 }
             }
         }
@@ -22777,12 +22777,12 @@ void Compiler::fgCloneFinally()
         // Todo -- mark cloned blocks as a duplicated finally....
 
         // Done!
-        clonedSomething = true;
+        cloneCount++;
     }
 
-    if (clonedSomething)
+    if (cloneCount > 0)
     {
-        JITDUMP("fgCloneFinally() did some cloning\n");
+        JITDUMP("fgCloneFinally() cloned %u finally handlers\n", cloneCount);
 
 #ifdef DEBUG
         if (verbose)
