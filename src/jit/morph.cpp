@@ -16897,13 +16897,13 @@ void Compiler::fgMorph()
     fgDebugCheckBBlist(false, false);
 #endif // DEBUG
 
-    /* Clone Finallys */
+    fgRemoveEmptyFinally();
+
+    EndPhase(PHASE_EMPTY_FINALLY);
+
     fgCloneFinally();
 
-#ifdef DEBUG
-    /* Finall cloning could add basic blocks. Check that the flowgraph data is up-to-date */
-    fgDebugCheckBBlist(false, false);
-#endif // DEBUG
+    EndPhase(PHASE_CLONE_FINALLY);
 
     /* For x64 and ARM64 we need to mark irregular parameters early so that they don't get promoted */
     fgMarkImplicitByRefArgs();

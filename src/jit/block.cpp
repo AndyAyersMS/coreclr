@@ -664,7 +664,7 @@ bool BasicBlock::IsLIR()
 // Return Value:
 //    The first statement in the block's bbTreeList.
 //
-GenTreeStmt* BasicBlock::firstStmt()
+GenTreeStmt* BasicBlock::firstStmt() const
 {
     if (bbTreeList == nullptr)
     {
@@ -683,7 +683,7 @@ GenTreeStmt* BasicBlock::firstStmt()
 // Return Value:
 //    The last statement in the block's bbTreeList.
 //
-GenTreeStmt* BasicBlock::lastStmt()
+GenTreeStmt* BasicBlock::lastStmt() const
 {
     if (bbTreeList == nullptr)
     {
