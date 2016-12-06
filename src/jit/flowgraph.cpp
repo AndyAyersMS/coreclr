@@ -22569,17 +22569,20 @@ void Compiler::fgCloneFinally()
         BasicBlock* const prevBlock = firstBlock->bbPrev;
         BasicBlock* const nextBlock = lastBlock->bbNext;
         assert(prevBlock != nullptr);
-
         unsigned regionBBCount = 0;
         unsigned regionStmtCount = 0;
         bool hasFinallyRet = false;
         bool isAllRare = true;
-
-        // Note JIT64 would not clone finallys with switches. For now,
-        // we'll allow it.
+        bool hasSwitch = false;
 
         for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
         {
+            if (block->bbJumpKind == BBJ_SWITCH)
+            {
+                hasSwitch = true;
+                break;
+            }
+
             regionBBCount++;
 
             // Should we compute statement cost here, or is it
@@ -22591,6 +22594,13 @@ void Compiler::fgCloneFinally()
 
             hasFinallyRet |= (block->bbJumpKind == BBJ_EHFINALLYRET);
             isAllRare &= block->isRunRarely();
+        }
+
+        // Skip cloning if the finally has a switch.
+        if (hasSwitch)
+        {
+            JITDUMP("Finally in EH region %u has a switch; skipping.\n", XTnum);
+            continue;
         }
 
         // Skip cloning if the finally must throw.
