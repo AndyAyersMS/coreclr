@@ -8551,8 +8551,12 @@ void Compiler::fgAddInternal()
 GenTreeStmt* Compiler::fgNewStmtFromTree(GenTreePtr tree, BasicBlock* block, IL_OFFSETX offs)
 {
     GenTreeStmt* stmt = gtNewStmt(tree, offs);
-    gtSetStmtInfo(stmt);
-    fgSetStmtSeq(stmt);
+
+    if (fgStmtListThreaded)
+    {
+        gtSetStmtInfo(stmt);
+        fgSetStmtSeq(stmt);
+    }
 
 #if DEBUG
     if (block != nullptr)
@@ -22678,6 +22682,8 @@ void Compiler::fgCloneFinally()
         // Clone the finally body, and splice it into the flow graph
         // after the first call finally/always pair.
 
+        // TODO: weight maintenance (~all should go to clone)
+
         BlockToBlockMap blockMap(getAllocator());
         BasicBlock* insertAfter = cloneInsertAfter;
         bool clonedOk = true;
@@ -22738,9 +22744,11 @@ void Compiler::fgCloneFinally()
             }
         }
 
-        // Modify the targeting callfinallies to branch to the
-        // cloned finally.
+        // Modify the targeting callfinallies to branch to the cloned
+        // finally. Make a note if we see some calls that can't be
+        // retartged (since they want to return to other places).
         BasicBlock* const firstCloneBlock = blockMap[firstBlock];
+        bool retargetedAllCalls = true;
 
         for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
         {
@@ -22753,11 +22761,23 @@ void Compiler::fgCloneFinally()
 
                     if (postTryFinallyBlock == normalCallFinallyReturn)
                     {
+                        // This call returns to the expected spot, so
+                        // retarget it to branch to the clone.
                         block->bbJumpDest = firstCloneBlock;
                         block->bbJumpKind = BBJ_ALWAYS;
 
-                        fgRemoveRefPred(firstBlock, block);                        
+                        // For some reason finally entry blocks sometimes
+                        // run a ref count deficit... sigh.
+                        assert(firstBlock->bbRefs > 0);
+
+                        fgRemoveRefPred(firstBlock, block);
                         fgAddRefPred(firstCloneBlock, block);
+                    }
+                    else
+                    {
+                        // We can't retarget this call since it
+                        // returns somewhere else.
+                        retargetedAllCalls = false;
                     }
 
                     // Todo -- delete the paired block?
@@ -22765,10 +22785,14 @@ void Compiler::fgCloneFinally()
             }
         }
 
-        // Modify EH descriptor to be try/fault instead of try finally,
-        // and then non-cloned finally catch type to be fault.
-        HBtab->ebdHandlerType = EH_HANDLER_FAULT;
-        firstBlock->bbCatchTyp = BBCT_FAULT;
+        // If we retargeted all calls, modify EH descriptor to be
+        // try/fault instead of try finally, and then non-cloned
+        // finally catch type to be fault.
+        if (retargetedAllCalls)
+        {
+            HBtab->ebdHandlerType = EH_HANDLER_FAULT;
+            firstBlock->bbCatchTyp = BBCT_FAULT;
+        }
 
         // Modify first block of cloned finally to be a "normal" block.
         BasicBlock* firstClonedBlock = blockMap[firstBlock];
