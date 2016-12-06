@@ -22800,8 +22800,13 @@ void Compiler::fgCloneFinally()
         // finally catch type to be fault.
         if (retargetedAllCalls)
         {
+            JITDUMP("All callfinallies retargeted; changing finally to fault.\n");
             HBtab->ebdHandlerType = EH_HANDLER_FAULT;
             firstBlock->bbCatchTyp = BBCT_FAULT;
+        }
+        else
+        {
+            JITDUMP("Some callfinallies *not* retargeted, so region must remain as a finally.\n");
         }
 
         // Modify first block of cloned finally to be a "normal" block.
@@ -22811,6 +22816,7 @@ void Compiler::fgCloneFinally()
         // Todo -- mark cloned blocks as a duplicated finally....
 
         // Done!
+        JITDUMP("\nDone with region %u\n\n", XTnum);
         cloneCount++;
     }
 
