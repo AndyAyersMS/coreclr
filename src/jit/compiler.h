@@ -3495,6 +3495,8 @@ public:
 
     void fgInline();
 
+    void fgRemoveEmptyFinally();
+
     void fgCloneFinally();
 
     GenTreePtr fgGetCritSectOfStaticMethod();
