@@ -22516,10 +22516,11 @@ void Compiler::fgRemoveEmptyFinally()
     {
         EHblkDsc* const HBtab = &compHndBBtab[XTnum];
 
-        // Check if this is a try/finally or try/fault.
-        if (!HBtab->HasFinallyOrFaultHandler())
+        // Check if this is a try/finally.  We Could also look for empty
+        // try/fault but presumably those are rare.
+        if (!HBtab->HasFinallyHandler())
         {
-            JITDUMP("EH region %u is not a try-finally or try-fault; skipping.\n", XTnum);
+            JITDUMP("EH region %u is not a try-finally; skipping.\n", XTnum);
             XTnum++;
             continue;
         }
@@ -22528,7 +22529,7 @@ void Compiler::fgRemoveEmptyFinally()
         BasicBlock* const firstBlock = HBtab->ebdHndBeg;
         BasicBlock* const lastBlock = HBtab->ebdHndLast;
 
-        // Limit for now to single blocks.
+        // Limit for now to finallies that are single blocks.
         if (firstBlock != lastBlock)
         {
             JITDUMP("EH region %u finally has multiple basic blocks; skipping.\n", XTnum);
