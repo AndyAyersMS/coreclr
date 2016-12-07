@@ -16892,6 +16892,8 @@ void Compiler::fgMorph()
     /* Remove Empty Finallys */
     fgRemoveEmptyFinally();
 
+    EndPhase(PHASE_EMPTY_FINALLY);
+
 #ifdef DEBUG
     /* Empty Finally removal could remove basic blocks. Check that the flowgraph data is up-to-date */
     fgDebugCheckBBlist(false, false);
@@ -16899,6 +16901,8 @@ void Compiler::fgMorph()
 
     /* Clone Finallys */
     fgCloneFinally();
+
+    EndPhase(PHASE_CLONE_FINALLY);
 
 #ifdef DEBUG
     /* Finally cloning could add basic blocks. Check that the flowgraph data is up-to-date */

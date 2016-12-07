@@ -22510,6 +22510,7 @@ void Compiler::fgRemoveEmptyFinally()
 #endif // DEBUG
 
     // Look for finallys or faults that are empty.
+    unsigned finallyCount = 0;
     unsigned emptyCount = 0;
     unsigned XTnum = 0;
     while (XTnum < compHndBBtabCount)
@@ -22524,6 +22525,8 @@ void Compiler::fgRemoveEmptyFinally()
             XTnum++;
             continue;
         }
+
+        finallyCount++;
 
         // Look at blocks involved.
         BasicBlock* const firstBlock = HBtab->ebdHndBeg;
@@ -22665,7 +22668,7 @@ void Compiler::fgRemoveEmptyFinally()
 
     if (emptyCount > 0)
     {
-        JITDUMP("fgRemoveEmptyFinally() removed %u try-finally clauses\n", emptyCount);
+        JITDUMP("fgRemoveEmptyFinally() removed %u try-finally clauses from %u finallies\n", emptyCount, finallyCount);
 
 #ifdef DEBUG
         if (verbose)
