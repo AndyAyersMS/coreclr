@@ -357,11 +357,11 @@ struct BasicBlock : private LIR::Range
 
 #define BBF_LOOP_FLAGS (BBF_LOOP_PREHEADER | BBF_LOOP_HEAD | BBF_LOOP_CALL0 | BBF_LOOP_CALL1)
 
-    bool isRunRarely()
+    bool isRunRarely() const
     {
         return ((bbFlags & BBF_RUN_RARELY) != 0);
     }
-    bool isLoopHead()
+    bool isLoopHead() const
     {
         return ((bbFlags & BBF_LOOP_HEAD) != 0);
     }
@@ -981,8 +981,8 @@ struct BasicBlock : private LIR::Range
         return bbNum - 1;
     }
 
-    GenTreeStmt* firstStmt();
-    GenTreeStmt* lastStmt();
+    GenTreeStmt* firstStmt() const;
+    GenTreeStmt* lastStmt() const;
     GenTreeStmt* lastTopLevelStmt();
 
     GenTree* firstNode();

@@ -22560,7 +22560,7 @@ void Compiler::fgRemoveEmptyFinally()
             continue;
         }
 
-        JITDUMP("Try-finally EH region %u is empty\n");
+        JITDUMP("Try-finally EH region %u has empty finally, removing the region.\n", XTnum);
 
         // Find all the call finallys that invoke this finally,
         // and modify them to jump to the return point.
@@ -22571,14 +22571,14 @@ void Compiler::fgRemoveEmptyFinally()
 
         BasicBlock* currentBlock = firstCallFinallyBlock;
         
-        while(currentBlock != lastCallFinallyBlock)
+        while (currentBlock != lastCallFinallyBlock)
         {
             BasicBlock* nextBlock = currentBlock->bbNext;
 
-            if (currentBlock->bbJumpDest == firstBlock)
+            if ((currentBlock->bbJumpKind == BBJ_CALLFINALLY) && (currentBlock->bbJumpDest == firstBlock))
             {
-                // Retarget the call finally to jump to the
-                // return point.
+                // Retarget the call finally to jump to the return
+                // point.
                 //
                 // We don't expect to see retless finallys here, since
                 // the finally is empty.
@@ -22688,6 +22688,8 @@ void Compiler::fgRemoveEmptyFinally()
             fgDispHandlerTab();
             printf("\n");
         }
+
+        fgVerifyHandlerTab();
 #endif // DEBUG
 
     }
@@ -22782,7 +22784,7 @@ void Compiler::fgCloneFinally()
         assert(firstBlock != nullptr);
         assert(lastBlock != nullptr);
         BasicBlock* const prevBlock = firstBlock->bbPrev;
-        BasicBlock* const nextBlock = lastBlock->bbNext;
+        BasicBlock* nextBlock = lastBlock->bbNext;
         assert(prevBlock != nullptr);
         unsigned regionBBCount = 0;
         unsigned regionStmtCount = 0;
@@ -22790,7 +22792,7 @@ void Compiler::fgCloneFinally()
         bool isAllRare = true;
         bool hasSwitch = false;
 
-        for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
+        for (const BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
         {
             if (block->bbJumpKind == BBJ_SWITCH)
             {
@@ -22849,9 +22851,7 @@ void Compiler::fgCloneFinally()
         // other handler region.
         BasicBlock* normalCallFinallyBlock = nullptr;        
         BasicBlock* normalCallFinallyReturn = nullptr;
-        BasicBlock* cloneInsertAfter = nullptr;
-        bool        finallyInTryRegion = false;
-        unsigned    finallyTryRegionIndex = 0;
+        unsigned    finallyTryIndex = 0;
         
         for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
         {
@@ -22861,20 +22861,19 @@ void Compiler::fgCloneFinally()
                 // Presumably the first one is the normal case...
                 if (block->bbJumpDest == firstBlock)
                 {
-                    BasicBlock* finallyReturnBlock = block->bbNext;
-                    BasicBlock* postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
+                    BasicBlock* const finallyReturnBlock = block->bbNext;
+                    BasicBlock* const postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
 
                     normalCallFinallyBlock = block;
-                    cloneInsertAfter = finallyReturnBlock;
                     normalCallFinallyReturn = postTryFinallyBlock;
 
+#if FEATURE_EH_CALLFINALLY_THUNKS
+                    // When there are callfinally thunks, we don't expect to see the
+                    // callfinally within a handler region.
                     assert(!block->hasHndIndex());
+#endif // FEATURE_EH_CALLFINALLY_THUNKS
 
-                    if (block->hasTryIndex())
-                    {
-                        finallyInTryRegion = true;
-                        finallyTryRegionIndex = block->getTryIndex();
-                    }
+                    finallyTryIndex = block->bbTryIndex;
 
                     JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n",
                         block->bbNum, postTryFinallyBlock->bbNum);
@@ -22903,28 +22902,54 @@ void Compiler::fgCloneFinally()
         // from the try, and the the other for the exit from the
         // catch. They'll both pass the same return point which is the
         // statement after the finally, so they can share the clone.
-
+        //
         // Clone the finally body, and splice it into the flow graph
-        // after the first call finally/always pair.
+        // within in the parent region of the try.
 
         // TODO: weight maintenance (~all should go to clone)
 
+        BasicBlock* insertAfter = nullptr;
         BlockToBlockMap blockMap(getAllocator());
-        BasicBlock* insertAfter = cloneInsertAfter;
         bool clonedOk = true;
 
         for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
         {
-            const bool extendRegion = true;
-            BasicBlock* newBlock = fgNewBBafter(block->bbJumpKind, insertAfter, extendRegion);
-            blockMap.Set(block, newBlock);
-            insertAfter = newBlock;
-            clonedOk |= BasicBlock::CloneBlockState(this, newBlock, block);
-            if (finallyInTryRegion)
+            BasicBlock* newBlock;
+
+            if (block == firstBlock)
             {
-                newBlock->setTryIndex(finallyTryRegionIndex);
+                // Put first cloned finally block into the approprate
+                // region, somewhere after the range of callfinallies.
+                const unsigned hndIndex = 0;
+                BasicBlock* const nearBlk = lastCallFinallyBlock;
+                newBlock = fgNewBBinRegion(block->bbJumpKind, finallyTryIndex, hndIndex, nearBlk);
+
+                // If the clone ends up just after the finally, adjust
+                // the stopping point for finally traversal.
+                if (newBlock->bbNext == nextBlock)
+                {
+                    assert(newBlock->bbPrev == lastBlock);
+                    nextBlock = newBlock;
+                }
             }
-            newBlock->clearHndIndex(); // or mark as dup?
+            else
+            {
+                // Put subsequent blocks in the same region...
+                const bool extendRegion = true;
+                newBlock = fgNewBBafter(block->bbJumpKind, insertAfter, extendRegion);
+            }
+
+            insertAfter = newBlock;
+            blockMap.Set(block, newBlock);
+
+            clonedOk |= BasicBlock::CloneBlockState(this, newBlock, block);
+
+            // Make sure clone block state hasn't munged the try region.
+            assert(newBlock->bbTryIndex == finallyTryIndex);
+
+            // Cloned handler block is no longer within the handler.
+            // Though ... it probably should be in a cloned handler region.
+            newBlock->clearHndIndex();
 
             if (!clonedOk)
             {
@@ -23047,6 +23072,8 @@ void Compiler::fgCloneFinally()
             fgDispHandlerTab();
             printf("\n");
         }
+
+        fgVerifyHandlerTab();
 #endif // DEBUG
 
     }
