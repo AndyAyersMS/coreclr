@@ -22566,6 +22566,7 @@ void Compiler::fgRemoveEmptyFinally()
         // and modify them to jump to the return point.
         BasicBlock* firstCallFinallyBlock = nullptr;
         BasicBlock* lastCallFinallyBlock = nullptr;
+
         ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &lastCallFinallyBlock);
 
         BasicBlock* currentBlock = firstCallFinallyBlock;
@@ -22602,6 +22603,15 @@ void Compiler::fgRemoveEmptyFinally()
 
                 leaveBlock->bbFlags &= ~BBF_KEEP_BBJ_ALWAYS;
                 fgRemoveBlock(leaveBlock, true);
+
+#if !FEATURE_EH_FUNCLETS
+                // Remove the GT_END_LFIN from the post-try-finally block.
+                // remove it since there is no finally anymore.
+                GenTreeStmt* endFinallyStmt = postTryFinallyBlock->lastStmt();
+                GenTreePtr   endFinallyExpr = endFinallyStmt->gtStmtExpr;
+                assert(endFinallyExpr->gtOper == GT_END_LFIN);
+                fgRemoveStmt(postTryFinallyBlock, endFinallyStmt);
+#endif
 
                 // Make sure iteration isn't going off the deep end.
                 assert(leaveBlock != lastCallFinallyBlock);
