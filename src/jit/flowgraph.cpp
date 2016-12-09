@@ -22604,6 +22604,11 @@ void Compiler::fgRemoveEmptyFinally()
                 leaveBlock->bbFlags &= ~BBF_KEEP_BBJ_ALWAYS;
                 fgRemoveBlock(leaveBlock, true);
 
+                // The postTryFinallyBlock may be a finalStep block.
+                // It is now a normal block,so clear the special keep
+                // always flag.
+                postTryFinallyBlock->bbFlags &= ~BBF_KEEP_BBJ_ALWAYS;
+
 #if !FEATURE_EH_FUNCLETS
                 // Remove the GT_END_LFIN from the post-try-finally block.
                 // remove it since there is no finally anymore.
@@ -22851,7 +22856,6 @@ void Compiler::fgCloneFinally()
         // other handler region.
         BasicBlock* normalCallFinallyBlock = nullptr;        
         BasicBlock* normalCallFinallyReturn = nullptr;
-        unsigned    finallyTryIndex = 0;
         
         for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
         {
@@ -22872,8 +22876,6 @@ void Compiler::fgCloneFinally()
                     // callfinally within a handler region.
                     assert(!block->hasHndIndex());
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
-
-                    finallyTryIndex = block->bbTryIndex;
 
                     JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n",
                         block->bbNum, postTryFinallyBlock->bbNum);
@@ -22908,6 +22910,7 @@ void Compiler::fgCloneFinally()
 
         // TODO: weight maintenance (~all should go to clone)
 
+        const unsigned finallyTryIndex = firstBlock->bbTryIndex;
         BasicBlock* insertAfter = nullptr;
         BlockToBlockMap blockMap(getAllocator());
         bool clonedOk = true;
