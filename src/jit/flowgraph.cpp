@@ -23056,7 +23056,21 @@ void Compiler::fgCloneFinally()
         BasicBlock* firstClonedBlock = blockMap[firstBlock];
         firstClonedBlock->bbCatchTyp = BBCT_NONE;
 
-        // Todo -- mark cloned blocks as a duplicated finally....
+        // The normalCallFinallyReturn may be a finalStep block.
+        // It is now a normal block,so clear the special keep
+        // always flag.
+        normalCallFinallyReturn->bbFlags &= ~BBF_KEEP_BBJ_ALWAYS;
+
+#if !FEATURE_EH_FUNCLETS
+        // Remove the GT_END_LFIN from the normalCallFinallyReturn
+        // since no callfinally returns there anymore.
+        GenTreeStmt* endFinallyStmt = normalCallFinallyReturn->lastStmt();
+        GenTreePtr   endFinallyExpr = endFinallyStmt->gtStmtExpr;
+        assert(endFinallyExpr->gtOper == GT_END_LFIN);
+        fgRemoveStmt(normalCallFinallyReturn, endFinallyStmt);
+#endif
+
+        // Todo -- mark cloned blocks as a cloned finally....
 
         // Done!
         JITDUMP("\nDone with region %u\n\n", XTnum);
