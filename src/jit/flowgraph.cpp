@@ -22856,6 +22856,7 @@ void Compiler::fgCloneFinally()
         // other handler region.
         BasicBlock* normalCallFinallyBlock = nullptr;        
         BasicBlock* normalCallFinallyReturn = nullptr;
+        BasicBlock* cloneInsertAfter = lastCallFinallyBlock;
         
         for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
         {
@@ -22875,6 +22876,10 @@ void Compiler::fgCloneFinally()
                     // When there are callfinally thunks, we don't expect to see the
                     // callfinally within a handler region.
                     assert(!block->hasHndIndex());
+
+                    // Set the clone insertion point to just after the
+                    // call always pair.
+                    cloneInsertAfter = finallyReturnBlock;
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
 
                     JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n",
@@ -22922,9 +22927,10 @@ void Compiler::fgCloneFinally()
             if (block == firstBlock)
             {
                 // Put first cloned finally block into the approprate
-                // region, somewhere after the range of callfinallies.
+                // region, somewhere within or after the range of
+                // callfinallies, depending on the EH implementation.
                 const unsigned hndIndex = 0;
-                BasicBlock* const nearBlk = lastCallFinallyBlock;
+                BasicBlock* const nearBlk = cloneInsertAfter;
                 newBlock = fgNewBBinRegion(block->bbJumpKind, finallyTryIndex, hndIndex, nearBlk);
 
                 // If the clone ends up just after the finally, adjust
