@@ -8601,7 +8601,6 @@ void Compiler::impImportLeave(BasicBlock* block)
 #endif
 
             callBlock->bbJumpDest = HBtab->ebdHndBeg; // This callBlock will call the "finally" handler.
-            // callBlock->bbJumpDest->bbRefs++;
 
             invalidatePreds = true;
         }

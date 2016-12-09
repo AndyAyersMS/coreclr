@@ -22477,6 +22477,17 @@ void Compiler::fgLclFldAssign(unsigned lclNum)
     }
 }
 
+//------------------------------------------------------------------------
+// fgRemoveEmptyFinally: Remove try/finallys where the finally is empty
+//
+// Notes:
+//    Removes all try/finallys in the method with empty finallys.
+//    These typically arise from inlining empty Dispose methods.
+//
+//    Converts callfinally to a jump to the finally continuation.
+//    Removes the finally, and reparents all blocks in the try to the
+//    enclosing try or method region.
+
 void Compiler::fgRemoveEmptyFinally()
 {
     JITDUMP("\n*************** In fgRemoveEmptyFinally()\n");
@@ -22540,6 +22551,7 @@ void Compiler::fgRemoveEmptyFinally()
             continue;
         }
 
+        // Limit for now to finallies that contain only a GT_RETFILT.
         bool isEmpty = true;
 
         for (GenTreeStmt* stmt = firstBlock->firstStmt(); stmt != nullptr; stmt = stmt->gtNextStmt)
@@ -22592,7 +22604,11 @@ void Compiler::fgRemoveEmptyFinally()
                 currentBlock->bbJumpDest = postTryFinallyBlock;
                 currentBlock->bbJumpKind = BBJ_ALWAYS;
 
+                // Ref count updates. Note the ref counts are not
+                // always accurate at this point, and we don't have
+                // pred information, so dont aggressively remove.
                 fgAddRefPred(postTryFinallyBlock, currentBlock);
+
                 // fgRemoveRefPred(firstBlock, currentBlock);
                 // fgRemoveRefPred(leaveBlock, currentBlock);
 
@@ -22700,8 +22716,15 @@ void Compiler::fgRemoveEmptyFinally()
     }
 }
 
-// TODO -- make sure this runs after sync method transmogrification
-// done by fgAddInternal.
+//------------------------------------------------------------------------
+// fgCloneFinally: Optimize normal exit path from a try/finally
+//
+// Notes:
+//    Handles finallies that are not enclosed by or enclosing other
+//    handler regions.
+//
+//    Converts the "normal exit" callfinally to a jump to a cloned copy
+//    of the finally, which in turn jumps to the finally continuation.
 
 void Compiler::fgCloneFinally()
 {
@@ -22854,6 +22877,9 @@ void Compiler::fgCloneFinally()
         // protected region (if any) it belongs to. Note because of
         // the screening above, we know the finally is not inside any
         // other handler region.
+        //
+        // We assume the lexically first callfinally is the one that
+        // corresponds to the normal try exit point.
         BasicBlock* normalCallFinallyBlock = nullptr;        
         BasicBlock* normalCallFinallyReturn = nullptr;
         BasicBlock* cloneInsertAfter = lastCallFinallyBlock;
@@ -22874,7 +22900,7 @@ void Compiler::fgCloneFinally()
 
 #if FEATURE_EH_CALLFINALLY_THUNKS
                     // When there are callfinally thunks, we don't expect to see the
-                    // callfinally within a handler region.
+                    // callfinally within a handler region either.
                     assert(!block->hasHndIndex());
 
                     // Set the clone insertion point to just after the
@@ -22890,9 +22916,7 @@ void Compiler::fgCloneFinally()
             }
         }
 
-        // Grr, can't be sure the first callfinally is really the
-        // normal one, can we? (say the try unconditionally throws, we
-        // might not bother processing the leave that follows).
+        // If there is no call to the finally, don't clone.
         if (normalCallFinallyBlock == nullptr)
         {
             JITDUMP("No calls from the try to the finally, skipping.\n");
@@ -22957,7 +22981,7 @@ void Compiler::fgCloneFinally()
             assert(newBlock->bbTryIndex == finallyTryIndex);
 
             // Cloned handler block is no longer within the handler.
-            // Though ... it probably should be in a cloned handler region.
+            // TODO: how to indicate this is now a cloned handler region.
             newBlock->clearHndIndex();
 
             if (!clonedOk)
@@ -22971,6 +22995,7 @@ void Compiler::fgCloneFinally()
 
         if (!clonedOk)
         {
+            // TODO: cleanup the partial clone?
             JITDUMP("Unable to clone the finally; skipping.\n");
             continue;
         }
