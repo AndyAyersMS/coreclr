@@ -13578,11 +13578,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                    of the method, even if the frame size is 0, as localloc may
                    have modified it. So we will HAVE to reset it */
 
-                compLocallocUsed = true;
-                setNeedsGSSecurityCookie();
-
                 // Get the size to allocate
-
                 op2 = impPopStack().val;
                 assertImp(genActualTypeIsIntOrI(op2->gtType));
 
@@ -13591,11 +13587,43 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     BADCODE("Localloc can only be used when the stack is empty");
                 }
 
-                op1 = gtNewOperNode(GT_LCLHEAP, TYP_I_IMPL, op2);
+                // If the localloc is a small constant, create a new local var and
+                // return its address instead.
+                {
+                    bool convertedToLocal = false;
+                    if (op2->IsIntegralConst())
+                    {
+                        ssize_t allocSize = op2->AsIntCon()->IconValue();
+                        if (allocSize > 0 && allocSize <= 32)
+                        {
+                            const unsigned stackallocAsLocal = lvaGrabTemp(false DEBUGARG("stackallocLocal"));
+                            lvaTable[stackallocAsLocal].lvType = TYP_BLK;
+                            lvaTable[stackallocAsLocal].lvExactSize = (unsigned) allocSize;
+                            lvaTable[stackallocAsLocal].lvIsUnsafeBuffer = true;  // ??
+                            
+                            op1 = gtNewLclvNode(stackallocAsLocal, TYP_BLK);
+                            op1 = gtNewOperNode(GT_ADDR, TYP_I_IMPL, op1);
+                            
+                            convertedToLocal = true;
+                        }
+                        else
+                        {
+                            printf("$$$Punted on fixed-sized stackallock %u bytes\n", (unsigned) allocSize);
+                        }
+                    }
+                    
+                    if (!convertedToLocal)
+                    {
+                        op1 = gtNewOperNode(GT_LCLHEAP, TYP_I_IMPL, op2);
+                        // May throw a stack overflow exception. Obviously, we don't want locallocs to be CSE'd.
+                        op1->gtFlags |= (GTF_EXCEPT | GTF_DONT_CSE);
+                        compLocallocUsed = true;
+                    }
+                }
 
-                // May throw a stack overflow exception. Obviously, we don't want locallocs to be CSE'd.
-
-                op1->gtFlags |= (GTF_EXCEPT | GTF_DONT_CSE);
+                // Since we'll be addressing into the local frame, make sure we have
+                // enabled stack security.
+                setNeedsGSSecurityCookie();
 
                 impPushOnStack(op1, tiRetVal);
                 break;
