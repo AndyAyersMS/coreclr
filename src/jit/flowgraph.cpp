@@ -22522,8 +22522,8 @@ void Compiler::fgRemoveEmptyFinally()
 
     // Look for finallys or faults that are empty.
     unsigned finallyCount = 0;
-    unsigned emptyCount = 0;
-    unsigned XTnum = 0;
+    unsigned emptyCount   = 0;
+    unsigned XTnum        = 0;
     while (XTnum < compHndBBtabCount)
     {
         EHblkDsc* const HBtab = &compHndBBtab[XTnum];
@@ -22541,7 +22541,7 @@ void Compiler::fgRemoveEmptyFinally()
 
         // Look at blocks involved.
         BasicBlock* const firstBlock = HBtab->ebdHndBeg;
-        BasicBlock* const lastBlock = HBtab->ebdHndLast;
+        BasicBlock* const lastBlock  = HBtab->ebdHndLast;
 
         // Limit for now to finallies that are single blocks.
         if (firstBlock != lastBlock)
@@ -22577,12 +22577,12 @@ void Compiler::fgRemoveEmptyFinally()
         // Find all the call finallys that invoke this finally,
         // and modify them to jump to the return point.
         BasicBlock* firstCallFinallyBlock = nullptr;
-        BasicBlock* lastCallFinallyBlock = nullptr;
+        BasicBlock* lastCallFinallyBlock  = nullptr;
 
         ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &lastCallFinallyBlock);
 
         BasicBlock* currentBlock = firstCallFinallyBlock;
-        
+
         while (currentBlock != lastCallFinallyBlock)
         {
             BasicBlock* nextBlock = currentBlock->bbNext;
@@ -22596,7 +22596,7 @@ void Compiler::fgRemoveEmptyFinally()
                 // the finally is empty.
                 noway_assert(currentBlock->isBBCallAlwaysPair());
 
-                BasicBlock* leaveBlock = currentBlock->bbNext;
+                BasicBlock* leaveBlock          = currentBlock->bbNext;
                 BasicBlock* postTryFinallyBlock = leaveBlock->bbJumpDest;
 
                 noway_assert(leaveBlock->bbJumpKind == BBJ_ALWAYS);
@@ -22655,7 +22655,7 @@ void Compiler::fgRemoveEmptyFinally()
         // the try region. Note the handler region (if any) won't
         // change.
         BasicBlock* const firstTryBlock = HBtab->ebdTryBeg;
-        BasicBlock* const lastTryBlock = HBtab->ebdTryLast;
+        BasicBlock* const lastTryBlock  = HBtab->ebdTryLast;
         assert(firstTryBlock->getTryIndex() == XTnum);
 
         for (BasicBlock* block = firstTryBlock; block != nullptr; block = block->bbNext)
@@ -22683,7 +22683,7 @@ void Compiler::fgRemoveEmptyFinally()
                 assert((block->bbFlags & BBF_TRY_BEG) != 0);
                 block->bbFlags &= ~BBF_TRY_BEG;
             }
-            
+
             if (block == lastTryBlock)
             {
                 break;
@@ -22712,7 +22712,6 @@ void Compiler::fgRemoveEmptyFinally()
 
         fgVerifyHandlerTab();
 #endif // DEBUG
-
     }
 }
 
@@ -22760,13 +22759,13 @@ void Compiler::fgCloneFinally()
 
     // Look for finallys that are not contained within other handlers,
     // and which do not themselves contain EH.
-    // 
+    //
     // Note these cases potentially could be handled, but are less
     // obviously profitable and require modification of the handler
     // table.
-    unsigned XTnum = 0;
-    EHblkDsc* HBtab = compHndBBtab;
-    unsigned cloneCount = 0;
+    unsigned  XTnum      = 0;
+    EHblkDsc* HBtab      = compHndBBtab;
+    unsigned  cloneCount = 0;
     for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
     {
         // Check if this is a try/finally
@@ -22778,15 +22777,15 @@ void Compiler::fgCloneFinally()
 
         // Check if enclosed by another handler.
         const unsigned enclosingHandlerRegion = ehGetEnclosingHndIndex(XTnum);
-        
+
         if (enclosingHandlerRegion != EHblkDsc::NO_ENCLOSING_INDEX)
         {
-            JITDUMP("Try-finally EH region %u is enclosed by handler region %u; skipping.\n", 
-                XTnum, enclosingHandlerRegion);
+            JITDUMP("Try-finally EH region %u is enclosed by handler region %u; skipping.\n", XTnum,
+                    enclosingHandlerRegion);
             continue;
         }
 
-        bool containsEH = false;
+        bool     containsEH                   = false;
         unsigned exampleEnclosedHandlerRegion = 0;
 
         for (unsigned i = 0; i < compHndBBtabCount; i++)
@@ -22794,31 +22793,31 @@ void Compiler::fgCloneFinally()
             if (ehGetEnclosingHndIndex(i) == XTnum)
             {
                 exampleEnclosedHandlerRegion = i;
-                containsEH = true;
+                containsEH                   = true;
                 break;
             }
         }
 
         if (containsEH)
         {
-            JITDUMP("Finally for EH region %u encloses handler region %u; skipping.\n", 
-                XTnum, exampleEnclosedHandlerRegion);
+            JITDUMP("Finally for EH region %u encloses handler region %u; skipping.\n", XTnum,
+                    exampleEnclosedHandlerRegion);
             continue;
         }
 
         // Look at blocks involved.
         BasicBlock* const firstBlock = HBtab->ebdHndBeg;
-        BasicBlock* const lastBlock = HBtab->ebdHndLast;
+        BasicBlock* const lastBlock  = HBtab->ebdHndLast;
         assert(firstBlock != nullptr);
         assert(lastBlock != nullptr);
         BasicBlock* const prevBlock = firstBlock->bbPrev;
-        BasicBlock* nextBlock = lastBlock->bbNext;
+        BasicBlock*       nextBlock = lastBlock->bbNext;
         assert(prevBlock != nullptr);
-        unsigned regionBBCount = 0;
+        unsigned regionBBCount   = 0;
         unsigned regionStmtCount = 0;
-        bool hasFinallyRet = false;
-        bool isAllRare = true;
-        bool hasSwitch = false;
+        bool     hasFinallyRet   = false;
+        bool     isAllRare       = true;
+        bool     hasSwitch       = false;
 
         for (const BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
         {
@@ -22862,13 +22861,14 @@ void Compiler::fgCloneFinally()
             continue;
         }
 
-        JITDUMP("Try-finally EH region %u is a candidate for finally cloning: \n" 
-            "%u blocks, %u statements\n", XTnum, regionBBCount, regionStmtCount);
+        JITDUMP("Try-finally EH region %u is a candidate for finally cloning: \n"
+                "%u blocks, %u statements\n",
+                XTnum, regionBBCount, regionStmtCount);
 
         // Find all the call finallys that invoke this finally. Note
         // some of them may only be reachable via an exceptional path.
         BasicBlock* firstCallFinallyBlock = nullptr;
-        BasicBlock* lastCallFinallyBlock = nullptr;
+        BasicBlock* lastCallFinallyBlock  = nullptr;
         ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &lastCallFinallyBlock);
 
         // Keep track of the blocks where the normally invoked
@@ -22880,10 +22880,10 @@ void Compiler::fgCloneFinally()
         //
         // We assume the lexically first callfinally is the one that
         // corresponds to the normal try exit point.
-        BasicBlock* normalCallFinallyBlock = nullptr;        
+        BasicBlock* normalCallFinallyBlock  = nullptr;
         BasicBlock* normalCallFinallyReturn = nullptr;
-        BasicBlock* cloneInsertAfter = lastCallFinallyBlock;
-        
+        BasicBlock* cloneInsertAfter        = lastCallFinallyBlock;
+
         for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
         {
             if (block->isBBCallAlwaysPair())
@@ -22892,10 +22892,10 @@ void Compiler::fgCloneFinally()
                 // Presumably the first one is the normal case...
                 if (block->bbJumpDest == firstBlock)
                 {
-                    BasicBlock* const finallyReturnBlock = block->bbNext;
+                    BasicBlock* const finallyReturnBlock  = block->bbNext;
                     BasicBlock* const postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
 
-                    normalCallFinallyBlock = block;
+                    normalCallFinallyBlock  = block;
                     normalCallFinallyReturn = postTryFinallyBlock;
 
 #if FEATURE_EH_CALLFINALLY_THUNKS
@@ -22908,8 +22908,8 @@ void Compiler::fgCloneFinally()
                     cloneInsertAfter = finallyReturnBlock;
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
 
-                    JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n",
-                        block->bbNum, postTryFinallyBlock->bbNum);
+                    JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n", block->bbNum,
+                            postTryFinallyBlock->bbNum);
 
                     break;
                 }
@@ -22928,7 +22928,7 @@ void Compiler::fgCloneFinally()
         // point. For instance a construct like:
         //
         //  try { } catch { } finally { }
-        // 
+        //
         // will have two call finally blocks, one for the normal exit
         // from the try, and the the other for the exit from the
         // catch. They'll both pass the same return point which is the
@@ -22939,10 +22939,10 @@ void Compiler::fgCloneFinally()
 
         // TODO: weight maintenance (~all should go to clone)
 
-        const unsigned finallyTryIndex = firstBlock->bbTryIndex;
-        BasicBlock* insertAfter = nullptr;
+        const unsigned  finallyTryIndex = firstBlock->bbTryIndex;
+        BasicBlock*     insertAfter     = nullptr;
         BlockToBlockMap blockMap(getAllocator());
-        bool clonedOk = true;
+        bool            clonedOk = true;
 
         for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
         {
@@ -22953,9 +22953,9 @@ void Compiler::fgCloneFinally()
                 // Put first cloned finally block into the approprate
                 // region, somewhere within or after the range of
                 // callfinallies, depending on the EH implementation.
-                const unsigned hndIndex = 0;
-                BasicBlock* const nearBlk = cloneInsertAfter;
-                newBlock = fgNewBBinRegion(block->bbJumpKind, finallyTryIndex, hndIndex, nearBlk);
+                const unsigned    hndIndex = 0;
+                BasicBlock* const nearBlk  = cloneInsertAfter;
+                newBlock                   = fgNewBBinRegion(block->bbJumpKind, finallyTryIndex, hndIndex, nearBlk);
 
                 // If the clone ends up just after the finally, adjust
                 // the stopping point for finally traversal.
@@ -22969,7 +22969,7 @@ void Compiler::fgCloneFinally()
             {
                 // Put subsequent blocks in the same region...
                 const bool extendRegion = true;
-                newBlock = fgNewBBafter(block->bbJumpKind, insertAfter, extendRegion);
+                newBlock                = fgNewBBafter(block->bbJumpKind, insertAfter, extendRegion);
             }
 
             insertAfter = newBlock;
@@ -23000,8 +23000,8 @@ void Compiler::fgCloneFinally()
             continue;
         }
 
-        JITDUMP("Cloned finally blocks are: BB%2u ... BB%2u\n", 
-            blockMap[firstBlock]->bbNum, blockMap[lastBlock]->bbNum);
+        JITDUMP("Cloned finally blocks are: BB%2u ... BB%2u\n", blockMap[firstBlock]->bbNum,
+                blockMap[lastBlock]->bbNum);
 
         // Redirect redirect any branches within the newly-cloned
         // finally, and any finally returns to jump to the return
@@ -23012,7 +23012,7 @@ void Compiler::fgCloneFinally()
 
             if (block->bbJumpKind == BBJ_EHFINALLYRET)
             {
-                GenTreeStmt* finallyRet = newBlock->lastStmt();
+                GenTreeStmt* finallyRet     = newBlock->lastStmt();
                 GenTreePtr   finallyRetExpr = finallyRet->gtStmtExpr;
                 assert(finallyRetExpr->gtOper == GT_RETFILT);
                 fgRemoveStmt(newBlock, finallyRet);
@@ -23031,8 +23031,8 @@ void Compiler::fgCloneFinally()
         // Modify the targeting callfinallies to branch to the cloned
         // finally. Make a note if we see some calls that can't be
         // retartged (since they want to return to other places).
-        BasicBlock* const firstCloneBlock = blockMap[firstBlock];
-        bool retargetedAllCalls = true;
+        BasicBlock* const firstCloneBlock    = blockMap[firstBlock];
+        bool              retargetedAllCalls = true;
 
         for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
         {
@@ -23040,7 +23040,7 @@ void Compiler::fgCloneFinally()
             {
                 if (block->bbJumpDest == firstBlock)
                 {
-                    BasicBlock* finallyReturnBlock = block->bbNext;
+                    BasicBlock* finallyReturnBlock  = block->bbNext;
                     BasicBlock* postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
 
                     if (postTryFinallyBlock == normalCallFinallyReturn)
@@ -23052,7 +23052,7 @@ void Compiler::fgCloneFinally()
 
                         // For some reason finally entry blocks sometimes
                         // run a ref count deficit... sigh.
-                        //assert(firstBlock->bbRefs > 0);
+                        // assert(firstBlock->bbRefs > 0);
 
                         // fgRemoveRefPred(firstBlock, block);
                         fgAddRefPred(firstCloneBlock, block);
@@ -23075,7 +23075,7 @@ void Compiler::fgCloneFinally()
         if (retargetedAllCalls)
         {
             JITDUMP("All callfinallies retargeted; changing finally to fault.\n");
-            HBtab->ebdHandlerType = EH_HANDLER_FAULT;
+            HBtab->ebdHandlerType  = EH_HANDLER_FAULT;
             firstBlock->bbCatchTyp = BBCT_FAULT;
         }
         else
@@ -23123,6 +23123,5 @@ void Compiler::fgCloneFinally()
 
         fgVerifyHandlerTab();
 #endif // DEBUG
-
     }
 }
