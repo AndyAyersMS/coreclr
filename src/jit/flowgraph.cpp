@@ -22812,14 +22812,12 @@ void Compiler::fgCloneFinally()
         BasicBlock* const lastBlock  = HBtab->ebdHndLast;
         assert(firstBlock != nullptr);
         assert(lastBlock != nullptr);
-        BasicBlock* const prevBlock = firstBlock->bbPrev;
-        BasicBlock*       nextBlock = lastBlock->bbNext;
-        assert(prevBlock != nullptr);
-        unsigned regionBBCount   = 0;
-        unsigned regionStmtCount = 0;
-        bool     hasFinallyRet   = false;
-        bool     isAllRare       = true;
-        bool     hasSwitch       = false;
+        BasicBlock* nextBlock       = lastBlock->bbNext;
+        unsigned    regionBBCount   = 0;
+        unsigned    regionStmtCount = 0;
+        bool        hasFinallyRet   = false;
+        bool        isAllRare       = true;
+        bool        hasSwitch       = false;
 
         for (const BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
         {
@@ -22879,64 +22877,130 @@ void Compiler::fgCloneFinally()
                 " %u blocks, %u statements\n",
                 XTnum, regionBBCount, regionStmtCount);
 
-        // Find all the call finallys that invoke this finally. Note
-        // some of them may only be reachable via an exceptional path.
-        BasicBlock* firstCallFinallyBlock = nullptr;
-        BasicBlock* endCallFinallyBlock   = nullptr;
-        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &endCallFinallyBlock);
+        // Walk the try region backwards looking for the last block
+        // that transfers control to a callfinally.
+        BasicBlock* const firstTryBlock = HBtab->ebdTryBeg;
+        BasicBlock* const lastTryBlock  = HBtab->ebdTryLast;
+        assert(firstTryBlock->getTryIndex() == XTnum);
+        assert(lastTryBlock->getTryIndex() == XTnum);
+        BasicBlock* const beforeTryBlock = firstTryBlock->bbPrev;
 
-        // Keep track of the blocks where the normally invoked
-        // (non-exceptional) finally is called from and returns to.
-        // Set the hint for where to put the cloned finally to just
-        // after the try region, and note what protected region (if
-        // any) the cloned finally belongs to. Note because of the
-        // screening above, we know the finally is not inside any
-        // other handler region, so we don't need to track or check
-        // for that.
-        //
-        // We assume the lexically first callfinally is the one that
-        // corresponds to the normal try exit point.
-        BasicBlock* normalCallFinallyBlock  = nullptr;
-        BasicBlock* normalCallFinallyReturn = nullptr;
-        BasicBlock* cloneInsertAfter        = HBtab->ebdTryLast;
+        BasicBlock* normalCallFinallyBlock   = nullptr;
+        BasicBlock* normalCallFinallyReturn  = nullptr;
+        BasicBlock* cloneInsertAfter         = HBtab->ebdTryLast;
+        bool        tryToRelocateCallFinally = false;
 
-        for (BasicBlock* block = firstCallFinallyBlock; block != endCallFinallyBlock; block = block->bbNext)
+        for (BasicBlock* block = lastTryBlock; block != beforeTryBlock; block = block->bbPrev)
         {
-            if (block->isBBCallAlwaysPair())
+            // Look for blocks that are always jumps to a call finally
+            // pair that targets our finally.
+            if (block->bbJumpKind != BBJ_ALWAYS)
             {
-                // How to tell if this is a "normal" try exit or something else??
-                // Presumably the first one is the normal case...
-                if (block->bbJumpDest == firstBlock)
-                {
-                    BasicBlock* const finallyReturnBlock  = block->bbNext;
-                    BasicBlock* const postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
+                continue;
+            }
 
-                    normalCallFinallyBlock  = block;
-                    normalCallFinallyReturn = postTryFinallyBlock;
+            BasicBlock* const jumpDest = block->bbJumpDest;
+
+            if (!jumpDest->isBBCallAlwaysPair() || (jumpDest->bbJumpDest != firstBlock))
+            {
+                continue;
+            }
+
+            // Found our block.
+            BasicBlock* const finallyReturnBlock  = jumpDest->bbNext;
+            BasicBlock* const postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
+
+            normalCallFinallyBlock  = jumpDest;
+            normalCallFinallyReturn = postTryFinallyBlock;
 
 #if FEATURE_EH_CALLFINALLY_THUNKS
-                    // When there are callfinally thunks, we don't expect to see the
-                    // callfinally within a handler region either.
-                    assert(!block->hasHndIndex());
+            // When there are callfinally thunks, we don't expect to see the
+            // callfinally within a handler region either.
+            assert(!jumpDest->hasHndIndex());
 
-                    // Update the clone insertion point to just after the
-                    // call always pair.
-                    cloneInsertAfter = finallyReturnBlock;
+            // Update the clone insertion point to just after the
+            // call always pair.
+            cloneInsertAfter = finallyReturnBlock;
+
+            // We will consider moving the callfinally so we can fall
+            // through from the try into the clone.
+            tryToRelocateCallFinally = true;
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
 
-                    JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n", block->bbNum,
-                            postTryFinallyBlock->bbNum);
+            JITDUMP("Chose path to clone: try block BB%02u jumps to callfinally at BB%02u;"
+                    " the call returns to BB%02u which jumps to BB%02u\n",
+                    block->bbNum, jumpDest->bbNum, postTryFinallyBlock->bbNum, finallyReturnBlock->bbNum);
 
-                    break;
-                }
-            }
+            break;
         }
 
         // If there is no call to the finally, don't clone.
         if (normalCallFinallyBlock == nullptr)
         {
-            JITDUMP("No calls from the try to the finally, skipping.\n");
+            JITDUMP("EH#%u: no calls from the try to the finally, skipping.\n", XTnum);
             continue;
+        }
+
+        JITDUMP("Will update callfinally block BB%02u to jump to the clone;"
+                " clone will jump to BB%02u\n",
+                normalCallFinallyBlock->bbNum, normalCallFinallyReturn->bbNum);
+
+        // If there are multiple callfinallys and we're in the
+        // callfinally thunk model, all the callfinallys are placed
+        // just outside the try region. We'd like our chosen
+        // callfinally to come first after the try, so we can fall out of the try
+        // into the clone.
+        BasicBlock* firstCallFinallyRangeBlock = nullptr;
+        BasicBlock* endCallFinallyRangeBlock   = nullptr;
+        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyRangeBlock, &endCallFinallyRangeBlock);
+
+        if (tryToRelocateCallFinally)
+        {
+            BasicBlock* firstCallFinallyBlock = nullptr;
+
+            for (BasicBlock* block = firstCallFinallyRangeBlock; block != endCallFinallyRangeBlock;
+                 block             = block->bbNext)
+            {
+                if (block->isBBCallAlwaysPair())
+                {
+                    if (block->bbJumpDest == firstBlock)
+                    {
+                        firstCallFinallyBlock = block;
+                        break;
+                    }
+                }
+            }
+
+            // We better have found at least one call finally.
+            assert(firstCallFinallyBlock != nullptr);
+
+            // If there is more than one callfinally, move the one we are
+            // going to retarget to be first in the callfinally range.
+            if (firstCallFinallyBlock != normalCallFinallyBlock)
+            {
+                JITDUMP("Moving callfinally BB%02u to be first in line, before BB%02u\n", normalCallFinallyBlock->bbNum,
+                        firstCallFinallyBlock->bbNum);
+
+                BasicBlock* const firstToMove      = normalCallFinallyBlock;
+                BasicBlock* const lastToMove       = normalCallFinallyBlock->bbNext;
+                BasicBlock* const placeToMoveAfter = firstCallFinallyBlock->bbPrev;
+
+                fgUnlinkRange(firstToMove, lastToMove);
+                fgMoveBlocksAfter(firstToMove, lastToMove, placeToMoveAfter);
+
+#ifdef DEBUG
+                // Sanity checks
+                fgDebugCheckBBlist(false, false);
+                fgVerifyHandlerTab();
+#endif // DEBUG
+
+                assert(nextBlock == lastBlock->bbNext);
+
+                // Update where the callfinally range begins, since we might
+                // have altered this with callfinally rearrangement, and/or
+                // the range begin might have been pretty loose to begin with.
+                firstCallFinallyRangeBlock = normalCallFinallyBlock;
+            }
         }
 
         // Clone the finally and retarget the normal return path and
@@ -22952,13 +23016,11 @@ void Compiler::fgCloneFinally()
         //
         // Clone the finally body, and splice it into the flow graph
         // within in the parent region of the try.
-
-        // TODO: weight maintenance (~all should go to clone)
-
         const unsigned  finallyTryIndex = firstBlock->bbTryIndex;
         BasicBlock*     insertAfter     = nullptr;
         BlockToBlockMap blockMap(getAllocator());
-        bool            clonedOk = true;
+        bool            clonedOk     = true;
+        unsigned        cloneBBCount = 0;
 
         for (BasicBlock* block = firstBlock; block != nextBlock; block = block->bbNext)
         {
@@ -22988,6 +23050,9 @@ void Compiler::fgCloneFinally()
                 newBlock                = fgNewBBafter(block->bbJumpKind, insertAfter, extendRegion);
             }
 
+            cloneBBCount++;
+            assert(cloneBBCount <= regionBBCount);
+
             insertAfter = newBlock;
             blockMap.Set(block, newBlock);
 
@@ -23015,6 +23080,9 @@ void Compiler::fgCloneFinally()
             JITDUMP("Unable to clone the finally; skipping.\n");
             continue;
         }
+
+        // We should have cloned all the finally region blocks.
+        assert(cloneBBCount == regionBBCount);
 
         JITDUMP("Cloned finally blocks are: BB%2u ... BB%2u\n", blockMap[firstBlock]->bbNum,
                 blockMap[lastBlock]->bbNum);
@@ -23044,13 +23112,13 @@ void Compiler::fgCloneFinally()
             }
         }
 
-        // Modify the targeting callfinallys to branch to the cloned
+        // Modify the targeting call finallys to branch to the cloned
         // finally. Make a note if we see some calls that can't be
         // retargeted (since they want to return to other places).
         BasicBlock* const firstCloneBlock    = blockMap[firstBlock];
         bool              retargetedAllCalls = true;
 
-        for (BasicBlock* block = firstCallFinallyBlock; block != endCallFinallyBlock; block = block->bbNext)
+        for (BasicBlock* block = firstCallFinallyRangeBlock; block != endCallFinallyRangeBlock; block = block->bbNext)
         {
             if (block->isBBCallAlwaysPair())
             {
@@ -23079,8 +23147,6 @@ void Compiler::fgCloneFinally()
                         // returns somewhere else.
                         retargetedAllCalls = false;
                     }
-
-                    // Todo -- delete the paired block?
                 }
             }
         }
