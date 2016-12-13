@@ -22577,13 +22577,13 @@ void Compiler::fgRemoveEmptyFinally()
         // Find all the call finallys that invoke this finally,
         // and modify them to jump to the return point.
         BasicBlock* firstCallFinallyBlock = nullptr;
-        BasicBlock* lastCallFinallyBlock  = nullptr;
+        BasicBlock* endCallFinallyBlock  = nullptr;
 
-        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &lastCallFinallyBlock);
+        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &endCallFinallyBlock);
 
         BasicBlock* currentBlock = firstCallFinallyBlock;
 
-        while (currentBlock != lastCallFinallyBlock)
+        while (currentBlock != endCallFinallyBlock)
         {
             BasicBlock* nextBlock = currentBlock->bbNext;
 
@@ -22637,7 +22637,7 @@ void Compiler::fgRemoveEmptyFinally()
 #endif // !FEATURE_EH_FUNCLETS
 
                 // Make sure iteration isn't going off the deep end.
-                assert(leaveBlock != lastCallFinallyBlock);
+                assert(leaveBlock != endCallFinallyBlock);
             }
 
             currentBlock = nextBlock;
@@ -22790,7 +22790,9 @@ void Compiler::fgCloneFinally()
         bool     containsEH                   = false;
         unsigned exampleEnclosedHandlerRegion = 0;
 
-        for (unsigned i = 0; i < compHndBBtabCount; i++)
+        // Only need to look at lower numbered regions because the
+        // handler table is ordered by nesting.
+        for (unsigned i = 0; i < XTnum; i++)
         {
             if (ehGetEnclosingHndIndex(i) == XTnum)
             {
@@ -22869,23 +22871,25 @@ void Compiler::fgCloneFinally()
         // Find all the call finallys that invoke this finally. Note
         // some of them may only be reachable via an exceptional path.
         BasicBlock* firstCallFinallyBlock = nullptr;
-        BasicBlock* lastCallFinallyBlock  = nullptr;
-        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &lastCallFinallyBlock);
+        BasicBlock* endCallFinallyBlock  = nullptr;
+        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &endCallFinallyBlock);
 
         // Keep track of the blocks where the normally invoked
         // (non-exceptional) finally is called from and returns to.
-        // Determine where to put the cloned finally, and what
-        // protected region (if any) it belongs to. Note because of
-        // the screening above, we know the finally is not inside any
-        // other handler region.
+        // Set the hint for where to put the cloned finally to just
+        // after the try region, and note what protected region (if
+        // any) the cloned finally belongs to. Note because of the
+        // screening above, we know the finally is not inside any
+        // other handler region, so we don't need to track or check
+        // for that.
         //
         // We assume the lexically first callfinally is the one that
         // corresponds to the normal try exit point.
         BasicBlock* normalCallFinallyBlock  = nullptr;
         BasicBlock* normalCallFinallyReturn = nullptr;
-        BasicBlock* cloneInsertAfter        = lastCallFinallyBlock;
+        BasicBlock* cloneInsertAfter        = HBtab->ebdTryLast;
 
-        for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
+        for (BasicBlock* block = firstCallFinallyBlock; block != endCallFinallyBlock; block = block->bbNext)
         {
             if (block->isBBCallAlwaysPair())
             {
@@ -22904,7 +22908,7 @@ void Compiler::fgCloneFinally()
                     // callfinally within a handler region either.
                     assert(!block->hasHndIndex());
 
-                    // Set the clone insertion point to just after the
+                    // Update the clone insertion point to just after the
                     // call always pair.
                     cloneInsertAfter = finallyReturnBlock;
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
@@ -23035,7 +23039,7 @@ void Compiler::fgCloneFinally()
         BasicBlock* const firstCloneBlock    = blockMap[firstBlock];
         bool              retargetedAllCalls = true;
 
-        for (BasicBlock* block = firstCallFinallyBlock; block != lastCallFinallyBlock; block = block->bbNext)
+        for (BasicBlock* block = firstCallFinallyBlock; block != endCallFinallyBlock; block = block->bbNext)
         {
             if (block->isBBCallAlwaysPair())
             {
