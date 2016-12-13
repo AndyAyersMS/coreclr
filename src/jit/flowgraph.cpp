@@ -22528,11 +22528,11 @@ void Compiler::fgRemoveEmptyFinally()
     {
         EHblkDsc* const HBtab = &compHndBBtab[XTnum];
 
-        // Check if this is a try/finally.  We Could also look for empty
+        // Check if this is a try/finally.  We could also look for empty
         // try/fault but presumably those are rare.
         if (!HBtab->HasFinallyHandler())
         {
-            JITDUMP("EH region %u is not a try-finally; skipping.\n", XTnum);
+            JITDUMP("EH#%u is not a try-finally; skipping.\n", XTnum);
             XTnum++;
             continue;
         }
@@ -22543,15 +22543,15 @@ void Compiler::fgRemoveEmptyFinally()
         BasicBlock* const firstBlock = HBtab->ebdHndBeg;
         BasicBlock* const lastBlock  = HBtab->ebdHndLast;
 
-        // Limit for now to finallies that are single blocks.
+        // Limit for now to finallys that are single blocks.
         if (firstBlock != lastBlock)
         {
-            JITDUMP("EH region %u finally has multiple basic blocks; skipping.\n", XTnum);
+            JITDUMP("EH#%u finally has multiple basic blocks; skipping.\n", XTnum);
             XTnum++;
             continue;
         }
 
-        // Limit for now to finallies that contain only a GT_RETFILT.
+        // Limit for now to finallys that contain only a GT_RETFILT.
         bool isEmpty = true;
 
         for (GenTreeStmt* stmt = firstBlock->firstStmt(); stmt != nullptr; stmt = stmt->gtNextStmt)
@@ -22567,12 +22567,12 @@ void Compiler::fgRemoveEmptyFinally()
 
         if (!isEmpty)
         {
-            JITDUMP("Finally in EH region %u is not empty; skipping.\n", XTnum);
+            JITDUMP("EH#%u finally is not empty; skipping.\n", XTnum);
             XTnum++;
             continue;
         }
 
-        JITDUMP("Try-finally EH region %u has empty finally, removing the region.\n", XTnum);
+        JITDUMP("EH#%u has empty finally, removing the region.\n", XTnum);
 
         // Find all the call finallys that invoke this finally,
         // and modify them to jump to the return point.
@@ -22596,8 +22596,8 @@ void Compiler::fgRemoveEmptyFinally()
                 // the finally is empty.
                 noway_assert(currentBlock->isBBCallAlwaysPair());
 
-                BasicBlock* leaveBlock          = currentBlock->bbNext;
-                BasicBlock* postTryFinallyBlock = leaveBlock->bbJumpDest;
+                BasicBlock* const leaveBlock          = currentBlock->bbNext;
+                BasicBlock* const postTryFinallyBlock = leaveBlock->bbJumpDest;
 
                 noway_assert(leaveBlock->bbJumpKind == BBJ_ALWAYS);
 
@@ -22609,9 +22609,6 @@ void Compiler::fgRemoveEmptyFinally()
                 // pred information, so dont aggressively remove.
                 fgAddRefPred(postTryFinallyBlock, currentBlock);
 
-                // fgRemoveRefPred(firstBlock, currentBlock);
-                // fgRemoveRefPred(leaveBlock, currentBlock);
-
                 // Delete the leave block, which should be marked as
                 // keep always.
                 assert((leaveBlock->bbFlags & BBF_KEEP_BBJ_ALWAYS) != 0);
@@ -22621,9 +22618,14 @@ void Compiler::fgRemoveEmptyFinally()
                 fgRemoveBlock(leaveBlock, true);
 
                 // The postTryFinallyBlock may be a finalStep block.
-                // It is now a normal block,so clear the special keep
+                // It is now a normal block, so clear the special keep
                 // always flag.
                 postTryFinallyBlock->bbFlags &= ~BBF_KEEP_BBJ_ALWAYS;
+
+#if FEATURE_EH_FUNCLETS && defined(_TARGET_ARM_)
+                // Also, clear the finally target bit for arm
+                fgClearFinallyTargetBit(postTryFinallyBlock);
+#endif // FEATURE_EH_FUNCLETS && defined(_TARGET_ARM_)
 
 #if !FEATURE_EH_FUNCLETS
                 // Remove the GT_END_LFIN from the post-try-finally block.
@@ -22632,7 +22634,7 @@ void Compiler::fgRemoveEmptyFinally()
                 GenTreePtr   endFinallyExpr = endFinallyStmt->gtStmtExpr;
                 assert(endFinallyExpr->gtOper == GT_END_LFIN);
                 fgRemoveStmt(postTryFinallyBlock, endFinallyStmt);
-#endif
+#endif // !FEATURE_EH_FUNCLETS
 
                 // Make sure iteration isn't going off the deep end.
                 assert(leaveBlock != lastCallFinallyBlock);
@@ -22642,8 +22644,7 @@ void Compiler::fgRemoveEmptyFinally()
         }
 
         // Handler block should now be unreferenced, since the only
-        // explicit references to it were in call finallies.
-        // assert(firstBlock->bbRefs == 0);
+        // explicit references to it were in call finallys.
         firstBlock->bbRefs = 0;
 
         // Remove the handler block.
@@ -22699,7 +22700,7 @@ void Compiler::fgRemoveEmptyFinally()
 
     if (emptyCount > 0)
     {
-        JITDUMP("fgRemoveEmptyFinally() removed %u try-finally clauses from %u finallies\n", emptyCount, finallyCount);
+        JITDUMP("fgRemoveEmptyFinally() removed %u try-finally clauses from %u finallys\n", emptyCount, finallyCount);
 
 #ifdef DEBUG
         if (verbose)
@@ -22711,6 +22712,8 @@ void Compiler::fgRemoveEmptyFinally()
         }
 
         fgVerifyHandlerTab();
+        fgDebugCheckBBlist(false, false);
+
 #endif // DEBUG
     }
 }
@@ -22719,7 +22722,7 @@ void Compiler::fgRemoveEmptyFinally()
 // fgCloneFinally: Optimize normal exit path from a try/finally
 //
 // Notes:
-//    Handles finallies that are not enclosed by or enclosing other
+//    Handles finallys that are not enclosed by or enclosing other
 //    handler regions.
 //
 //    Converts the "normal exit" callfinally to a jump to a cloned copy
@@ -22771,7 +22774,7 @@ void Compiler::fgCloneFinally()
         // Check if this is a try/finally
         if (!HBtab->HasFinallyHandler())
         {
-            JITDUMP("EH region %u is not a try-finally; skipping.\n", XTnum);
+            JITDUMP("EH#%u is not a try-finally; skipping.\n", XTnum);
             continue;
         }
 
@@ -22780,8 +22783,7 @@ void Compiler::fgCloneFinally()
 
         if (enclosingHandlerRegion != EHblkDsc::NO_ENCLOSING_INDEX)
         {
-            JITDUMP("Try-finally EH region %u is enclosed by handler region %u; skipping.\n", XTnum,
-                    enclosingHandlerRegion);
+            JITDUMP("EH#%u is enclosed by handler EH#%u; skipping.\n", XTnum, enclosingHandlerRegion);
             continue;
         }
 
@@ -22800,8 +22802,7 @@ void Compiler::fgCloneFinally()
 
         if (containsEH)
         {
-            JITDUMP("Finally for EH region %u encloses handler region %u; skipping.\n", XTnum,
-                    exampleEnclosedHandlerRegion);
+            JITDUMP("Finally for EH#%u encloses handler EH#%u; skipping.\n", XTnum, exampleEnclosedHandlerRegion);
             continue;
         }
 
@@ -22836,33 +22837,33 @@ void Compiler::fgCloneFinally()
                 regionStmtCount++;
             }
 
-            hasFinallyRet |= (block->bbJumpKind == BBJ_EHFINALLYRET);
-            isAllRare &= block->isRunRarely();
+            hasFinallyRet = hasFinallyRet || (block->bbJumpKind == BBJ_EHFINALLYRET);
+            isAllRare     = isAllRare && block->isRunRarely();
         }
 
         // Skip cloning if the finally has a switch.
         if (hasSwitch)
         {
-            JITDUMP("Finally in EH region %u has a switch; skipping.\n", XTnum);
+            JITDUMP("Finally in EH#%u has a switch; skipping.\n", XTnum);
             continue;
         }
 
         // Skip cloning if the finally must throw.
         if (!hasFinallyRet)
         {
-            JITDUMP("Finally in EH region %u does not return; skipping.\n", XTnum);
+            JITDUMP("Finally in EH#%u does not return; skipping.\n", XTnum);
             continue;
         }
 
         // Skip cloning if the finally is rarely run code.
         if (isAllRare)
         {
-            JITDUMP("Finally in EH region %u is run rarely; skipping.\n", XTnum);
+            JITDUMP("Finally in EH#%u is run rarely; skipping.\n", XTnum);
             continue;
         }
 
-        JITDUMP("Try-finally EH region %u is a candidate for finally cloning: \n"
-                "%u blocks, %u statements\n",
+        JITDUMP("EH#%u is a candidate for finally cloning:"
+                " %u blocks, %u statements\n",
                 XTnum, regionBBCount, regionStmtCount);
 
         // Find all the call finallys that invoke this finally. Note
@@ -22952,7 +22953,7 @@ void Compiler::fgCloneFinally()
             {
                 // Put first cloned finally block into the approprate
                 // region, somewhere within or after the range of
-                // callfinallies, depending on the EH implementation.
+                // callfinallys, depending on the EH implementation.
                 const unsigned    hndIndex = 0;
                 BasicBlock* const nearBlk  = cloneInsertAfter;
                 newBlock                   = fgNewBBinRegion(block->bbJumpKind, finallyTryIndex, hndIndex, nearBlk);
@@ -22975,7 +22976,7 @@ void Compiler::fgCloneFinally()
             insertAfter = newBlock;
             blockMap.Set(block, newBlock);
 
-            clonedOk |= BasicBlock::CloneBlockState(this, newBlock, block);
+            clonedOk = BasicBlock::CloneBlockState(this, newBlock, block);
 
             // Make sure clone block state hasn't munged the try region.
             assert(newBlock->bbTryIndex == finallyTryIndex);
@@ -23028,9 +23029,9 @@ void Compiler::fgCloneFinally()
             }
         }
 
-        // Modify the targeting callfinallies to branch to the cloned
+        // Modify the targeting callfinallys to branch to the cloned
         // finally. Make a note if we see some calls that can't be
-        // retartged (since they want to return to other places).
+        // retargeted (since they want to return to other places).
         BasicBlock* const firstCloneBlock    = blockMap[firstBlock];
         bool              retargetedAllCalls = true;
 
@@ -23074,13 +23075,13 @@ void Compiler::fgCloneFinally()
         // finally catch type to be fault.
         if (retargetedAllCalls)
         {
-            JITDUMP("All callfinallies retargeted; changing finally to fault.\n");
+            JITDUMP("All callfinallys retargeted; changing finally to fault.\n");
             HBtab->ebdHandlerType  = EH_HANDLER_FAULT;
             firstBlock->bbCatchTyp = BBCT_FAULT;
         }
         else
         {
-            JITDUMP("Some callfinallies *not* retargeted, so region must remain as a finally.\n");
+            JITDUMP("Some callfinallys *not* retargeted, so region must remain as a finally.\n");
         }
 
         // Modify first block of cloned finally to be a "normal" block.
@@ -23088,9 +23089,14 @@ void Compiler::fgCloneFinally()
         firstClonedBlock->bbCatchTyp = BBCT_NONE;
 
         // The normalCallFinallyReturn may be a finalStep block.
-        // It is now a normal block,so clear the special keep
+        // It is now a normal block, so clear the special keep
         // always flag.
         normalCallFinallyReturn->bbFlags &= ~BBF_KEEP_BBJ_ALWAYS;
+
+#if FEATURE_EH_FUNCLETS && defined(_TARGET_ARM_)
+        // Also, clear the finally target bit for arm
+        fgClearFinallyTargetBit(normalCallFinallyReturn);
+#endif // FEATURE_EH_FUNCLETS && defined(_TARGET_ARM_)
 
 #if !FEATURE_EH_FUNCLETS
         // Remove the GT_END_LFIN from the normalCallFinallyReturn
@@ -23104,7 +23110,7 @@ void Compiler::fgCloneFinally()
         // Todo -- mark cloned blocks as a cloned finally....
 
         // Done!
-        JITDUMP("\nDone with region %u\n\n", XTnum);
+        JITDUMP("\nDone with EH#%u\n\n", XTnum);
         cloneCount++;
     }
 
@@ -23122,6 +23128,8 @@ void Compiler::fgCloneFinally()
         }
 
         fgVerifyHandlerTab();
+        fgDebugCheckBBlist(false, false);
+
 #endif // DEBUG
     }
 }

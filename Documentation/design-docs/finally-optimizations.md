@@ -185,9 +185,16 @@ rather than calling the finally.  This transformation allows for
 improved performance and optimization of the common case where the try
 completes without an exception.
 
-Finally cloning will typically increase code size, though often the
-size increase is mitigated somewhat by more compact code generation in
-the try body.
+Finally cloning also allows hot/cold splitting of finally bodies: the
+cloned finally code covers the normal try exit paths (the hot cases)
+and can be placed in the main method region, and the original finally,
+now used largely or exclusively for exceptional cases (the cold cases)
+spilt off into the cold code region. Without cloning, the RyuJit
+currently always treats the finally as cold code.
+
+Finally cloning will increase code size, though often the size
+increase is mitigated somewhat by more compact code generation in the
+try body and streamlined invocation of the cloned finallys.
 
 Try-finally regions may have multiple normal exit points. For example
 the following `try` has two: one at the `return 3` and one at the try
@@ -246,6 +253,10 @@ readily computed. Selective cloning can be based on profile
 feedback or other similar mechanisms for choosing the profitable
 cases.
 
+We might also choose to avoid cloning large finallys.  A crude size
+estimate can be formed by counting the number of statements in the
+finally blocks.
+
 ### EH Nesting Considerations
 
 Finally cloning is also more complicated when the finally encloses
@@ -286,13 +297,14 @@ promotion. We want to run these early before a lot of structural
 invariants regarding EH are put in place, and before most
 other optimization, but run them after inlining
 (so empty finallys can be more readily identified) and after the
-addtion of implicit try-finallys created by the jit.  Empty finallys
+addition of implicit try-finallys created by the jit.  Empty finallys
 may arise later because of optimization, but this seems relatively
 uncommon.
 
 We will remove empty finallys first, then clone.
 
-Neither optimization will run in debug or min opts modes.
+Neither optimization will run when the jit is generating debuggable
+code or operating in min opts mode.
 
 ### Empty Finally Removal (Sketch)
 
@@ -332,7 +344,7 @@ will live in also.
 
 For funclet models, Set an insertion point after the jump always
 paired block.  For non-funclet models, set an insertion point in the
-try region after the span of call finallies. Set up a block map. Clone
+try region after the span of call finallys. Set up a block map. Clone
 the finally body using `fgNewBBinRegion` and `fgNewBBafter` to make
 the first and subsequent blocks, and `CloneBlockState` to fill in the
 block contents. Clear the handler region on the cloned blocks. Bail
@@ -369,7 +381,7 @@ finallys as such in the EH reporting done by the jit. Not sure how to
 do this yet.
 
 Block weight/count maintenance. The cloned finally should reflect the
-combined weight/count of the retarged call finallys.
+combined weight/count of the retargeted call finallys.
 
 During finally cloning we probably should remove the paired jump always
 block. It seems to eventually get deleted even if we don't.
