@@ -22577,7 +22577,7 @@ void Compiler::fgRemoveEmptyFinally()
         // Find all the call finallys that invoke this finally,
         // and modify them to jump to the return point.
         BasicBlock* firstCallFinallyBlock = nullptr;
-        BasicBlock* endCallFinallyBlock  = nullptr;
+        BasicBlock* endCallFinallyBlock   = nullptr;
 
         ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &endCallFinallyBlock);
 
@@ -22871,7 +22871,7 @@ void Compiler::fgCloneFinally()
         // Find all the call finallys that invoke this finally. Note
         // some of them may only be reachable via an exceptional path.
         BasicBlock* firstCallFinallyBlock = nullptr;
-        BasicBlock* endCallFinallyBlock  = nullptr;
+        BasicBlock* endCallFinallyBlock   = nullptr;
         ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &endCallFinallyBlock);
 
         // Keep track of the blocks where the normally invoked
