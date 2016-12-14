@@ -22734,18 +22734,21 @@ void Compiler::fgCloneFinally()
 
     if (compHndBBtabCount == 0)
     {
+        printf("\n$$$$,NOEH\n");
         JITDUMP("No EH in this method, no cloning.\n");
         return;
     }
 
     if (opts.MinOpts())
     {
+        printf("\n$$$$,MINOPT\n");
         JITDUMP("Method compiled with minOpts, no cloning.\n");
         return;
     }
 
     if (opts.compDbgCode)
     {
+        printf("\n$$$$,DEBUG\n");
         JITDUMP("Method compiled with debug codegen, no cloning.\n");
         return;
     }
@@ -22760,6 +22763,8 @@ void Compiler::fgCloneFinally()
     }
 #endif // DEBUG
 
+    printf("\n$$$$,CANDM\n");
+
     // Look for finallys that are not contained within other handlers,
     // and which do not themselves contain EH.
     //
@@ -22769,6 +22774,7 @@ void Compiler::fgCloneFinally()
     unsigned  XTnum      = 0;
     EHblkDsc* HBtab      = compHndBBtab;
     unsigned  cloneCount = 0;
+    bool hasTF = false;
     for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
     {
         // Check if this is a try/finally
@@ -22778,11 +22784,15 @@ void Compiler::fgCloneFinally()
             continue;
         }
 
+        printf("\n$$$$,TF\n");
+        hasTF = true;
+
         // Check if enclosed by another handler.
         const unsigned enclosingHandlerRegion = ehGetEnclosingHndIndex(XTnum);
 
         if (enclosingHandlerRegion != EHblkDsc::NO_ENCLOSING_INDEX)
         {
+            printf("\n$$$$,ENCLOSED\n");
             JITDUMP("EH#%u is enclosed by handler EH#%u; skipping.\n", XTnum, enclosingHandlerRegion);
             continue;
         }
@@ -22804,6 +22814,7 @@ void Compiler::fgCloneFinally()
 
         if (containsEH)
         {
+            printf("\n$$$$,ENCLOSES\n");
             JITDUMP("Finally for EH#%u encloses handler EH#%u; skipping.\n", XTnum, exampleEnclosedHandlerRegion);
             continue;
         }
@@ -22846,6 +22857,7 @@ void Compiler::fgCloneFinally()
         // Skip cloning if the finally has a switch.
         if (hasSwitch)
         {
+            printf("\n$$$$,SWITCH\n");
             JITDUMP("Finally in EH#%u has a switch; skipping.\n", XTnum);
             continue;
         }
@@ -22853,6 +22865,7 @@ void Compiler::fgCloneFinally()
         // Skip cloning if the finally must throw.
         if (!hasFinallyRet)
         {
+            printf("\n$$$$,NORET\n");
             JITDUMP("Finally in EH#%u does not return; skipping.\n", XTnum);
             continue;
         }
@@ -22860,6 +22873,7 @@ void Compiler::fgCloneFinally()
         // Skip cloning if the finally is rarely run code.
         if (isAllRare)
         {
+            printf("\n$$$$,RARE\n");
             JITDUMP("Finally in EH#%u is run rarely; skipping.\n", XTnum);
             continue;
         }
@@ -22867,6 +22881,8 @@ void Compiler::fgCloneFinally()
         JITDUMP("EH#%u is a candidate for finally cloning:"
                 " %u blocks, %u statements\n",
                 XTnum, regionBBCount, regionStmtCount);
+
+        printf("\n$$$$,CAND\n");
 
         // Find all the call finallys that invoke this finally. Note
         // some of them may only be reachable via an exceptional path.
@@ -22888,6 +22904,7 @@ void Compiler::fgCloneFinally()
         BasicBlock* normalCallFinallyBlock  = nullptr;
         BasicBlock* normalCallFinallyReturn = nullptr;
         BasicBlock* cloneInsertAfter        = HBtab->ebdTryLast;
+        unsigned callFinallyCount           = 0;
 
         for (BasicBlock* block = firstCallFinallyBlock; block != endCallFinallyBlock; block = block->bbNext)
         {
@@ -22897,6 +22914,8 @@ void Compiler::fgCloneFinally()
                 // Presumably the first one is the normal case...
                 if (block->bbJumpDest == firstBlock)
                 {
+                    callFinallyCount++;
+
                     BasicBlock* const finallyReturnBlock  = block->bbNext;
                     BasicBlock* const postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
 
@@ -22916,14 +22935,17 @@ void Compiler::fgCloneFinally()
                     JITDUMP("BB%02u normally calls this finally; the call returns to BB%02u\n", block->bbNum,
                             postTryFinallyBlock->bbNum);
 
-                    break;
+                    // break;
                 }
             }
         }
 
+        printf("\n$$$$,FIN,%u,%u,%u\n", regionBBCount, regionStmtCount, callFinallyCount);
+
         // If there is no call to the finally, don't clone.
         if (normalCallFinallyBlock == nullptr)
         {
+            printf("\n$$$$,NOCALL\n");
             JITDUMP("No calls from the try to the finally, skipping.\n");
             continue;
         }
@@ -23001,6 +23023,7 @@ void Compiler::fgCloneFinally()
         if (!clonedOk)
         {
             // TODO: cleanup the partial clone?
+            printf("\n$$$$,BBCLONEFAIL\n");
             JITDUMP("Unable to clone the finally; skipping.\n");
             continue;
         }
@@ -23079,12 +23102,14 @@ void Compiler::fgCloneFinally()
         // finally catch type to be fault.
         if (retargetedAllCalls)
         {
+            printf("\n$$$$,CONVFAULT\n");
             JITDUMP("All callfinallys retargeted; changing finally to fault.\n");
             HBtab->ebdHandlerType  = EH_HANDLER_FAULT;
             firstBlock->bbCatchTyp = BBCT_FAULT;
         }
         else
         {
+            printf("\n$$$$,PARTFAULT\n");
             JITDUMP("Some callfinallys *not* retargeted, so region must remain as a finally.\n");
         }
 
@@ -23116,6 +23141,11 @@ void Compiler::fgCloneFinally()
         // Done!
         JITDUMP("\nDone with EH#%u\n\n", XTnum);
         cloneCount++;
+    }
+
+    if (hasTF)
+    {
+        printf("\n$$$$,HASTF\n");
     }
 
     if (cloneCount > 0)
