@@ -13587,31 +13587,30 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     BADCODE("Localloc can only be used when the stack is empty");
                 }
 
-                // If the localloc is a small constant, create a new local var and
-                // return its address instead.
+                // If the localloc is a small constant, create a new
+                // local var of TYP_BLK and return its address.
+                //
+                // Might not be safe to do this for cases where we are
+                // passing an in-place struct arg to an x86 call.
                 {
                     bool convertedToLocal = false;
                     if (op2->IsIntegralConst())
                     {
-                        ssize_t allocSize = op2->AsIntCon()->IconValue();
+                        const ssize_t allocSize = op2->AsIntCon()->IconValue();
                         if (allocSize > 0 && allocSize <= 32)
                         {
-                            const unsigned stackallocAsLocal = lvaGrabTemp(false DEBUGARG("stackallocLocal"));
-                            lvaTable[stackallocAsLocal].lvType = TYP_BLK;
-                            lvaTable[stackallocAsLocal].lvExactSize = (unsigned) allocSize;
-                            lvaTable[stackallocAsLocal].lvIsUnsafeBuffer = true;  // ??
-                            
+                            const unsigned stackallocAsLocal        = lvaGrabTemp(false DEBUGARG("stackallocLocal"));
+                            lvaTable[stackallocAsLocal].lvType      = TYP_BLK;
+                            lvaTable[stackallocAsLocal].lvExactSize = (unsigned)allocSize;
+                            lvaTable[stackallocAsLocal].lvIsUnsafeBuffer = true;
+
                             op1 = gtNewLclvNode(stackallocAsLocal, TYP_BLK);
                             op1 = gtNewOperNode(GT_ADDR, TYP_I_IMPL, op1);
-                            
+
                             convertedToLocal = true;
                         }
-                        else
-                        {
-                            printf("$$$Punted on fixed-sized stackallock %u bytes\n", (unsigned) allocSize);
-                        }
                     }
-                    
+
                     if (!convertedToLocal)
                     {
                         op1 = gtNewOperNode(GT_LCLHEAP, TYP_I_IMPL, op2);
