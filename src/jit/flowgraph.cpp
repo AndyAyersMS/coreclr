@@ -22863,6 +22863,18 @@ void Compiler::fgCloneFinally()
             continue;
         }
 
+        // Empirical studies from CoreCLR and CoreFX show that less
+        // that 1% of finally regions have more than 15
+        // statements. So, to avoid potentially excessive code growth,
+        // only clone finallys that have 15 or fewer statements.
+        const unsigned stmtCountLimit = 15;
+        if (regionStmtCount > stmtCountLimit)
+        {
+            JITDUMP("Finally in EH#%u has %u statements, limit is %u; skipping.\n", XTnum, regionStmtCount,
+                    stmtCountLimit);
+            continue;
+        }
+
         JITDUMP("EH#%u is a candidate for finally cloning:"
                 " %u blocks, %u statements\n",
                 XTnum, regionBBCount, regionStmtCount);
