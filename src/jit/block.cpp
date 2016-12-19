@@ -365,6 +365,14 @@ void BasicBlock::dspFlags()
     {
         printf("KEEP ");
     }
+    if (bbFlags & BBF_CLONED_FINALLY_BEGIN)
+    {
+        printf("cfb ");
+    }
+    if (bbFlags & BBF_CLONED_FINALLY_END)
+    {
+        printf("cfe ");
+    }
 }
 
 /*****************************************************************************

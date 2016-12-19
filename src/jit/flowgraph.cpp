@@ -23071,17 +23071,29 @@ void Compiler::fgCloneFinally()
 
             clonedOk = BasicBlock::CloneBlockState(this, newBlock, block);
 
-            // Make sure clone block state hasn't munged the try region.
-            assert(newBlock->bbTryIndex == finallyTryIndex);
-
-            // Cloned handler block is no longer within the handler.
-            // TODO: how to indicate this is now a cloned handler region.
-            newBlock->clearHndIndex();
-
             if (!clonedOk)
             {
                 break;
             }
+
+            // Update block flags. Note a block can be both first and last.
+            if (block == firstBlock)
+            {
+                // Mark the block as the start of the cloned finally.
+                newBlock->bbFlags |= BBF_CLONED_FINALLY_BEGIN;
+            }
+
+            if (block == lastBlock)
+            {
+                // Mark the block as the end of the cloned finally.
+                newBlock->bbFlags |= BBF_CLONED_FINALLY_END;
+            }
+
+            // Make sure clone block state hasn't munged the try region.
+            assert(newBlock->bbTryIndex == finallyTryIndex);
+
+            // Cloned handler block is no longer within the handler.
+            newBlock->clearHndIndex();
 
             // Jump dests are set in a post-pass; make sure CloneBlockState hasn't tried to set them.
             assert(newBlock->bbJumpDest == nullptr);
@@ -23183,12 +23195,12 @@ void Compiler::fgCloneFinally()
         }
 
         // If we retargeted all calls, modify EH descriptor to be
-        // try/fault instead of try finally, and then non-cloned
+        // try-fault instead of try-finally, and then non-cloned
         // finally catch type to be fault.
         if (retargetedAllCalls)
         {
             JITDUMP("All callfinallys retargeted; changing finally to fault.\n");
-            HBtab->ebdHandlerType  = EH_HANDLER_FAULT;
+            HBtab->ebdHandlerType  = EH_HANDLER_FAULT_WAS_FINALLY;
             firstBlock->bbCatchTyp = BBCT_FAULT;
         }
         else
@@ -23242,7 +23254,105 @@ void Compiler::fgCloneFinally()
 
         fgVerifyHandlerTab();
         fgDebugCheckBBlist(false, false);
+        fgDebugCheckTryFinallyExits();
 
 #endif // DEBUG
     }
 }
+
+#ifdef DEBUG
+
+//------------------------------------------------------------------------
+// fgDebugCheckTryFinallyExits: validate normal flow from try-finally
+// or try-fault-was-finally.
+
+void Compiler::fgDebugCheckTryFinallyExits()
+{
+    unsigned  XTnum      = 0;
+    EHblkDsc* HBtab      = compHndBBtab;
+    unsigned  cloneCount = 0;
+    bool allTryExitsValid           = true;
+    for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
+    {
+        const EHHandlerType handlerType = HBtab->ebdHandlerType;
+
+        // Screen out regions that are or were not finallys.
+        if ((handlerType != EH_HANDLER_FINALLY) && (handlerType != EH_HANDLER_FAULT_WAS_FINALLY))
+        {
+            continue;
+        }
+
+        // Walk blocks of the try, looking for normal control flow to
+        // an ancestor region.
+        BasicBlock* const firstTryBlock = HBtab->ebdTryBeg;
+        BasicBlock* const lastTryBlock  = HBtab->ebdTryLast;
+        assert(firstTryBlock->getTryIndex() <= XTnum);
+        assert(lastTryBlock->getTryIndex() <= XTnum);
+        BasicBlock* const afterTryBlock = lastTryBlock->bbNext;
+
+        for (BasicBlock* block = firstTryBlock; block != afterTryBlock; block = block->bbNext)
+        {
+            // Only check the directly contained blocks.
+            assert(block->hasTryIndex());
+
+            if (block->getTryIndex() != XTnum)
+            {
+                continue;
+            }
+
+            const unsigned numSuccs = block->NumSucc();
+            
+            for (unsigned i = 0; i < numSuccs; i++)
+            {
+                BasicBlock* const succBlock = block->GetSucc(i);
+
+                if (succBlock->hasTryIndex() && succBlock->getTryIndex() <= XTnum)
+                {
+                    // Successor (likely) does not exit this try region.
+                    continue;
+                }
+
+                // There are various ways control can leave a try-finally (or try-fault-was-finally)
+                // (a) via a callfinally (only for finallys)
+                // (b) via a begin finally clone block
+                // (c) via an always jump in an empty block to (b)
+                bool thisExitValid = false;
+
+                if (succBlock->bbJumpKind == BBJ_CALLFINALLY)
+                {
+                    thisExitValid = (handlerType == EH_HANDLER_FINALLY);
+                }
+                else if (succBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
+                {
+                    thisExitValid = true;
+                }
+                else if (succBlock->bbJumpKind == BBJ_ALWAYS)
+                {
+                    if (succBlock->isEmpty())
+                    {
+                        BasicBlock* const succSuccBlock = succBlock->bbJumpDest;
+
+                        if (succSuccBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
+                        {
+                            thisExitValid = true;
+                        }
+                    }
+                }
+
+                if (!thisExitValid)
+                {
+                    JITDUMP("fgCheckTryFinallyExitS: EH#%u exit via BB%02u -> BB%02u is invalid\n",
+                        XTnum, block->bbNum, succBlock->bbNum);
+
+                }
+
+                allTryExitsValid = allTryExitsValid & thisExitValid;
+            }
+        }
+    }
+
+    JITDUMP("fgCheckTryFinallyExits: method contains invalid try exit paths\n");
+    assert(allTryExitsValid);
+}
+
+#endif // DEBUG

@@ -4276,6 +4276,7 @@ public:
     void fgDebugCheckNodeLinks(BasicBlock* block, GenTreePtr stmt);
     void fgDebugCheckFlags(GenTreePtr tree);
     void fgDebugCheckFlagsHelper(GenTreePtr tree, unsigned treeFlags, unsigned chkFlags);
+    void fgDebugCheckTryFinallyExits();
 #endif
 
 #ifdef LEGACY_BACKEND

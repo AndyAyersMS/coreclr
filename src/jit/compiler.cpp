@@ -4577,6 +4577,7 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
 #ifdef DEBUG
     fgDebugCheckBBlist();
     fgDebugCheckLinks();
+    fgDebugCheckTryFinallyExits();
 #endif
 
     /* Enable this to gather statistical data such as
@@ -4646,6 +4647,7 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
 
 #ifdef DEBUG
     fgDebugCheckLinks();
+    fgDebugCheckTryFinallyExits();
 #endif
 
     /* Generate code */
