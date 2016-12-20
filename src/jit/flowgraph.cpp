@@ -22575,14 +22575,13 @@ void Compiler::fgRemoveEmptyFinally()
 
         // Find all the call finallys that invoke this finally,
         // and modify them to jump to the return point.
-        BasicBlock* firstCallFinallyBlock = nullptr;
-        BasicBlock* endCallFinallyBlock   = nullptr;
+        BasicBlock* firstCallFinallyRangeBlock = nullptr;
+        BasicBlock* endCallFinallyRangeBlock   = nullptr;
+        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyRangeBlock, &endCallFinallyRangeBlock);
 
-        ehGetCallFinallyBlockRange(XTnum, &firstCallFinallyBlock, &endCallFinallyBlock);
+        BasicBlock* currentBlock = firstCallFinallyRangeBlock;
 
-        BasicBlock* currentBlock = firstCallFinallyBlock;
-
-        while (currentBlock != endCallFinallyBlock)
+        while (currentBlock != endCallFinallyRangeBlock)
         {
             BasicBlock* nextBlock = currentBlock->bbNext;
 
@@ -22636,7 +22635,7 @@ void Compiler::fgRemoveEmptyFinally()
 #endif // !FEATURE_EH_FUNCLETS
 
                 // Make sure iteration isn't going off the deep end.
-                assert(leaveBlock != endCallFinallyBlock);
+                assert(leaveBlock != endCallFinallyRangeBlock);
             }
 
             currentBlock = nextBlock;
@@ -23117,29 +23116,45 @@ void Compiler::fgCloneFinally()
         // retargeted (since they want to return to other places).
         BasicBlock* const firstCloneBlock    = blockMap[firstBlock];
         bool              retargetedAllCalls = true;
+        BasicBlock*       currentBlock       = firstCallFinallyRangeBlock;
 
-        for (BasicBlock* block = firstCallFinallyRangeBlock; block != endCallFinallyRangeBlock; block = block->bbNext)
+        while (currentBlock != endCallFinallyRangeBlock)
         {
-            if (block->isBBCallAlwaysPair())
-            {
-                if (block->bbJumpDest == firstBlock)
-                {
-                    BasicBlock* finallyReturnBlock  = block->bbNext;
-                    BasicBlock* postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
+            BasicBlock* nextBlockToScan = currentBlock->bbNext;
 
+            if (currentBlock->isBBCallAlwaysPair())
+            {
+                if (currentBlock->bbJumpDest == firstBlock)
+                {
+                    BasicBlock* leaveBlock          = currentBlock->bbNext;
+                    BasicBlock* postTryFinallyBlock = leaveBlock->bbJumpDest;
+
+                    // Note we must retarget all callfinallies that have this
+                    // continuation, or we can't clean up the continuation
+                    // block properly below, since it will be reachable both
+                    // by the cloned finally and by the called finally.
                     if (postTryFinallyBlock == normalCallFinallyReturn)
                     {
                         // This call returns to the expected spot, so
                         // retarget it to branch to the clone.
-                        block->bbJumpDest = firstCloneBlock;
-                        block->bbJumpKind = BBJ_ALWAYS;
+                        currentBlock->bbJumpDest = firstCloneBlock;
+                        currentBlock->bbJumpKind = BBJ_ALWAYS;
 
-                        // For some reason finally entry blocks sometimes
-                        // run a ref count deficit... sigh.
-                        // assert(firstBlock->bbRefs > 0);
+                        // Ref count updates. Note the ref counts are not
+                        // always accurate at this point, and we don't have
+                        // pred information, so dont aggressively remove.
+                        fgAddRefPred(firstCloneBlock, currentBlock);
 
-                        // fgRemoveRefPred(firstBlock, block);
-                        fgAddRefPred(firstCloneBlock, block);
+                        // Delete the leave block, which should be marked as
+                        // keep always.
+                        assert((leaveBlock->bbFlags & BBF_KEEP_BBJ_ALWAYS) != 0);
+                        nextBlock = leaveBlock->bbNext;
+
+                        leaveBlock->bbFlags &= ~BBF_KEEP_BBJ_ALWAYS;
+                        fgRemoveBlock(leaveBlock, true);
+
+                        // Make sure iteration isn't going off the deep end.
+                        assert(leaveBlock != endCallFinallyRangeBlock);
                     }
                     else
                     {
@@ -23149,6 +23164,8 @@ void Compiler::fgCloneFinally()
                     }
                 }
             }
+
+            currentBlock = nextBlockToScan;
         }
 
         // If we retargeted all calls, modify EH descriptor to be
@@ -23169,9 +23186,10 @@ void Compiler::fgCloneFinally()
         BasicBlock* firstClonedBlock = blockMap[firstBlock];
         firstClonedBlock->bbCatchTyp = BBCT_NONE;
 
-        // The normalCallFinallyReturn may be a finalStep block.
-        // It is now a normal block, so clear the special keep
-        // always flag.
+        // The normalCallFinallyReturn may be a finalStep block.  It
+        // is now a normal block, since all the callfinallies that
+        // return to it are now going via the clone, so clear the
+        // special keep always flag.
         normalCallFinallyReturn->bbFlags &= ~BBF_KEEP_BBJ_ALWAYS;
 
 #if FEATURE_EH_FUNCLETS && defined(_TARGET_ARM_)
