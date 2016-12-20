@@ -22756,6 +22756,10 @@ void Compiler::fgCloneFinally()
         fgDispHandlerTab();
         printf("\n");
     }
+
+    // Verify try-finally exits look good before we start.
+    fgDebugCheckTryFinallyExits();
+
 #endif // DEBUG
 
     // Look for finallys that are not contained within other handlers,
@@ -23268,10 +23272,10 @@ void Compiler::fgCloneFinally()
 
 void Compiler::fgDebugCheckTryFinallyExits()
 {
-    unsigned  XTnum      = 0;
-    EHblkDsc* HBtab      = compHndBBtab;
-    unsigned  cloneCount = 0;
-    bool allTryExitsValid           = true;
+    unsigned  XTnum            = 0;
+    EHblkDsc* HBtab            = compHndBBtab;
+    unsigned  cloneCount       = 0;
+    bool      allTryExitsValid = true;
     for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
     {
         const EHHandlerType handlerType = HBtab->ebdHandlerType;
@@ -23301,7 +23305,7 @@ void Compiler::fgDebugCheckTryFinallyExits()
             }
 
             const unsigned numSuccs = block->NumSucc();
-            
+
             for (unsigned i = 0; i < numSuccs; i++)
             {
                 BasicBlock* const succBlock = block->GetSucc(i);
@@ -23312,24 +23316,32 @@ void Compiler::fgDebugCheckTryFinallyExits()
                     continue;
                 }
 
-                // There are various ways control can leave a try-finally (or try-fault-was-finally)
+                // There are various ways control can properly leave a
+                // try-finally (or try-fault-was-finally):
+                //
                 // (a) via a callfinally (only for finallys)
                 // (b) via a begin finally clone block
-                // (c) via an always jump in an empty block to (b)
+                // (c) via a jump in an empty block to (b)
+                // (d) via a fallthrough in an empty block to (b)
+                // (e) via the always half of a callfinally pair
+                // (f) via an always jump clonefinally exit
                 bool thisExitValid = false;
 
                 if (succBlock->bbJumpKind == BBJ_CALLFINALLY)
                 {
+                    // case (a)
                     thisExitValid = (handlerType == EH_HANDLER_FINALLY);
                 }
                 else if (succBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
                 {
+                    // case (b)
                     thisExitValid = true;
                 }
                 else if (succBlock->bbJumpKind == BBJ_ALWAYS)
                 {
                     if (succBlock->isEmpty())
                     {
+                        // Case (c)
                         BasicBlock* const succSuccBlock = succBlock->bbJumpDest;
 
                         if (succSuccBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
@@ -23338,12 +23350,38 @@ void Compiler::fgDebugCheckTryFinallyExits()
                         }
                     }
                 }
+                else if (succBlock->bbJumpKind == BBJ_NONE)
+                {
+                    if (succBlock->isEmpty())
+                    {
+                        BasicBlock* const succSuccBlock = succBlock->bbNext;
+
+                        // case (d)
+                        if (succSuccBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
+                        {
+                            thisExitValid = true;
+                        }
+                    }
+                }
+
+                BasicBlock* const predBlock = block->bbPrev;
+
+                // Case (e)
+                if ((predBlock != nullptr) && predBlock->isBBCallAlwaysPair())
+                {
+                    thisExitValid = true;
+                }
+
+                // Case (f)
+                if (block->bbFlags & BBF_CLONED_FINALLY_END)
+                {
+                    thisExitValid = true;
+                }
 
                 if (!thisExitValid)
                 {
-                    JITDUMP("fgCheckTryFinallyExitS: EH#%u exit via BB%02u -> BB%02u is invalid\n",
-                        XTnum, block->bbNum, succBlock->bbNum);
-
+                    JITDUMP("fgCheckTryFinallyExitS: EH#%u exit via BB%02u -> BB%02u is invalid\n", XTnum, block->bbNum,
+                            succBlock->bbNum);
                 }
 
                 allTryExitsValid = allTryExitsValid & thisExitValid;
