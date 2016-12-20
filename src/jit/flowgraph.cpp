@@ -22919,6 +22919,16 @@ void Compiler::fgCloneFinally()
             BasicBlock* const jumpDest = block;
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
 
+#else
+            // Look for call finally pair directly
+            if (!block->isBBCallAlwaysPair() || (block->bbJumpDest != firstBlock))
+            {
+                coninue;
+            }
+
+            BasicBlock* const jumpDest = block;
+#endif // FEATURE_EH_CALLFINALLY_THUNKS
+
             // Found our block.
             BasicBlock* const finallyReturnBlock  = jumpDest->bbNext;
             BasicBlock* const postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
@@ -23269,6 +23279,24 @@ void Compiler::fgCloneFinally()
 //------------------------------------------------------------------------
 // fgDebugCheckTryFinallyExits: validate normal flow from try-finally
 // or try-fault-was-finally.
+//
+// Notes: 
+//
+// Normal control flow exiting the try block of a try-finally must
+// pass through the finally. This checker attempts to verify that by
+// looking at the control flow graph.
+//
+// Each path that exits the try of a try-finally (including try-faults
+// that were optimized into try-finallys by fgCloneFinally) should
+// thus either execute a callfinally to the associated finally or else
+// jump to a block with the BBF_CLONED_FINALLY_BEGIN flag set.
+//  
+// Depending on when this check is done, there may also be an empty
+// block along the path.
+//
+// Depending on the model for invoking finallys, the callfinallies may
+// lie within the try region (callfinally thunks) or in the enclosing
+// region.
 
 void Compiler::fgDebugCheckTryFinallyExits()
 {
@@ -23279,20 +23307,24 @@ void Compiler::fgDebugCheckTryFinallyExits()
     for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
     {
         const EHHandlerType handlerType = HBtab->ebdHandlerType;
+        const bool isFinally = (handlerType == EH_HANDLER_FINALLY);
+        const bool wasFinally = (handlerType == EH_HANDLER_FAULT_WAS_FINALLY);
 
         // Screen out regions that are or were not finallys.
-        if ((handlerType != EH_HANDLER_FINALLY) && (handlerType != EH_HANDLER_FAULT_WAS_FINALLY))
+        if (!isFinally && !wasFinally)
         {
             continue;
         }
 
         // Walk blocks of the try, looking for normal control flow to
         // an ancestor region.
+
         BasicBlock* const firstTryBlock = HBtab->ebdTryBeg;
         BasicBlock* const lastTryBlock  = HBtab->ebdTryLast;
         assert(firstTryBlock->getTryIndex() <= XTnum);
         assert(lastTryBlock->getTryIndex() <= XTnum);
         BasicBlock* const afterTryBlock = lastTryBlock->bbNext;
+        BasicBlock* const finallyBlock = isFinally ? HBtab->ebdHndBeg : nullptr;
 
         for (BasicBlock* block = firstTryBlock; block != afterTryBlock; block = block->bbNext)
         {
@@ -23303,7 +23335,8 @@ void Compiler::fgDebugCheckTryFinallyExits()
             {
                 continue;
             }
-
+            
+            // Look at each of the normal control flow possibilities.
             const unsigned numSuccs = block->NumSucc();
 
             for (unsigned i = 0; i < numSuccs; i++)
@@ -23312,41 +23345,72 @@ void Compiler::fgDebugCheckTryFinallyExits()
 
                 if (succBlock->hasTryIndex() && succBlock->getTryIndex() <= XTnum)
                 {
-                    // Successor (likely) does not exit this try region.
+                    // Successor does not exit this try region.
                     continue;
                 }
 
+#if FEATURE_EH_CALLFINALLY_THUNKS
+
+                // When there are callfinally thunks, callfinallies
+                // logically "belong" to a child region and the exit
+                // path validity will be checked when looking at the
+                // try blocks in that region.
+                if (block->bbJumpKind == BBJ_CALLFINALLY)
+                {
+                    continue;
+                }
+
+#endif // FEATURE_EH_CALLFINALLY_THUNKS
+
+                // Now we know block lies directly within the try of a
+                // try-finally, and succBlock is in an enclosing
+                // region (possibly the method region). So this path
+                // represents flow out of the try and should be
+                // checked.
+                //
                 // There are various ways control can properly leave a
                 // try-finally (or try-fault-was-finally):
                 //
-                // (a) via a callfinally (only for finallys)
-                // (b) via a begin finally clone block
-                // (c) via a jump in an empty block to (b)
-                // (d) via a fallthrough in an empty block to (b)
+                // (a1) via a jump to a callfinally (only for finallys, only for call finally thunks)
+                // (a2) via a callfinally (only for finallys, only for !call finally thunks)
+                // (b) via a jump to a begin finally clone block
+                // (c) via a jump to an empty block to (b)
+                // (d) via a fallthrough to an empty block to (b)
                 // (e) via the always half of a callfinally pair
                 // (f) via an always jump clonefinally exit
-                bool thisExitValid = false;
+                bool isCallToFinally = false;
 
+#if FEATURE_EH_CALLFINALLY_THUNKS
                 if (succBlock->bbJumpKind == BBJ_CALLFINALLY)
                 {
-                    // case (a)
-                    thisExitValid = (handlerType == EH_HANDLER_FINALLY);
+                    // case (a1)
+                    isCallToFinally = isFinally && (succBlock->bbJumpDest == finallyBlock);
                 }
-                else if (succBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
+#else
+                if (block->bbJumpKind == BBJ_CALLFINALLY)
+                {
+                    // case (a2)
+                    isCallToFinally = isFinally && (block->bbJumpDest == finallyBlock);
+                }
+#endif // FEATURE_EH_CALLFINALLY_THUNKS
+                
+                bool isJumpToClonedFinally = false;
+
+                if (succBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
                 {
                     // case (b)
-                    thisExitValid = true;
+                    isJumpToClonedFinally = true;
                 }
                 else if (succBlock->bbJumpKind == BBJ_ALWAYS)
                 {
                     if (succBlock->isEmpty())
                     {
-                        // Case (c)
+                        // case (c)
                         BasicBlock* const succSuccBlock = succBlock->bbJumpDest;
 
                         if (succSuccBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
                         {
-                            thisExitValid = true;
+                            isJumpToClonedFinally = true;
                         }
                     }
                 }
@@ -23359,25 +23423,28 @@ void Compiler::fgDebugCheckTryFinallyExits()
                         // case (d)
                         if (succSuccBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
                         {
-                            thisExitValid = true;
+                            isJumpToClonedFinally = true;
                         }
                     }
                 }
 
+                bool isReturnFromFinally = false;
                 BasicBlock* const predBlock = block->bbPrev;
 
                 // Case (e)
                 if ((predBlock != nullptr) && predBlock->isBBCallAlwaysPair())
                 {
-                    thisExitValid = true;
+                    isReturnFromFinally = true;
                 }
 
                 // Case (f)
                 if (block->bbFlags & BBF_CLONED_FINALLY_END)
                 {
-                    thisExitValid = true;
+                    isReturnFromFinally = true;
                 }
 
+                const bool thisExitValid = isCallToFinally || isJumpToClonedFinally || isReturnFromFinally;
+                
                 if (!thisExitValid)
                 {
                     JITDUMP("fgCheckTryFinallyExitS: EH#%u exit via BB%02u -> BB%02u is invalid\n", XTnum, block->bbNum,
@@ -23389,8 +23456,11 @@ void Compiler::fgDebugCheckTryFinallyExits()
         }
     }
 
-    JITDUMP("fgCheckTryFinallyExits: method contains invalid try exit paths\n");
-    assert(allTryExitsValid);
+    if (!allTryExitsValid)
+    {
+        JITDUMP("fgCheckTryFinallyExits: method contains invalid try exit paths\n");
+        assert(allTryExitsValid);
+    }
 }
 
 #endif // DEBUG
