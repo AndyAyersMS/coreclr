@@ -22891,6 +22891,7 @@ void Compiler::fgCloneFinally()
 
         for (BasicBlock* block = lastTryBlock; block != beforeTryBlock; block = block->bbPrev)
         {
+#if FEATURE_EH_CALLFINALLY_THUNKS
             // Look for blocks that are always jumps to a call finally
             // pair that targets our finally.
             if (block->bbJumpKind != BBJ_ALWAYS)
@@ -22904,6 +22905,15 @@ void Compiler::fgCloneFinally()
             {
                 continue;
             }
+#else
+            // Look for call finally pair directly within the try
+            if (!block->isBBCallAlwaysPair() || (block->bbJumpDest != firstBlock))
+            {
+                continue;
+            }
+
+            BasicBlock* const jumpDest = block;
+#endif // FEATURE_EH_CALLFINALLY_THUNKS
 
             // Found our block.
             BasicBlock* const finallyReturnBlock  = jumpDest->bbNext;
@@ -22924,11 +22934,15 @@ void Compiler::fgCloneFinally()
             // We will consider moving the callfinally so we can fall
             // through from the try into the clone.
             tryToRelocateCallFinally = true;
-#endif // FEATURE_EH_CALLFINALLY_THUNKS
 
             JITDUMP("Chose path to clone: try block BB%02u jumps to callfinally at BB%02u;"
                     " the call returns to BB%02u which jumps to BB%02u\n",
-                    block->bbNum, jumpDest->bbNum, postTryFinallyBlock->bbNum, finallyReturnBlock->bbNum);
+                    block->bbNum, jumpDest->bbNum, finallyReturnBlock->bbNum, postTryFinallyBlock->bbNum);
+#else
+            JITDUMP("Chose path to clone: try block BB%02u is a callfinally;"
+                    " the call returns to BB%02u which jumps to BB%02u\n",
+                    block->bbNum, finallyReturnBlock->bbNum, postTryFinallyBlock->bbNum);
+#endif // FEATURE_EH_CALLFINALLY_THUNKS
 
             break;
         }
