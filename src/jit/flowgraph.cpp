@@ -12950,6 +12950,12 @@ bool Compiler::fgOptimizeBranchToEmptyUnconditional(BasicBlock* block, BasicBloc
         optimizeJump = false;
     }
 
+    // Don't optimize a jump to a cloned finally
+    if (bDest->bbFlags & BBF_CLONED_FINALLY_BEGIN)
+    {
+        optimizeJump = false;
+    }
+
 #if FEATURE_EH_FUNCLETS && defined(_TARGET_ARM_)
     // Don't optimize a jump to a finally target. For BB1->BB2->BB3, where
     // BB2 is a finally target, if we changed BB1 to jump directly to BB3,
@@ -23270,7 +23276,7 @@ void Compiler::fgCloneFinally()
 // fgDebugCheckTryFinallyExits: validate normal flow from try-finally
 // or try-fault-was-finally.
 //
-// Notes: 
+// Notes:
 //
 // Normal control flow exiting the try block of a try-finally must
 // pass through the finally. This checker attempts to verify that by
@@ -23280,7 +23286,7 @@ void Compiler::fgCloneFinally()
 // that were optimized into try-finallys by fgCloneFinally) should
 // thus either execute a callfinally to the associated finally or else
 // jump to a block with the BBF_CLONED_FINALLY_BEGIN flag set.
-//  
+//
 // Depending on when this check is done, there may also be an empty
 // block along the path.
 //
@@ -23297,8 +23303,8 @@ void Compiler::fgDebugCheckTryFinallyExits()
     for (; XTnum < compHndBBtabCount; XTnum++, HBtab++)
     {
         const EHHandlerType handlerType = HBtab->ebdHandlerType;
-        const bool isFinally = (handlerType == EH_HANDLER_FINALLY);
-        const bool wasFinally = (handlerType == EH_HANDLER_FAULT_WAS_FINALLY);
+        const bool          isFinally   = (handlerType == EH_HANDLER_FINALLY);
+        const bool          wasFinally  = (handlerType == EH_HANDLER_FAULT_WAS_FINALLY);
 
         // Screen out regions that are or were not finallys.
         if (!isFinally && !wasFinally)
@@ -23314,7 +23320,7 @@ void Compiler::fgDebugCheckTryFinallyExits()
         assert(firstTryBlock->getTryIndex() <= XTnum);
         assert(lastTryBlock->getTryIndex() <= XTnum);
         BasicBlock* const afterTryBlock = lastTryBlock->bbNext;
-        BasicBlock* const finallyBlock = isFinally ? HBtab->ebdHndBeg : nullptr;
+        BasicBlock* const finallyBlock  = isFinally ? HBtab->ebdHndBeg : nullptr;
 
         for (BasicBlock* block = firstTryBlock; block != afterTryBlock; block = block->bbNext)
         {
@@ -23325,7 +23331,7 @@ void Compiler::fgDebugCheckTryFinallyExits()
             {
                 continue;
             }
-            
+
             // Look at each of the normal control flow possibilities.
             const unsigned numSuccs = block->NumSucc();
 
@@ -23383,7 +23389,7 @@ void Compiler::fgDebugCheckTryFinallyExits()
                     isCallToFinally = isFinally && (block->bbJumpDest == finallyBlock);
                 }
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
-                
+
                 bool isJumpToClonedFinally = false;
 
                 if (succBlock->bbFlags & BBF_CLONED_FINALLY_BEGIN)
@@ -23419,10 +23425,13 @@ void Compiler::fgDebugCheckTryFinallyExits()
                 }
 
                 bool isReturnFromFinally = false;
-                BasicBlock* const predBlock = block->bbPrev;
 
-                // Case (e)
-                if ((predBlock != nullptr) && predBlock->isBBCallAlwaysPair())
+                // Case (e). Ideally we'd have something stronger to
+                // check here -- eg that we are returning from a call
+                // to the right finally -- but there are odd cases
+                // like orphaned second halves of callfinally pairs
+                // that we need to tolerate.
+                if (block->bbFlags & BBF_KEEP_BBJ_ALWAYS)
                 {
                     isReturnFromFinally = true;
                 }
@@ -23434,7 +23443,7 @@ void Compiler::fgDebugCheckTryFinallyExits()
                 }
 
                 const bool thisExitValid = isCallToFinally || isJumpToClonedFinally || isReturnFromFinally;
-                
+
                 if (!thisExitValid)
                 {
                     JITDUMP("fgCheckTryFinallyExitS: EH#%u exit via BB%02u -> BB%02u is invalid\n", XTnum, block->bbNum,
