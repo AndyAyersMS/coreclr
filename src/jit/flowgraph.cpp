@@ -22919,16 +22919,6 @@ void Compiler::fgCloneFinally()
             BasicBlock* const jumpDest = block;
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
 
-#else
-            // Look for call finally pair directly
-            if (!block->isBBCallAlwaysPair() || (block->bbJumpDest != firstBlock))
-            {
-                coninue;
-            }
-
-            BasicBlock* const jumpDest = block;
-#endif // FEATURE_EH_CALLFINALLY_THUNKS
-
             // Found our block.
             BasicBlock* const finallyReturnBlock  = jumpDest->bbNext;
             BasicBlock* const postTryFinallyBlock = finallyReturnBlock->bbJumpDest;
