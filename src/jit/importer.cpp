@@ -18685,6 +18685,15 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         return;
     }
 
+    // PROTOTYPE: if the object class has no subclasses, then we can
+    // speculatively consider it to be final. The code we generate may
+    // become invalid later on if a subclass is ever created.
+    if (objClassAttribs & CORINFO_FLG_NOCHILD)
+    {
+        JITDUMP("--- no child classes -- enabling speculative exact mode\n");
+        isExact = true;
+    }
+
     // Fetch method attributes to see if method is marked final.
     const DWORD derivedMethodAttribs = info.compCompHnd->getMethodAttribs(derivedMethod);
     const bool  derivedMethodIsFinal = ((derivedMethodAttribs & CORINFO_FLG_FINAL) != 0);

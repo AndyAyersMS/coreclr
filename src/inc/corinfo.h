@@ -811,6 +811,7 @@ enum CorInfoFlag
     CORINFO_FLG_ABSTRACT              = 0x00000400,
 
     CORINFO_FLG_EnC                   = 0x00000800, // member was added by Edit'n'Continue
+    CORINFO_FLG_NOCHILD               = 0x00001000, // class does not have any child classes
 
     // These are internal flags that can only be on methods
     CORINFO_FLG_FORCEINLINE           = 0x00010000, // The method should be inlined if possible.

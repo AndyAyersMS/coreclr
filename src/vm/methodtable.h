@@ -407,6 +407,9 @@ struct MethodTableWriteableData
 
 #endif // FEATURE_PREJIT
 
+        enum_flag_HasChild                  = 0x0040000, // This class has at least one child class
+        enum_flag_JitAssumedNoChild         = 0x0080000, // Jit generated code assuming this class had no children
+
 #ifdef _DEBUG
         enum_flag_ParentMethodTablePointerValid =  0x40000000,
         enum_flag_HasInjectedInterfaceDuplicates = 0x80000000,
@@ -2111,6 +2114,27 @@ public:
         FastInterlockAnd(&(GetWriteableDataForWrite()->m_dwFlags), ~MethodTableWriteableData::enum_flag_HasApproxParent);
     }
 
+    BOOL HasChild()
+    {
+        LIMITED_METHOD_DAC_CONTRACT;
+        return (GetWriteableData()->m_dwFlags & MethodTableWriteableData::enum_flag_HasChild) != 0;
+    }
+    inline void SetHasChild()
+    {
+        WRAPPER_NO_CONTRACT; 
+        FastInterlockOr(&(GetWriteableDataForWrite()->m_dwFlags), MethodTableWriteableData::enum_flag_HasChild);
+    }
+
+    BOOL JitAssumedNoChild()
+    {
+        LIMITED_METHOD_DAC_CONTRACT;
+        return (GetWriteableData()->m_dwFlags & MethodTableWriteableData::enum_flag_JitAssumedNoChild) != 0;
+    }
+    inline void SetJitAssumedNoChild()
+    {
+        WRAPPER_NO_CONTRACT;
+        FastInterlockOr(&(GetWriteableDataForWrite()->m_dwFlags), MethodTableWriteableData::enum_flag_JitAssumedNoChild);
+    }
 
     // Caller must know that the parent method table is not an encoded fixup
     inline PTR_MethodTable GetParentMethodTable()
@@ -2163,6 +2187,9 @@ public:
     {
         LIMITED_METHOD_CONTRACT;
         PRECONDITION(!GetFlag(enum_flag_HasIndirectParent));
+        // If this fails, jit generated code is potentially invalid and we should fail fast
+        PRECONDITION(!pParentMethodTable->JitAssumedNoChild());
+        pParentMethodTable->SetHasChild();
         m_pParentMethodTable = (TADDR)pParentMethodTable;
 #ifdef _DEBUG
         GetWriteableDataForWrite_NoLogging()->SetParentMethodTablePointerValid();
