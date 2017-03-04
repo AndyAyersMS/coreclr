@@ -18549,6 +18549,94 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
             break;
         }
 
+        case GT_IND:
+        {
+            // This could be an encapsulated static field access. If
+            // so, see if we can get at the type of the field.
+            //
+            // For now, we try and reverse engineer the encapsulation
+            // done by impImportStaticFieldAccess.
+            //
+            // Longer term we should be able to have the importer
+            // attach the appropriate class handle onto whatever tree
+            // the importation produced.
+            GenTreeIndir* indir = obj->AsIndir();
+            GenTreePtr indirBase = indir->Base();
+            GenTreePtr indirIndex = indir->Index();
+
+            if ((indirBase->OperGet() == GT_ADD) && (indirIndex == nullptr))
+            {
+                JITDUMP("Trying to tunnel through indir\n");
+                // expecting constant(field) + helper(..._static_base)
+                GenTreePtr a2 = indirBase->gtGetOp1();
+                GenTreePtr a1 = indirBase->gtGetOp2();
+
+                bool helperOk = false;
+
+                if (a2->OperGet() == GT_CALL)
+                {
+                    JITDUMP("Checking the helper\n");
+                    GenTreeCall* indirBaseCall = a2->AsCall();
+                    if (indirBaseCall->IsHelperCall())
+                    {
+                        CorInfoHelpFunc helperId = eeGetHelperNum(indirBaseCall->gtCallMethHnd);
+
+                        // We're looking for a ref type static field
+                        // so we can ignore the non-gc static base
+                        // helpers.
+                        switch (helperId)
+                        {
+                            case CORINFO_HELP_GETSHARED_GCSTATIC_BASE_NOCTOR:
+                            case CORINFO_HELP_GETSHARED_GCSTATIC_BASE:
+                            case CORINFO_HELP_GETSHARED_GCSTATIC_BASE_DYNAMICCLASS:
+                            case CORINFO_HELP_GETSHARED_GCTHREADSTATIC_BASE_NOCTOR:
+                            case CORINFO_HELP_GETSHARED_GCTHREADSTATIC_BASE:
+                            case CORINFO_HELP_GETSHARED_GCTHREADSTATIC_BASE_DYNAMICCLASS:
+                            case CORINFO_HELP_GETGENERICS_GCSTATIC_BASE:
+                            case CORINFO_HELP_GETGENERICS_GCTHREADSTATIC_BASE:
+                                JITDUMP("Recognized the helper\n");
+                                helperOk = true;
+                                break;
+
+                            default:
+                                JITDUMP("Invalid helper: %u\n", helperId);
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        JITDUMP("not a helper ?\n");
+                    }
+                }
+
+                // If helper is one we recognize, try and get at the field
+                // from the offset.
+                if (helperOk && a1->OperGet() == GT_CNS_INT)
+                {
+                    GenTreeIntCon* indirIntCon = a1->AsIntCon();
+                    FieldSeqNode* fs = indirIntCon->gtFieldSeq;
+                    
+                    if (fs != nullptr)
+                    {
+                        JITDUMP("Unravelling the field\n");
+                        while (fs->m_next != nullptr)
+                        {
+                            fs = fs->m_next;
+                        }
+                        
+                        CORINFO_FIELD_HANDLE fieldHnd = fs->m_fieldHnd;
+                        CORINFO_CLASS_HANDLE fieldClass   = nullptr;
+                        CorInfoType          fieldCorType = info.compCompHnd->getFieldType(fieldHnd, &fieldClass);
+                        if (fieldCorType == CORINFO_TYPE_CLASS)
+                        {
+                            JITDUMP("Got it!\n");
+                            objClass = fieldClass;
+                        }
+                    }
+                }
+            }
+        }
+
         default:
         {
             break;

@@ -53,9 +53,15 @@ namespace System.Text
 
         private const int UTF8_CODEPAGE = 65001;
 
+        internal sealed class Sealed : UTF8Encoding {
+            internal Sealed() : base(encoderShouldEmitUTF8Identifier: true)           
+            {
+            }
+        } 
+
         // Used by Encoding.UTF8 for lazy initialization
         // The initialization code will not be run until a static member of the class is referenced
-        internal static readonly UTF8Encoding s_default = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        internal static readonly Sealed s_default = new Sealed();
 
         // Yes, the idea of emitting U+FEFF as a UTF-8 identifier has made it into
         // the standard.
