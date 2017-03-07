@@ -2185,14 +2185,35 @@ public:
 #ifndef DACCESS_COMPILE
     void SetParentMethodTable (MethodTable *pParentMethodTable)
     {
-        LIMITED_METHOD_CONTRACT;
+        CONTRACTL
+        {
+            THROWS;
+            GC_NOTRIGGER;
+            MODE_ANY;
+        }
+        CONTRACTL_END;
+
         PRECONDITION(!GetFlag(enum_flag_HasIndirectParent));
-        // If this fails, jit generated code is potentially invalid and we should fail fast
-        PRECONDITION(!pParentMethodTable->JitAssumedNoChild());
+        if (pParentMethodTable != NULL)
+        {
+            // If this fails, jit generated code is potentially invalid and we should fail fast
+            if (pParentMethodTable->JitAssumedNoChild())
+            {
+                // Todo: instead of doing this, set poison bit on current class and
+                // bail when we try to jit a virtual method for that class.
+                // (poison must be propagated to subclasses too...)
+                EEPOLICY_HANDLE_FATAL_ERROR_WITH_MESSAGE(
+                    COR_E_EXECUTIONENGINE,
+                    W("Jit assumption violated")
+                );
+            }
 #ifndef FEATURE_PREJIT
-        // Hack, skiop when prejitting. NI will be invalid.
-        pParentMethodTable->SetHasChild();
+            // Hack, skip setting this when prejitting. Resulting NI
+            // will be invalid.
+            pParentMethodTable->SetHasChild();
 #endif
+        }
+
         m_pParentMethodTable = (TADDR)pParentMethodTable;
 #ifdef _DEBUG
         GetWriteableDataForWrite_NoLogging()->SetParentMethodTablePointerValid();

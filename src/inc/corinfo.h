@@ -2068,6 +2068,9 @@ public:
             CORINFO_CONTEXT_HANDLE      ownerType = NULL        /* IN */
             ) = 0;
 
+    // Jit codegen assumed this class is not further derived from.
+    virtual void setJitAssumedNoChild(CORINFO_CLASS_HANDLE cls) {} 
+
     // If a method's attributes have (getMethodAttribs) CORINFO_FLG_INTRINSIC set,
     // getIntrinsicID() returns the intrinsic ID.
     // *pMustExpand tells whether or not JIT must expand the intrinsic.

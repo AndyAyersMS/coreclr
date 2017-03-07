@@ -8877,6 +8877,16 @@ CORINFO_METHOD_HANDLE CEEInfo::resolveVirtualMethod(CORINFO_METHOD_HANDLE method
     return result;
 }
 
+void CEEInfo::setJitAssumedNoChild(CORINFO_CLASS_HANDLE clsHnd)
+{
+    STANDARD_VM_CONTRACT;
+    JIT_TO_EE_TRANSITION();
+    TypeHandle VMClsHnd(clsHnd);
+    MethodTable* pMT = VMClsHnd.GetMethodTable();
+    pMT->SetJitAssumedNoChild();
+    EE_TO_JIT_TRANSITION();
+}
+
 /*********************************************************************/
 void CEEInfo::getFunctionEntryPoint(CORINFO_METHOD_HANDLE  ftnHnd,
                                     CORINFO_CONST_LOOKUP * pResult,

@@ -741,6 +741,8 @@ public:
         CORINFO_CONTEXT_HANDLE ownerType
         );
 
+    void setJitAssumedNoChild(CORINFO_CLASS_HANDLE cls);
+
     CorInfoIntrinsics getIntrinsicID(CORINFO_METHOD_HANDLE method,
                                      bool * pMustExpand = NULL);
 

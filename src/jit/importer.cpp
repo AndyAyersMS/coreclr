@@ -18562,9 +18562,27 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     const bool doPrint = JitConfig.JitPrintDevirtualizedMethods() == 1;
 #endif // DEBUG
 
+<<<<<<< HEAD
     // Fetch information about the virtual method we're calling.
     CORINFO_METHOD_HANDLE baseMethod        = callInfo->hMethod;
     unsigned              baseMethodAttribs = callInfo->methodFlags;
+=======
+    // Do we know anything about the type of the 'this'?
+    //
+    // Unfortunately the jit has historcally only kept track of class
+    // handles for struct types, so the type information needed here
+    // is missing for many tree nodes.
+    //
+    // Even when we can deduce the type, we may not be able to
+    // devirtualize, but if we can't deduce the type, we can't do
+    // anything.
+    CORINFO_CLASS_HANDLE objClass     = nullptr;
+    GenTreePtr           obj          = thisObj->gtEffectiveVal(false);
+    const genTreeOps     objOp        = obj->OperGet();
+    bool                 objIsNonNull = false;
+    bool                 isExact      = false;
+    bool                 isExactX     = false;
+>>>>>>> add jit callback
 
     if (baseMethodAttribs == 0)
     {
@@ -18633,11 +18651,18 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     const bool  objClassIsFinal = (objClassAttribs & CORINFO_FLG_FINAL) != 0;
 
 #if defined(DEBUG)
+<<<<<<< HEAD
     const char* callKind       = isInterface ? "interface" : "virtual";
     const char* objClassNote   = "[?]";
     const char* objClassName   = "?objClass";
     const char* baseClassName  = "?baseClass";
     const char* baseMethodName = "?baseMethod";
+=======
+    const char* const objClassNote   = isExact ? " [exact]" : objClassIsFinal ? " [final]" : isExactX ? " [spec]" : "";
+    const char* const objClassName   = info.compCompHnd->getClassName(objClass);
+    const char* const baseClassName  = info.compCompHnd->getClassName(baseClass);
+    const char* const baseMethodName = eeGetMethodName(baseMethod, nullptr);
+>>>>>>> add jit callback
 
     if (verbose || doPrint)
     {
@@ -18691,7 +18716,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     if (objClassAttribs & CORINFO_FLG_NOCHILD)
     {
         JITDUMP("--- no child classes -- enabling speculative exact mode\n");
-        isExact = true;
+        isExactX = true;
     }
 
     // Fetch method attributes to see if method is marked final.
@@ -18715,6 +18740,10 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     {
         note = "final method";
     }
+    else if (isExactX)
+    {
+        note = "exact (speculative)";
+    }
 
     if (verbose || doPrint)
     {
@@ -18727,7 +18756,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     }
 #endif // defined(DEBUG)
 
-    if (!isExact && !objClassIsFinal && !derivedMethodIsFinal)
+    if (!isExact && !isExactX && !objClassIsFinal && !derivedMethodIsFinal)
     {
         // Type is not exact, and neither class or method is final.
         //
@@ -18825,10 +18854,16 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
 
     if (doPrint)
     {
-        printf("Devirtualized %s call to %s:%s; now direct call to %s:%s [%s]\n", callKind, baseClassName,
-               baseMethodName, derivedClassName, derivedMethodName, note);
+        printf("Devirtualized %s call to %s:%s; now direct call to %s:%s [%s]\n", callKind, baseClassName, 
+            baseMethodName, derivedClassName, derivedMethodName, note);
     }
 #endif // defined(DEBUG)
+
+    // If devirt happened because of nochild, tell the VM.
+    if (isExactX && !isExact && !objClassIsFinal && ! derivedMethodIsFinal)
+    {
+        info.compCompHnd->setJitAssumedNoChild(objClass);
+    }
 }
 
 //------------------------------------------------------------------------
