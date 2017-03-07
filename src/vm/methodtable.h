@@ -2189,7 +2189,10 @@ public:
         PRECONDITION(!GetFlag(enum_flag_HasIndirectParent));
         // If this fails, jit generated code is potentially invalid and we should fail fast
         PRECONDITION(!pParentMethodTable->JitAssumedNoChild());
+#ifndef FEATURE_PREJIT
+        // Hack, skiop when prejitting. NI will be invalid.
         pParentMethodTable->SetHasChild();
+#endif
         m_pParentMethodTable = (TADDR)pParentMethodTable;
 #ifdef _DEBUG
         GetWriteableDataForWrite_NoLogging()->SetParentMethodTablePointerValid();

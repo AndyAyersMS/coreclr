@@ -4072,7 +4072,7 @@ DWORD CEEInfo::getClassAttribsInternal (CORINFO_CLASS_HANDLE clsHnd)
         if (pClass->IsSealed())
             ret |= CORINFO_FLG_FINAL;
 
-        if (!pClass->HasChild())
+        if (!pMT->HasChild())
             ret |= CORINFO_FLG_NOCHILD;
     }
 
