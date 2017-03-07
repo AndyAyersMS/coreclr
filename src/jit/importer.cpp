@@ -18562,11 +18562,10 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     const bool doPrint = JitConfig.JitPrintDevirtualizedMethods() == 1;
 #endif // DEBUG
 
-<<<<<<< HEAD
     // Fetch information about the virtual method we're calling.
     CORINFO_METHOD_HANDLE baseMethod        = callInfo->hMethod;
     unsigned              baseMethodAttribs = callInfo->methodFlags;
-=======
+
     // Do we know anything about the type of the 'this'?
     //
     // Unfortunately the jit has historcally only kept track of class
@@ -18581,8 +18580,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     const genTreeOps     objOp        = obj->OperGet();
     bool                 objIsNonNull = false;
     bool                 isExact      = false;
-    bool                 isExactX     = false;
->>>>>>> add jit callback
+    bool                 isExactUnsafe     = false;
 
     if (baseMethodAttribs == 0)
     {
@@ -18651,18 +18649,15 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     const bool  objClassIsFinal = (objClassAttribs & CORINFO_FLG_FINAL) != 0;
 
 #if defined(DEBUG)
-<<<<<<< HEAD
     const char* callKind       = isInterface ? "interface" : "virtual";
     const char* objClassNote   = "[?]";
     const char* objClassName   = "?objClass";
     const char* baseClassName  = "?baseClass";
     const char* baseMethodName = "?baseMethod";
-=======
-    const char* const objClassNote   = isExact ? " [exact]" : objClassIsFinal ? " [final]" : isExactX ? " [spec]" : "";
+    const char* const objClassNote   = isExact ? " [exact]" : objClassIsFinal ? " [final]" : isExactUnsafe ? " [unsafe]" : "";
     const char* const objClassName   = info.compCompHnd->getClassName(objClass);
     const char* const baseClassName  = info.compCompHnd->getClassName(baseClass);
     const char* const baseMethodName = eeGetMethodName(baseMethod, nullptr);
->>>>>>> add jit callback
 
     if (verbose || doPrint)
     {
@@ -18716,7 +18711,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     if (objClassAttribs & CORINFO_FLG_NOCHILD)
     {
         JITDUMP("--- no child classes -- enabling speculative exact mode\n");
-        isExactX = true;
+        isExactUnsafe = true;
     }
 
     // Fetch method attributes to see if method is marked final.
@@ -18740,9 +18735,9 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     {
         note = "final method";
     }
-    else if (isExactX)
+    else if (isExactUnsafe)
     {
-        note = "exact (speculative)";
+        note = "exact (unsafe)";
     }
 
     if (verbose || doPrint)
@@ -18756,7 +18751,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     }
 #endif // defined(DEBUG)
 
-    if (!isExact && !isExactX && !objClassIsFinal && !derivedMethodIsFinal)
+    if (!isExact && !isExactUnsafe && !objClassIsFinal && !derivedMethodIsFinal)
     {
         // Type is not exact, and neither class or method is final.
         //
@@ -18777,6 +18772,31 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     {
         JITDUMP("    Class not final or exact for interface, no devirtualization\n");
         return;
+    }
+
+    const bool isUnsafeDevirt = !isExact && !objClassIsFinal && !derivedMethodIsFinal;
+
+    if (isUnsafeDevirt)
+    {
+        assert(isExactUnsafe);
+
+        // We can't do unsafe devirt if the obj class is abstract,
+        // since an abstract class must have an overriding class -- it
+        // just hasn't been loaded yet.
+        if (objClassAttribs & CORINFO_FLG_ABSTRACT)
+        {
+            JITDUMP("    Unsafe with abstract class, sorry.\n");
+            return;
+        }
+
+        // Likewise, bail out if the method is abstract. Again we
+        // should only be able to get here if we're doing something
+        // unsafe. Not clear we can get here at all.
+        if (derivedMethodAttribs & CORINFO_FLG_ABSTRACT)
+        {
+            JITDUMP("    Unsafe with abstract method, sorry.\n");
+            return;
+        }
     }
 
     JITDUMP("    %s; can devirtualize\n", note);
@@ -18859,8 +18879,8 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     }
 #endif // defined(DEBUG)
 
-    // If devirt happened because of nochild, tell the VM.
-    if (isExactX && !isExact && !objClassIsFinal && ! derivedMethodIsFinal)
+    // If unsafe devirt happened, tell the VM.
+    if (isExactUnsafe && !isExact && !objClassIsFinal && ! derivedMethodIsFinal)
     {
         info.compCompHnd->setJitAssumedNoChild(objClass);
     }

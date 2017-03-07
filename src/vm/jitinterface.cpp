@@ -8834,6 +8834,12 @@ CORINFO_METHOD_HANDLE CEEInfo::resolveVirtualMethodHelper(CORINFO_METHOD_HANDLE 
 
     _ASSERTE(pDevirtMD->IsRestored());
 
+    // TEMPORARY -- disable devirt in system assembly
+    if (callerMethod->GetModule()->IsSystem())
+    {
+        return nullptr;
+    }
+
 #ifdef FEATURE_READYTORUN_COMPILER
     // Check if devirtualization is dependent upon cross-version
     // bubble information and if so, disallow it.
