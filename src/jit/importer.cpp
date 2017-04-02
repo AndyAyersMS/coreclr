@@ -9416,13 +9416,108 @@ var_types Compiler::impGetByRefResultType(genTreeOps oper, bool fUnsigned, GenTr
 GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
                                                 GenTreePtr              op2,
                                                 CORINFO_RESOLVED_TOKEN* pResolvedToken,
+                                                CORINFO_CLASS_HANDLE    knownClass,
                                                 bool                    isCastClass)
 {
-    bool expandInline;
-
     assert(op1->TypeGet() == TYP_REF);
 
-    CorInfoHelpFunc helper = info.compCompHnd->getCastingHelper(pResolvedToken, isCastClass);
+    CORINFO_CLASS_HANDLE targetClass = pResolvedToken->hClass;
+
+    // See if we know enough about the class to predict the result.
+    bool isExact   = false;
+    bool isNonNull = false;
+
+    // Todo: exactness/nonnull from stack too
+    if (knownClass == nullptr)
+    {
+        knownClass = gtGetClassHandle(op1, &isExact, &isNonNull);
+    }
+
+    if (knownClass != nullptr)
+    {
+        printf("\n### M op %s kind %s have A want B", 
+            // info.compFullName,
+            GenTree::OpName(op1->OperGet()),
+            isCastClass ? "castclass" : "isinst"
+            // eeGetClassName(knownClass),
+            // eeGetClassName(targetClass)
+            );
+
+        // If either type is a shared type we can't tell if casting
+        // will succeed or fail.
+        DWORD knownClassFlags  = info.compCompHnd->getClassAttribs(knownClass);
+        DWORD targetClassFlags = info.compCompHnd->getClassAttribs(targetClass);
+
+        if (((knownClassFlags & CORINFO_FLG_SHAREDINST) == 0) && ((targetClassFlags & CORINFO_FLG_SHAREDINST) == 0))
+        {
+            // Check for downcast (subtype->supertype)
+            if (info.compCompHnd->canCast(knownClass, targetClass))
+            {
+                // target class is knownClass or some supertype
+                printf(" Yes\n");
+
+                // Result of cast is op1
+
+                return op1;
+            }
+            else if (info.compCompHnd->canCast(targetClass, knownClass))
+            {
+                // The cast can only succeed if targetClass is a proper subtype of knownClass.
+                //
+                // If knownClass is known exactly then the cast must fail.
+                // If knownClass is final and does not have variance then the cast must fail.
+                // Note array classes implicitly have variance.
+                const bool hasVariance = (knownClassFlags & CORINFO_FLG_VARIANCE) != 0;
+                const bool isArray     = (knownClassFlags & CORINFO_FLG_ARRAY) != 0;
+                const bool isFinal     = (knownClassFlags & CORINFO_FLG_FINAL) != 0;
+
+                if (isExact || (isFinal && !(hasVariance || isArray)))
+                {
+                    // Cast will fail, unless value is null. Either way the result
+                    // should be null.
+                    printf(" UpcastNo\n");
+                    JITDUMP("### %s Optimize castclass/isinst upcast -- fail (defer)\n");
+
+                    // Todo return null here
+                }
+                else
+                {
+                    printf(" UpcastMaybe\n");
+                }
+            }
+            else
+            {
+                // We don't know if the cast will succeed or fail, 
+                // since there are more cases to sort out
+                // Nullable
+                // ICastable
+                // Com
+                //
+                // Target class and known class are not related, cast must fail.
+                // Note such cases usually have upstream typeof test, we should
+                // look at optimizing those too.
+                printf(" UnrelatedMaybe\n");
+            }
+        }
+        else
+        {
+            printf(" SharedMaybe\n");
+        }
+    }
+    else
+    {
+        printf("\n### %s op %s kind %s have U want B NoInfoMaybe", 
+            // info.compFullName, 
+            "M",
+            GenTree::OpName(op1->OperGet()),
+            isCastClass ? "castclass" : "isinst",
+            "UNKNOWN"
+            // eeGetClassName(targetClass)
+            );
+    }
+
+    bool            expandInline = false;
+    CorInfoHelpFunc helper       = info.compCompHnd->getCastingHelper(pResolvedToken, isCastClass);
 
     if (isCastClass)
     {
@@ -13927,42 +14022,47 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     info.compCompHnd->canAccessClass(&resolvedToken, info.compMethodHnd, &calloutHelper);
                 impHandleAccessAllowed(accessAllowedResult, &calloutHelper);
 
-                op1 = impPopStack().val;
+                {
+                    StackEntry           se        = impPopStack();
+                    CORINFO_CLASS_HANDLE op1ClsHnd = se.seTypeInfo.GetClassHandle();
+                    op1                            = se.val;
 
 #ifdef FEATURE_READYTORUN_COMPILER
-                if (opts.IsReadyToRun())
-                {
-                    GenTreeCall* opLookup =
-                        impReadyToRunHelperToTree(&resolvedToken, CORINFO_HELP_READYTORUN_ISINSTANCEOF, TYP_REF,
-                                                  gtNewArgList(op1));
-                    usingReadyToRunHelper = (opLookup != nullptr);
-                    op1                   = (usingReadyToRunHelper ? opLookup : op1);
-
-                    if (!usingReadyToRunHelper)
+                    if (opts.IsReadyToRun())
                     {
-                        // TODO: ReadyToRun: When generic dictionary lookups are necessary, replace the lookup call
-                        // and the isinstanceof_any call with a single call to a dynamic R2R cell that will:
-                        //      1) Load the context
-                        //      2) Perform the generic dictionary lookup and caching, and generate the appropriate stub
-                        //      3) Perform the 'is instance' check on the input object
-                        // Reason: performance (today, we'll always use the slow helper for the R2R generics case)
+                        GenTreeCall* opLookup =
+                            impReadyToRunHelperToTree(&resolvedToken, CORINFO_HELP_READYTORUN_ISINSTANCEOF, TYP_REF,
+                                                      gtNewArgList(op1));
+                        usingReadyToRunHelper = (opLookup != nullptr);
+                        op1                   = (usingReadyToRunHelper ? opLookup : op1);
 
-                        op2 = impTokenToHandle(&resolvedToken, nullptr, FALSE);
-                        if (op2 == nullptr)
-                        { // compDonotInline()
-                            return;
+                        if (!usingReadyToRunHelper)
+                        {
+                            // TODO: ReadyToRun: When generic dictionary lookups are necessary, replace the lookup call
+                            // and the isinstanceof_any call with a single call to a dynamic R2R cell that will:
+                            //      1) Load the context
+                            //      2) Perform the generic dictionary lookup and caching, and generate the appropriate
+                            //      stub
+                            //      3) Perform the 'is instance' check on the input object
+                            // Reason: performance (today, we'll always use the slow helper for the R2R generics case)
+
+                            op2 = impTokenToHandle(&resolvedToken, nullptr, FALSE);
+                            if (op2 == nullptr)
+                            { // compDonotInline()
+                                return;
+                            }
                         }
                     }
-                }
 
-                if (!usingReadyToRunHelper)
+                    if (!usingReadyToRunHelper)
 #endif
-                {
-                    op1 = impCastClassOrIsInstToTree(op1, op2, &resolvedToken, false);
-                }
-                if (compDonotInline())
-                {
-                    return;
+                    {
+                        op1 = impCastClassOrIsInstToTree(op1, op2, &resolvedToken, op1ClsHnd, false);
+                    }
+                    if (compDonotInline())
+                    {
+                        return;
+                    }
                 }
 
                 impPushOnStack(op1, tiRetVal);
@@ -14488,7 +14588,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 if (!usingReadyToRunHelper)
 #endif
                 {
-                    op1 = impCastClassOrIsInstToTree(op1, op2, &resolvedToken, true);
+                    op1 = impCastClassOrIsInstToTree(op1, op2, &resolvedToken, nullptr, true);
                 }
                 if (compDonotInline())
                 {
