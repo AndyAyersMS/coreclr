@@ -3082,6 +3082,7 @@ public:
     GenTreePtr impCastClassOrIsInstToTree(GenTreePtr              op1,
                                           GenTreePtr              op2,
                                           CORINFO_RESOLVED_TOKEN* pResolvedToken,
+                                          CORINFO_CLASS_HANDLE    op1ClsHnd,
                                           bool                    isCastClass);
 
     bool VarTypeIsMultiByteAndCanEnreg(var_types            type,
