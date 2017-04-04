@@ -959,6 +959,7 @@ enum CorInfoIntrinsics
     CORINFO_INTRINSIC_GetManagedThreadId,
     CORINFO_INTRINSIC_ByReference_Ctor,
     CORINFO_INTRINSIC_ByReference_Value,
+    CORINFO_INTRINSIC_Unsafe_ByrefAdd,
 
     CORINFO_INTRINSIC_Count,
     CORINFO_INTRINSIC_Illegal = -1,         // Not a true intrinsic,

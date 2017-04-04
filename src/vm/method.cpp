@@ -2404,10 +2404,19 @@ BOOL MethodDesc::IsFCallOrIntrinsic()
     if (IsFCall() || IsArray())
         return TRUE;
 
-    // Intrinsic methods on ByReference<T> or Span<T>
+    // Intrinsic methods on ByReference<T>, Span<T>, or Unsafe<T>
     MethodTable * pMT = GetMethodTable();
-    if (pMT->IsByRefLike() && pMT->GetModule()->IsSystem())
-        return TRUE;
+    if (pMT->GetModule()->IsSystem())
+    {
+        if (pMT->IsByRefLike())
+        {
+            return TRUE;
+        }
+        else if (MscorlibBinder::IsClass(pMT, CLASS__UNSAFE))
+        {
+            return TRUE;
+        }
+    }
 
     return FALSE;
 }

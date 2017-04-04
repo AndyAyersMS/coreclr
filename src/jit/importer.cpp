@@ -3633,6 +3633,38 @@ GenTreePtr Compiler::impIntrinsic(GenTreePtr            newobjThis,
             retNode                     = field;
             break;
         }
+        case CORINFO_INTRINSIC_Unsafe_ByrefAdd:
+        {
+            // Have index, ptr-to-X on stack.
+            // See if we can determine sizeof(X)
+            StackEntry ptrEntry  = impStackTop(1);
+            typeInfo   byrefType = ptrEntry.seTypeInfo;
+            assert(byrefType.IsByRef());
+            CORINFO_CLASS_HANDLE elementHnd = byrefType.GetClassHandle();
+
+            if (elementHnd != nullptr)
+            {
+                JITDUMP("\nExpanding Unsafe_ByrefAdd intrinsic\n");
+                const unsigned elemSize = info.compCompHnd->getClassSize(elementHnd);
+                assert(elemSize > 0);
+
+                op2 = impPopStack().val;
+                op1 = impPopStack().val;
+
+                // Build the the result
+                GenTreePtr sizeofNode = gtNewIconNode(elemSize);
+                GenTreePtr mulNode    = gtNewOperNode(GT_MUL, TYP_INT, op2, sizeofNode);
+                retNode               = gtNewOperNode(GT_ADD, TYP_BYREF, op1, mulNode);
+            }
+            else
+            {
+                // Fall back to the IL supplied by the VM.
+                //
+                // TODO: Review cases where this happens.
+                assert(!mustExpand);
+            }
+            break;
+        }
         default:
             /* Unknown intrinsic */
             break;
