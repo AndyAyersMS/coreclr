@@ -8132,12 +8132,25 @@ NO_TAIL_CALL:
 
             if (gtCanOptimizeTypeEquality(op1) || gtCanOptimizeTypeEquality(op2))
             {
+                JITDUMP("\nMorph: optimizing type equality check\n");
+                if (verbose)
+                {
+                    JITDUMP("op1 is\n");
+                    gtDispTree(op1);
+                    JITDUMP("op2 is\n");
+                    gtDispTree(op2);
+                }
+
                 GenTreePtr compare = gtNewOperNode(simpleOp, TYP_INT, op1, op2);
 
                 // fgMorphSmpOp will further optimize the following patterns:
                 //  1. typeof(...) == typeof(...)
                 //  2. typeof(...) == obj.GetType()
                 return fgMorphTree(compare);
+            }
+            else
+            {
+                JITDUMP("\nMorph: *NOT* optimizing type equality check\n");
             }
         }
     }
@@ -11254,18 +11267,62 @@ GenTreePtr Compiler::fgMorphSmpOp(GenTreePtr tree, MorphAddrContext* mac)
 #endif
                             pConstLiteral->gtOper == GT_CNS_INT && pConstLiteral->gtType == TYP_I_IMPL)
                         {
-                            CORINFO_CLASS_HANDLE clsHnd =
-                                CORINFO_CLASS_HANDLE(pConstLiteral->gtIntCon.gtCompileTimeHandle);
 
+#ifdef LEGACY_BACKEND
+                            GenTreePtr obj = pGetType->gtCall.gtCallObjp;
+#else
+                            GenTreePtr obj = pGetType->gtUnOp.gtOp1;
+#endif
+
+                            // If we know the class handle exactly, use that to do an exact check.
+                            bool                 isExact   = false;
+                            bool                 isNonNull = false;
+                            CORINFO_CLASS_HANDLE clsHnd    = gtGetClassHandle(obj, &isExact, &isNonNull);
+
+                            if ((clsHnd != nullptr) && isExact)
+                            {
+                                if (verbose)
+                                {
+                                    JITDUMP("\nMorph: optimize type test: have\n");
+                                    gtDispTree(obj);
+                                    JITDUMP("with class %p %s %s\n and \n", clsHnd, isExact ? "exact" : "",
+                                            isNonNull ? "non-null" : "");
+                                    gtDispTree(pGetClassFromHandleArgument);
+                                }
+
+                                GenTreePtr clsHndNode =
+                                    gtNewIconEmbHndNode(clsHnd, nullptr, GTF_ICON_CLASS_HDL, 0, nullptr, nullptr);
+                                GenTreePtr typeTest =
+                                    gtNewOperNode(oper, TYP_I_IMPL, clsHndNode, pGetClassFromHandleArgument);
+                                typeTest->gtFlags |= (GTF_RELOP_JMP_USED | GTF_RELOP_QMARK | GTF_DONT_CSE);
+
+                                if (!isNonNull)
+                                {
+                                    GenTreePtr nullCheck = gtNewOperNode(GT_IND, TYP_I_IMPL, obj);
+                                    nullCheck->gtFlags |= GTF_EXCEPT;
+
+                                    GenTreePtr fullTypeTest = gtNewOperNode(GT_COMMA, TYP_I_IMPL, nullCheck, typeTest);
+                                    fullTypeTest->gtFlags |= nullCheck->gtFlags;
+                                    fullTypeTest->gtFlags |= typeTest->gtFlags;
+
+                                    typeTest = fullTypeTest;
+                                }
+
+                                JITDUMP("result is\n");
+                                gtDispTree(typeTest);
+
+                                return fgMorphTree(typeTest);
+                            }
+
+                            // Else we have a lower bound on the class from importing.
+                            clsHnd = CORINFO_CLASS_HANDLE(pConstLiteral->gtIntCon.gtCompileTimeHandle);
+
+                            // If these kinds of objects can have their types reliably identified by
+                            // comparing the method table addresses, do that comparison.
                             if (info.compCompHnd->canInlineTypeCheckWithObjectVTable(clsHnd))
                             {
                                 // Method Table tree
-                                CLANG_FORMAT_COMMENT_ANCHOR;
-#ifdef LEGACY_BACKEND
-                                GenTreePtr objMT = gtNewOperNode(GT_IND, TYP_I_IMPL, pGetType->gtCall.gtCallObjp);
-#else
-                                GenTreePtr objMT = gtNewOperNode(GT_IND, TYP_I_IMPL, pGetType->gtUnOp.gtOp1);
-#endif
+                                GenTreePtr objMT = gtNewOperNode(GT_IND, TYP_I_IMPL, obj);
                                 objMT->gtFlags |= GTF_EXCEPT; // Null ref exception if object is null
                                 compCurBB->bbFlags |= BBF_HAS_VTABREF;
                                 optMethodFlags |= OMF_HAS_VTABLEREF;

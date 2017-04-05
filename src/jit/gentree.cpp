@@ -16521,6 +16521,28 @@ CORINFO_CLASS_HANDLE Compiler::gtGetClassHandle(GenTreePtr tree, bool* isExact, 
                     objClass = sig.retTypeClass;
                 }
             }
+            else if (call->gtCallType == CT_HELPER)
+            {
+                // newarr helpers stash the array types here
+                CORINFO_GENERIC_HANDLE helperTypeHnd = call->compileTimeHelperArgumentHandle;
+
+                if (helperTypeHnd != nullptr)
+                {
+                    // TODO: verify helper is one of the ones expected.
+                    // Currently:
+                    //
+                    // CORINFO_HELP_NEWARR_1_DIRECT
+                    // CORINFO_HELP_NEWARR_1_OBJ
+                    // CORINFO_HELP_NEWARR_1_ALIGN8
+                    // CORINFO_HELP_NEWARR_1_VC
+                    // CORINFO_HELP_READYTORUN_NEWARR_1
+                    // CORINFO_HELP_NEW_MDARR
+                    // CORINFO_HELP_NEW_MDARR_NONVARARG
+                    objClass   = (CORINFO_CLASS_HANDLE)helperTypeHnd;
+                    *isExact   = true;
+                    *isNonNull = true;
+                }
+            }
 
             break;
         }
@@ -16559,6 +16581,51 @@ CORINFO_CLASS_HANDLE Compiler::gtGetClassHandle(GenTreePtr tree, bool* isExact, 
         default:
         {
             break;
+        }
+    }
+
+    // If we don't have an exact type yet, try and prove that there
+    // cannot be any subtypes -- either via inheritance or
+    // variance. If so we can consider this an exact type.
+    //
+    // Eg string[] is an exact type because string is a final class.
+    if ((objClass != nullptr) && !*isExact)
+    {
+        // Fetch class attributes.
+        const unsigned objClassAttribs = info.compCompHnd->getClassAttribs(objClass);
+
+        // If the class is final and has no variance, then the type
+        // is exact.
+        if ((objClassAttribs & (CORINFO_FLG_FINAL | CORINFO_FLG_ARRAY | CORINFO_FLG_VARIANCE)) == CORINFO_FLG_FINAL)
+        {
+            *isExact = true;
+        }
+        // If this is a classic array, the class is exact if the array
+        // element type does not have any subtypes. Only handle the
+        // simplest cases now.
+        else if ((objClassAttribs & CORINFO_FLG_ARRAY) == CORINFO_FLG_ARRAY)
+        {
+            CORINFO_CLASS_HANDLE elemClass = nullptr;
+            CorInfoType          childType = info.compCompHnd->getChildType(objClass, &elemClass);
+
+            // Arrays of non-class types are exact
+            if (childType != CORINFO_TYPE_CLASS)
+            {
+                *isExact = true;
+            }
+            else
+            {
+                assert(elemClass != nullptr);
+                // Fetch element attributes.
+                const unsigned elemClassAttribs = info.compCompHnd->getClassAttribs(elemClass);
+
+                // Arrays of class types are exact if the element type can't have subtypes.
+                if ((elemClassAttribs & (CORINFO_FLG_FINAL | CORINFO_FLG_ARRAY | CORINFO_FLG_VARIANCE)) ==
+                    CORINFO_FLG_FINAL)
+                {
+                    *isExact = true;
+                }
+            }
         }
     }
 
