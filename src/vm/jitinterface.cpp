@@ -8835,7 +8835,8 @@ CORINFO_METHOD_HANDLE CEEInfo::resolveVirtualMethodHelper(CORINFO_METHOD_HANDLE 
     _ASSERTE(pDevirtMD->IsRestored());
 
     // TEMPORARY -- disable devirt in system assembly
-    if (callerMethod->GetModule()->IsSystem())
+    // since unsafe exact devirt messes with ngen restore
+    if (m_pMethodBeingCompiled->GetModule()->IsSystem())
     {
         return nullptr;
     }

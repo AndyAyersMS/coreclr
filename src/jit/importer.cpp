@@ -18566,22 +18566,6 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     CORINFO_METHOD_HANDLE baseMethod        = callInfo->hMethod;
     unsigned              baseMethodAttribs = callInfo->methodFlags;
 
-    // Do we know anything about the type of the 'this'?
-    //
-    // Unfortunately the jit has historcally only kept track of class
-    // handles for struct types, so the type information needed here
-    // is missing for many tree nodes.
-    //
-    // Even when we can deduce the type, we may not be able to
-    // devirtualize, but if we can't deduce the type, we can't do
-    // anything.
-    CORINFO_CLASS_HANDLE objClass     = nullptr;
-    GenTreePtr           obj          = thisObj->gtEffectiveVal(false);
-    const genTreeOps     objOp        = obj->OperGet();
-    bool                 objIsNonNull = false;
-    bool                 isExact      = false;
-    bool                 isExactUnsafe     = false;
-
     if (baseMethodAttribs == 0)
     {
         // For late devirt we may not have method attributes, so fetch them.
@@ -18614,9 +18598,10 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     }
 
     // See what we know about the type of 'this' in the call.
-    bool                 isExact      = false;
-    bool                 objIsNonNull = false;
-    CORINFO_CLASS_HANDLE objClass     = gtGetClassHandle(thisObj, &isExact, &objIsNonNull);
+    bool                 isExact       = false;
+    bool                 isExactUnsafe = false;
+    bool                 objIsNonNull  = false;
+    CORINFO_CLASS_HANDLE objClass      = gtGetClassHandle(thisObj, &isExact, &objIsNonNull);
 
     // Bail if we know nothing.
     if (objClass == nullptr)
@@ -18648,20 +18633,26 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     const DWORD objClassAttribs = info.compCompHnd->getClassAttribs(objClass);
     const bool  objClassIsFinal = (objClassAttribs & CORINFO_FLG_FINAL) != 0;
 
+    // PROTOTYPE: if the object class currently has no subclasses,
+    // then we can speculatively consider it to be final. The code we
+    // generate may become invalid later on if a subclass is ever
+    // created that overrides a method we devirtualize to here.
+    if (objClassAttribs & CORINFO_FLG_NOCHILD)
+    {
+        JITDUMP("--- no child classes -- enabling speculative exact mode\n");
+        isExactUnsafe = true;
+    }
+
 #if defined(DEBUG)
     const char* callKind       = isInterface ? "interface" : "virtual";
     const char* objClassNote   = "[?]";
     const char* objClassName   = "?objClass";
     const char* baseClassName  = "?baseClass";
     const char* baseMethodName = "?baseMethod";
-    const char* const objClassNote   = isExact ? " [exact]" : objClassIsFinal ? " [final]" : isExactUnsafe ? " [unsafe]" : "";
-    const char* const objClassName   = info.compCompHnd->getClassName(objClass);
-    const char* const baseClassName  = info.compCompHnd->getClassName(baseClass);
-    const char* const baseMethodName = eeGetMethodName(baseMethod, nullptr);
 
     if (verbose || doPrint)
     {
-        objClassNote   = isExact ? " [exact]" : objClassIsFinal ? " [final]" : "";
+        objClassNote   = isExact ? " [exact]" : objClassIsFinal ? " [final]" : isExactUnsafe ? " [exact, unsafe]" : " ";
         objClassName   = info.compCompHnd->getClassName(objClass);
         baseClassName  = info.compCompHnd->getClassName(baseClass);
         baseMethodName = eeGetMethodName(baseMethod, nullptr);
@@ -18703,15 +18694,6 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     {
         JITDUMP("--- no derived method, sorry\n");
         return;
-    }
-
-    // PROTOTYPE: if the object class has no subclasses, then we can
-    // speculatively consider it to be final. The code we generate may
-    // become invalid later on if a subclass is ever created.
-    if (objClassAttribs & CORINFO_FLG_NOCHILD)
-    {
-        JITDUMP("--- no child classes -- enabling speculative exact mode\n");
-        isExactUnsafe = true;
     }
 
     // Fetch method attributes to see if method is marked final.
@@ -18782,7 +18764,8 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
 
         // We can't do unsafe devirt if the obj class is abstract,
         // since an abstract class must have an overriding class -- it
-        // just hasn't been loaded yet.
+        // just hasn't been loaded yet. No point in creating code that
+        // will be immediately invalidated.
         if (objClassAttribs & CORINFO_FLG_ABSTRACT)
         {
             JITDUMP("    Unsafe with abstract class, sorry.\n");
