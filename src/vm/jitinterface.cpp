@@ -4072,8 +4072,12 @@ DWORD CEEInfo::getClassAttribsInternal (CORINFO_CLASS_HANDLE clsHnd)
         if (pClass->IsSealed())
             ret |= CORINFO_FLG_FINAL;
 
-        if (!pMT->HasChild())
+        // TEMPORARY -- don't allow unsafe devirt for prejitted classes
+        // since unsafe exact devirt messes with ngen restore
+        if (!IsCompilingForNGen() && !pMT->IsZapped() && !pMT->HasChild())
+        {
             ret |= CORINFO_FLG_NOCHILD;
+        }
     }
 
     return ret;
@@ -8834,13 +8838,6 @@ CORINFO_METHOD_HANDLE CEEInfo::resolveVirtualMethodHelper(CORINFO_METHOD_HANDLE 
 
     _ASSERTE(pDevirtMD->IsRestored());
 
-    // TEMPORARY -- disable devirt in system assembly
-    // since unsafe exact devirt messes with ngen restore
-    if (m_pMethodBeingCompiled->GetModule()->IsSystem())
-    {
-        return nullptr;
-    }
-
 #ifdef FEATURE_READYTORUN_COMPILER
     // Check if devirtualization is dependent upon cross-version
     // bubble information and if so, disallow it.
@@ -8890,6 +8887,16 @@ void CEEInfo::setJitAssumedNoChild(CORINFO_CLASS_HANDLE clsHnd)
     JIT_TO_EE_TRANSITION();
     TypeHandle VMClsHnd(clsHnd);
     MethodTable* pMT = VMClsHnd.GetMethodTable();
+
+    if (pMT->HasChild())
+    {
+        // Todo: fail current jit request and retry.
+        EEPOLICY_HANDLE_FATAL_ERROR_WITH_MESSAGE(
+            COR_E_EXECUTIONENGINE,
+            W("Jit assumption violated")
+        );
+    }
+
     pMT->SetJitAssumedNoChild();
     EE_TO_JIT_TRANSITION();
 }

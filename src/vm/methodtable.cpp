@@ -1000,6 +1000,47 @@ void MethodTable::SetObjCreateDelegate(OBJECTREF orDelegate)
 #endif //CROSSGEN_COMPILE
 #endif // FEATURE_COMINTEROP
 
+#ifndef DACCESS_COMPILE
+void MethodTable::SetParentMethodTable(MethodTable *pParentMethodTable)
+{
+    CONTRACTL
+        {
+            THROWS;
+            GC_NOTRIGGER;
+            MODE_ANY;
+        }
+    CONTRACTL_END;
+
+    PRECONDITION(!GetFlag(enum_flag_HasIndirectParent));
+    if (pParentMethodTable != NULL)
+    {
+        // If this fails, jit generated code is potentially invalid and we should fail fast
+        if (pParentMethodTable->JitAssumedNoChild())
+        {
+            // Todo: instead of doing this, set poison bit on current class and
+            // bail when we try to jit a virtual method for that class.
+            // (poison must be propagated to subclasses too...)
+            EEPOLICY_HANDLE_FATAL_ERROR_WITH_MESSAGE(
+                COR_E_EXECUTIONENGINE,
+                W("Jit assumption violated")
+            );
+        }
+
+        // Punt on tracking this when prejitting or for prejitted classes since it is 
+        // causing issues with ngen restore.
+        if (!IsCompilationProcess() && !pParentMethodTable->IsZapped())
+        {
+            pParentMethodTable->SetHasChild();
+        }
+    }
+
+    m_pParentMethodTable = (TADDR)pParentMethodTable;
+#ifdef _DEBUG
+    GetWriteableDataForWrite_NoLogging()->SetParentMethodTablePointerValid();
+#endif
+}
+#endif // !DACCESS_COMPILE
+
 
 //==========================================================================================
 void MethodTable::SetInterfaceMap(WORD wNumInterfaces, InterfaceInfo_t* iMap)
