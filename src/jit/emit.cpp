@@ -4520,6 +4520,10 @@ unsigned emitter::emitEndCodeGen(Compiler* comp,
     }
 #endif
 
+#ifdef _TARGET_X64_
+    allocMemFlag = CORJIT_ALLOCMEM_FLG_16BYTE_ALIGN;
+#endif
+
 #ifdef _TARGET_ARM64_
     // For arm64, we want to allocate JIT data always adjacent to code similar to what native compiler does.
     // This way allows us to use a single `ldr` to access such data like float constant/jmp table.
