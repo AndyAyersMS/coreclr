@@ -2626,28 +2626,11 @@ GenTree* Compiler::fgMakeMultiUse(GenTree** pOp)
     GenTree* tree = *pOp;
     if (tree->IsLocal())
     {
-        auto result = gtClone(tree);
-        if (lvaLocalVarRefCounted)
-        {
-            lvaTable[tree->gtLclVarCommon.gtLclNum].incRefCnts(compCurBB->getBBWeight(this), this);
-        }
-        return result;
+        return gtClone(tree);
     }
     else
     {
-        GenTree* result = fgInsertCommaFormTemp(pOp);
-
-        // At this point, *pOp is GT_COMMA(GT_ASG(V01, *pOp), V01) and result = V01
-        // Therefore, the ref count has to be incremented 3 times for *pOp and result, if result will
-        // be added by the caller.
-        if (lvaLocalVarRefCounted)
-        {
-            lvaTable[result->gtLclVarCommon.gtLclNum].incRefCnts(compCurBB->getBBWeight(this), this);
-            lvaTable[result->gtLclVarCommon.gtLclNum].incRefCnts(compCurBB->getBBWeight(this), this);
-            lvaTable[result->gtLclVarCommon.gtLclNum].incRefCnts(compCurBB->getBBWeight(this), this);
-        }
-
-        return result;
+        return fgInsertCommaFormTemp(pOp);
     }
 }
 
@@ -5292,10 +5275,6 @@ void Compiler::fgMakeOutgoingStructArgCopy(GenTreeCall*         call,
     GenTree* dest = gtNewLclvNode(tmp, lvaTable[tmp].lvType);
     dest->gtFlags |= (GTF_DONT_CSE | GTF_VAR_DEF); // This is a def of the local, "entire" by construction.
 
-    // TODO-Cleanup: This probably shouldn't be done here because arg morphing is done prior
-    // to ref counting of the lclVars.
-    lvaTable[tmp].incRefCnts(compCurBB->getBBWeight(this), this);
-
     if (argx->gtOper == GT_OBJ)
     {
         argx->gtFlags &= ~(GTF_ALL_EFFECT) | (argx->AsBlk()->Addr()->gtFlags & GTF_ALL_EFFECT);
@@ -5904,13 +5883,6 @@ GenTree* Compiler::fgMorphArrayIndex(GenTree* tree)
             GenTreeBoundsChk(GT_ARR_BOUNDS_CHECK, TYP_VOID, index, arrLen, SCK_RNGCHK_FAIL);
 
         bndsChk = arrBndsChk;
-
-        // Make sure to increment ref-counts if already ref-counted.
-        if (lvaLocalVarRefCounted)
-        {
-            lvaRecursiveIncRefCounts(index);
-            lvaRecursiveIncRefCounts(arrRef);
-        }
 
         // Now we'll switch to using the second copies for arrRef and index
         // to compute the address expression
@@ -13727,7 +13699,6 @@ DONE_MORPHING_CHILDREN:
             {
                 // Extract the side effects from the left side of the comma.  Since they don't "go" anywhere, this
                 // is all we need.
-
                 GenTree* op1SideEffects = nullptr;
                 // The addition of "GTF_MAKE_CSE" below prevents us from throwing away (for example)
                 // hoisted expressions in loops.
@@ -14313,20 +14284,10 @@ GenTree* Compiler::fgMorphModToSubMulDiv(GenTreeOp* tree)
     {
         numerator = fgMakeMultiUse(&tree->gtOp1);
     }
-    else if (lvaLocalVarRefCounted && numerator->OperIsLocal())
-    {
-        // Morphing introduces new lclVar references. Increase ref counts
-        lvaIncRefCnts(numerator);
-    }
 
     if (!denominator->OperIsLeaf())
     {
         denominator = fgMakeMultiUse(&tree->gtOp2);
-    }
-    else if (lvaLocalVarRefCounted && denominator->OperIsLocal())
-    {
-        // Morphing introduces new lclVar references. Increase ref counts
-        lvaIncRefCnts(denominator);
     }
 
     // The numerator and denominator may have been assigned to temps, in which case
@@ -15682,12 +15643,6 @@ bool Compiler::fgMorphBlockStmt(BasicBlock* block, GenTreeStmt* stmt DEBUGARG(co
     }
 
     stmt->gtStmtExpr = morph;
-
-    if (lvaLocalVarRefCounted)
-    {
-        // fgMorphTree may have introduced new lclVar references. Bump the ref counts if requested.
-        lvaRecursiveIncRefCounts(stmt->gtStmtExpr);
-    }
 
     // Can the entire tree be removed?
     bool removedStmt = false;

@@ -265,10 +265,6 @@ unsigned LIR::Use::ReplaceWithLclVar(Compiler* compiler, unsigned blockWeight, u
         lclNum = compiler->lvaGrabTemp(true DEBUGARG("ReplaceWithLclVar is creating a new local variable"));
     }
 
-    // Increment its lvRefCnt and lvRefCntWtd twice, one for the def and one for the use
-    compiler->lvaTable[lclNum].incRefCnts(blockWeight, compiler);
-    compiler->lvaTable[lclNum].incRefCnts(blockWeight, compiler);
-
     GenTreeLclVar* const store = compiler->gtNewTempAssign(lclNum, node)->AsLclVar();
     assert(store != nullptr);
     assert(store->gtOp1 == node);
@@ -1083,8 +1079,7 @@ LIR::Range LIR::Range::Remove(ReadOnlyRange&& range)
 // LIR::Range::Delete: Deletes a node from this range.
 //
 // Note that the deleted node must not be used after this function has
-// been called. If the deleted node is part of a block, this function also
-// calls `Compiler::lvaDecRefCnts` as necessary.
+// been called.
 //
 // Arguments:
 //    node - The node to delete. Must be part of this range.
@@ -1115,8 +1110,7 @@ void LIR::Range::Delete(Compiler* compiler, BasicBlock* block, GenTree* node)
 //
 // Both the start and the end of the subrange must be part of this range.
 // Note that the deleted nodes must not be used after this function has
-// been called. If the deleted nodes are part of a block, this function
-// also calls `Compiler::lvaDecRefCnts` as necessary.
+// been called.
 //
 // Arguments:
 //    firstNode - The first node in the subrange.
@@ -1161,8 +1155,7 @@ void LIR::Range::Delete(Compiler* compiler, BasicBlock* block, GenTree* firstNod
 //
 // Both the start and the end of the subrange must be part of this range.
 // Note that the deleted nodes must not be used after this function has
-// been called. If the deleted nodes are part of a block, this function
-// also calls `Compiler::lvaDecRefCnts` as necessary.
+// been called.
 //
 // Arguments:
 //    range - The subrange to delete.

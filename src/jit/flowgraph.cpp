@@ -9679,41 +9679,6 @@ void Compiler::fgSimpleLowering()
 #endif
 }
 
-/*****************************************************************************
- */
-
-void Compiler::fgUpdateRefCntForClone(BasicBlock* addedToBlock, GenTree* clonedTree)
-{
-    assert(clonedTree->gtOper != GT_STMT);
-
-    if (lvaLocalVarRefCounted)
-    {
-        compCurBB = addedToBlock;
-        IncLclVarRefCountsVisitor::WalkTree(this, clonedTree);
-    }
-}
-
-/*****************************************************************************
- */
-
-void Compiler::fgUpdateRefCntForExtract(GenTree* wholeTree, GenTree* keptTree)
-{
-    if (lvaLocalVarRefCounted)
-    {
-        /*  Update the refCnts of removed lcl vars - The problem is that
-         *  we have to consider back the side effects trees so we first
-         *  increment all refCnts for side effects then decrement everything
-         *  in the statement
-         */
-        if (keptTree)
-        {
-            IncLclVarRefCountsVisitor::WalkTree(this, keptTree);
-        }
-
-        DecLclVarRefCountsVisitor::WalkTree(this, wholeTree);
-    }
-}
-
 VARSET_VALRET_TP Compiler::fgGetVarBits(GenTree* tree)
 {
     VARSET_TP varBits(VarSetOps::MakeEmpty(this));
@@ -9942,22 +9907,12 @@ void Compiler::fgRemoveStmt(BasicBlock* block,
         assert(stmt->gtPrevStmt != nullptr && stmt->gtNext != nullptr);
 
         tree = stmt->gtPrevStmt;
-
         tree->gtNext         = stmt->gtNext;
         stmt->gtNext->gtPrev = tree;
     }
 
-    noway_assert(!optValnumCSE_phase);
-
-    if (updateRefCount)
-    {
-        if (fgStmtListThreaded)
-        {
-            DecLclVarRefCountsVisitor::WalkTree(this, stmt->gtStmtExpr);
-        }
-    }
-
     fgStmtRemoved = true;
+    noway_assert(!optValnumCSE_phase);
 
 #ifdef DEBUG
     if (verbose)
@@ -14153,7 +14108,6 @@ bool Compiler::fgOptimizeSwitchBranches(BasicBlock* block)
                 {
                     /* Update the lclvar ref counts */
                     compCurBB = block;
-                    fgUpdateRefCntForExtract(switchTree, sideEffList);
 
                     /* Update ordering, costs, FP levels, etc. */
                     gtSetStmtInfo(switchStmt);
@@ -14564,7 +14518,6 @@ bool Compiler::fgOptimizeBranchToNext(BasicBlock* block, BasicBlock* bNext, Basi
                     {
                         /* Update the lclvar ref counts */
                         compCurBB = block;
-                        fgUpdateRefCntForExtract(cond->gtStmtExpr, sideEffList);
 
                         /* Update ordering, costs, FP levels, etc. */
                         gtSetStmtInfo(cond);
@@ -14844,9 +14797,6 @@ bool Compiler::fgOptimizeBranch(BasicBlock* bJump)
     {
         return false;
     }
-
-    // Bump up the ref-counts of any variables in 'stmt'
-    fgUpdateRefCntForClone(bJump, stmt->gtStmtExpr);
 
     //
     // Find the last statement in the bJump block

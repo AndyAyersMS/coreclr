@@ -307,6 +307,9 @@ public:
     unsigned char lvClassInfoUpdated : 1; // true if this var has updated class handle or exactness
 #endif
 
+    unsigned char lvHasImplicitUse : 1; // true for vars that may not appear explicitly in the IR, but are required for
+                                        // code generation
+
     union {
         unsigned lvFieldLclStart; // The index of the local var representing the first field in the promoted struct
                                   // local.  For implicit byref parameters, this gets hijacked between

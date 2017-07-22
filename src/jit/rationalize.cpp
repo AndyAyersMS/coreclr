@@ -749,7 +749,7 @@ Compiler::fgWalkResult Rationalizer::RewriteNode(GenTree** useEdge, ArrayStack<G
                 // should always be true.
                 assert(isClosed);
 
-                BlockRange().Delete(comp, m_block, std::move(lhsRange));
+                BlockRange().Remove(std::move(lhsRange));
             }
             else if (op1->IsValue())
             {
@@ -778,7 +778,7 @@ Compiler::fgWalkResult Rationalizer::RewriteNode(GenTree** useEdge, ArrayStack<G
                     // should always be true.
                     assert(isClosed);
 
-                    BlockRange().Delete(comp, m_block, std::move(rhsRange));
+                    BlockRange().Remove(std::move(rhsRange));
                 }
                 else
                 {
@@ -931,7 +931,6 @@ Compiler::fgWalkResult Rationalizer::RewriteNode(GenTree** useEdge, ArrayStack<G
     {
         if (use.IsDummyUse())
         {
-            comp->lvaDecRefCnts(node);
             BlockRange().Remove(node);
         }
         else

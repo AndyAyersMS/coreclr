@@ -2026,7 +2026,6 @@ void Compiler::lvaPromoteStructVar(unsigned lclNum, lvaStructPromotionInfo* Stru
 #endif // FEATURE_MULTIREG_ARGS && defined(FEATURE_SIMD)
 
             lvaMarkRefsWeight = BB_UNITY_WEIGHT;            // incRefCnts can use this compiler global variable
-            fieldVarDsc->incRefCnts(BB_UNITY_WEIGHT, this); // increment the ref count for prolog initialization
         }
 #endif
 
@@ -4110,6 +4109,27 @@ void Compiler::lvaMarkLocalVars()
     }
 
     /* Mark all local variable references */
+#if !defined(LEGACY_BACKEND)
+    if (opts.MinOpts())
+    {
+        // If we're not optimizing, we won't actually use these ref counts for anything besides deciding how much space
+        // we need to allocate on the frame. Just treat every var as having a single ref.
+        for (unsigned lclNum = 0; lclNum < lvaCount; lclNum++)
+        {
+            LclVarDsc* varDsc   = &lvaTable[lclNum];
+            varDsc->lvRefCnt    = 1;
+            varDsc->lvRefCntWtd = 1;
+            varDsc->lvTracked   = false;
+        }
+
+        lvaLocalVarRefCounted = true;
+
+        lvaCurEpoch++;
+        lvaTrackedCount             = 0;
+        lvaTrackedCountInSizeTUnits = 0;
+        return;
+    }
+#endif
 
     lvaRefCountingStarted = true;
     for (block = fgFirstBB; block; block = block->bbNext)

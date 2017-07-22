@@ -1027,8 +1027,6 @@ void Compiler::fgExtendDbgLifetimes()
                 }
 #endif // DEBUG
 
-                varDsc->incRefCnts(block->getBBWeight(this), this);
-
                 block->bbFlags |= BBF_CHANGED; // indicates that the contents of the block have changed.
             }
 
@@ -2187,7 +2185,6 @@ bool Compiler::fgRemoveDeadStore(GenTree**        pTree,
                         printf("\n");
                     }
 #endif // DEBUG
-                    fgUpdateRefCntForExtract(asgNode, sideEffList);
 
                     /* Replace the assignment statement with the list of side effects */
                     noway_assert(sideEffList->gtOper != GT_STMT);
@@ -2280,7 +2277,6 @@ bool Compiler::fgRemoveDeadStore(GenTree**        pTree,
 #endif // DEBUG
                 if (sideEffList->gtOper == asgNode->gtOper)
                 {
-                    fgUpdateRefCntForExtract(asgNode, sideEffList);
 #ifdef DEBUG
                     *treeModf = true;
 #endif // DEBUG
@@ -2290,7 +2286,6 @@ bool Compiler::fgRemoveDeadStore(GenTree**        pTree,
                 }
                 else
                 {
-                    fgUpdateRefCntForExtract(asgNode, sideEffList);
 #ifdef DEBUG
                     *treeModf = true;
 #endif // DEBUG
@@ -2325,9 +2320,6 @@ bool Compiler::fgRemoveDeadStore(GenTree**        pTree,
                     printf("\n");
                 }
 #endif // DEBUG
-                /* No side effects - Remove the interior statement */
-                fgUpdateRefCntForExtract(asgNode, nullptr);
-
                 /* Change the assignment to a GT_NOP node */
 
                 asgNode->gtBashToNOP();

@@ -1801,6 +1801,8 @@ inline unsigned Compiler::lvaGrabTempWithImplicitUse(bool shortLifetime DEBUGARG
     varDsc->lvRefCnt    = 1;
     varDsc->lvRefCntWtd = BB_UNITY_WEIGHT;
 
+    varDsc->lvHasImplicitUse = true;
+
     return lclNum;
 }
 
