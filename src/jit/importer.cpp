@@ -9422,99 +9422,7 @@ GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
     assert(op1->TypeGet() == TYP_REF);
 
     CORINFO_CLASS_HANDLE targetClass = pResolvedToken->hClass;
-
-    // See if we know enough about the class to predict the result.
-    bool isExact   = false;
-    bool isNonNull = false;
-
-    // Todo: exactness/nonnull from stack too
-    if (knownClass == nullptr)
-    {
-        knownClass = gtGetClassHandle(op1, &isExact, &isNonNull);
-    }
-
-    if (knownClass != nullptr)
-    {
-        printf("\n### M op %s kind %s have A want B", 
-            // info.compFullName,
-            GenTree::OpName(op1->OperGet()),
-            isCastClass ? "castclass" : "isinst"
-            // eeGetClassName(knownClass),
-            // eeGetClassName(targetClass)
-            );
-
-        // If either type is a shared type we can't tell if casting
-        // will succeed or fail.
-        DWORD knownClassFlags  = info.compCompHnd->getClassAttribs(knownClass);
-        DWORD targetClassFlags = info.compCompHnd->getClassAttribs(targetClass);
-
-        if (((knownClassFlags & CORINFO_FLG_SHAREDINST) == 0) && ((targetClassFlags & CORINFO_FLG_SHAREDINST) == 0))
-        {
-            // Check for downcast (subtype->supertype)
-            if (info.compCompHnd->canCast(knownClass, targetClass))
-            {
-                // target class is knownClass or some supertype
-                printf(" Yes\n");
-
-                // Result of cast is op1
-
-                return op1;
-            }
-            else if (info.compCompHnd->canCast(targetClass, knownClass))
-            {
-                // The cast can only succeed if targetClass is a proper subtype of knownClass.
-                //
-                // If knownClass is known exactly then the cast must fail.
-                // If knownClass is final and does not have variance then the cast must fail.
-                // Note array classes implicitly have variance.
-                const bool hasVariance = (knownClassFlags & CORINFO_FLG_VARIANCE) != 0;
-                const bool isArray     = (knownClassFlags & CORINFO_FLG_ARRAY) != 0;
-                const bool isFinal     = (knownClassFlags & CORINFO_FLG_FINAL) != 0;
-
-                if (isExact || (isFinal && !(hasVariance || isArray)))
-                {
-                    // Cast will fail, unless value is null. Either way the result
-                    // should be null.
-                    printf(" UpcastNo\n");
-                    JITDUMP("### %s Optimize castclass/isinst upcast -- fail (defer)\n");
-
-                    // Todo return null here
-                }
-                else
-                {
-                    printf(" UpcastMaybe\n");
-                }
-            }
-            else
-            {
-                // We don't know if the cast will succeed or fail, 
-                // since there are more cases to sort out
-                // Nullable
-                // ICastable
-                // Com
-                //
-                // Target class and known class are not related, cast must fail.
-                // Note such cases usually have upstream typeof test, we should
-                // look at optimizing those too.
-                printf(" UnrelatedMaybe\n");
-            }
-        }
-        else
-        {
-            printf(" SharedMaybe\n");
-        }
-    }
-    else
-    {
-        printf("\n### %s op %s kind %s have U want B NoInfoMaybe", 
-            // info.compFullName, 
-            "M",
-            GenTree::OpName(op1->OperGet()),
-            isCastClass ? "castclass" : "isinst",
-            "UNKNOWN"
-            // eeGetClassName(targetClass)
-            );
-    }
+    DWORD flags = 0;
 
     bool            expandInline = false;
     CorInfoHelpFunc helper       = info.compCompHnd->getCastingHelper(pResolvedToken, isCastClass);
@@ -9530,7 +9438,7 @@ GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
         {
             // Get the Class Handle abd class attributes for the type we are casting to
             //
-            DWORD flags = info.compCompHnd->getClassAttribs(pResolvedToken->hClass);
+            DWORD flags = info.compCompHnd->getClassAttribs(targetClass);
 
             //
             // If the class handle is marked as final we can also expand the IsInst check inline
@@ -9558,7 +9466,86 @@ GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
         }
     }
 
-    if (expandInline)
+
+    // See if we know enough about the class to predict the result.
+    bool isExact   = false;
+    bool isNonNull = false;
+
+    // Todo: exactness/nonnull from stack too
+    if (knownClass == nullptr)
+    {
+        knownClass = gtGetClassHandle(op1, &isExact, &isNonNull);
+    }
+
+    GenTreePtr optimizedTree = nullptr;
+
+    // The helper call check above has screened out tricky cases with
+    // nullables/variance/etc. So only do this if we can inline expand.
+    if (expandInline && (knownClass != nullptr))
+    {
+        printf("\n### M op %s kind %s have %s want %s", 
+            // info.compFullName,
+            GenTree::OpName(op1->OperGet()),
+            isCastClass ? "castclass" : "isinst",
+            eeGetClassName(knownClass),
+            eeGetClassName(targetClass)
+            );
+
+        DWORD knownClassFlags = info.compCompHnd->getClassAttribs(knownClass);
+
+        if (((knownClassFlags & CORINFO_FLG_SHAREDINST) == 0) && ((flags & CORINFO_FLG_SHAREDINST) == 0))
+        {
+            // Check for downcast (subtype->supertype)
+            // eg isinst X:string object --> yes
+            if (info.compCompHnd->canCast(knownClass, targetClass))
+            {
+                // target class is knownClass or some supertype
+                printf(" Yes\n");
+
+                // Result of cast is op1
+                optimizedTree = op1;
+            }
+            else if (info.compCompHnd->canCast(targetClass, knownClass))
+            {
+                // Cast is plausible, can't say if it will succeed or not.
+                // So evaluate at runtime.
+            }
+            else
+            {
+                // Cast is implausible and will fail
+                if (!isCastClass)
+                {
+                    printf(" IsInst Fail, optimizing....\n");
+                    optimizedTree = gtNewIconNode(0, TYP_REF);
+
+                    // If the object being tested came from a box, try
+                    // to clean up...
+                }
+                else
+                {
+                    printf(" Castclass Fail, deferring....\n");
+                }
+            }
+        }
+        else
+        {
+            // shared case... need runtime info
+        }
+    }
+    else
+    {
+        // jit doesn't have type info, so can't optimize
+        printf("\n### %s op %s kind %s have U want B NoInfoMaybe", 
+            // info.compFullName, 
+            "M",
+            GenTree::OpName(op1->OperGet()),
+            isCastClass ? "castclass" : "isinst",
+            "UNKNOWN"
+            // eeGetClassName(targetClass)
+            );
+    }
+
+    if (expandInline && (optimizedTree == nullptr))
     {
         if (compCurBB->isRunRarely())
         {
@@ -9581,7 +9568,14 @@ GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
         return gtNewHelperCallNode(helper, TYP_REF, 0, gtNewArgList(op2, op1));
     }
 
+    // We're going to generate an inline sequence. Flush out any pending side
+    // effects.
     impSpillSideEffects(true, CHECK_SPILL_ALL DEBUGARG("bubbling QMark2"));
+
+    if (optimizedTree != nullptr)
+    {
+        return optimizedTree;
+    }
 
     GenTreePtr temp;
     GenTreePtr condMT;
