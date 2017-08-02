@@ -76,7 +76,7 @@ void Compiler::impInit()
  *  Pushes the given tree on the stack.
  */
 
-void Compiler::impPushOnStack(GenTreePtr tree, typeInfo ti)
+void Compiler::impPushOnStack(GenTreePtr tree, typeInfo ti, NullState ns, bool isExactType)
 {
     /* Check for overflow. If inlining, we may be using a bigger stack */
 
@@ -132,8 +132,12 @@ void Compiler::impPushOnStack(GenTreePtr tree, typeInfo ti)
 
 #endif // DEBUG
 
-    verCurrentState.esStack[verCurrentState.esStackDepth].seTypeInfo = ti;
-    verCurrentState.esStack[verCurrentState.esStackDepth++].val      = tree;
+    StackEntry& currentEntry = verCurrentState.esStack[verCurrentState.esStackDepth++];
+
+    currentEntry.seTypeInfo = ti;
+    currentEntry.val = tree;
+    currentEntry.nullState = ns;
+    currentEntry.isExactType = isExactType;
 
     if ((tree->gtType == TYP_LONG) && (compLongUsed == false))
     {
@@ -147,7 +151,7 @@ void Compiler::impPushOnStack(GenTreePtr tree, typeInfo ti)
 
 inline void Compiler::impPushNullObjRefOnStack()
 {
-    impPushOnStack(gtNewIconNode(0, TYP_REF), typeInfo(TI_NULL));
+    impPushOnStack(gtNewIconNode(0, TYP_REF), typeInfo(TI_NULL), NS_NULL);
 }
 
 // This method gets called when we run into unverifiable code
@@ -5182,19 +5186,31 @@ GenTreePtr Compiler::impImportLdvirtftn(GenTreePtr              thisPtr,
     return gtNewHelperCallNode(CORINFO_HELP_VIRTUAL_FUNC_PTR, TYP_I_IMPL, GTF_EXCEPT, helpArgs);
 }
 
-/*****************************************************************************
- *
- *  Build and import a box node
- */
+//------------------------------------------------------------------------
+// impImportAndPushBox: build and import a value-type box
+//
+// Arguments:
+//   pResolvedToken - resolved token from the box operation
+//
+// Return Value:
+//   None. 
+//
+// Side Effects:
+//   The value to be boxed is popped from the stack, and a tree for
+//   the boxed value is pushed. This method may create upstream
+//   statements, spill side effecting trees, and create new temps.
+//  
+// Notes:
+//   Boxing of ref classes results in the same value as the value on
+//   the top of the stack, so is handled inline in impImportBlockCode
+//   for the CEE_BOX case. Only value type boxes make it here.
+//
+//   Boxing for non-nullable types is done via a helper call; boxing
+//   of other value types is expanded inline or handled via helper
+//   call, depending on the jit's codegen mode.
 
 void Compiler::impImportAndPushBox(CORINFO_RESOLVED_TOKEN* pResolvedToken)
 {
-    // Get the tree for the type handle for the boxed object.  In the case
-    // of shared generic code or ngen'd code this might be an embedded
-    // computation.
-    // Note we can only box do it if the class construtor has been called
-    // We can always do it on primitive types
-
     GenTreePtr op1 = nullptr;
     GenTreePtr op2 = nullptr;
     var_types  lclTyp;
@@ -5341,7 +5357,17 @@ void Compiler::impImportAndPushBox(CORINFO_RESOLVED_TOKEN* pResolvedToken)
     /* Push the result back on the stack, */
     /* even if clsHnd is a value class we want the TI_REF */
     typeInfo tiRetVal = typeInfo(TI_REF, info.compCompHnd->getTypeForBox(pResolvedToken->hClass));
-    impPushOnStack(op1, tiRetVal);
+
+#ifdef DEBUG
+    if (verbose)
+    {
+        printf("Box produced this tree\n");
+        gtDispTree(op1);
+    }
+#endif
+
+    // Result is not null, and type handle is exact ??? if the type is a value type
+    impPushOnStack(op1, tiRetVal, NS_NONNULL, true);
 }
 
 //------------------------------------------------------------------------
@@ -5484,7 +5510,8 @@ void Compiler::impImportNewObjArray(CORINFO_RESOLVED_TOKEN* pResolvedToken, CORI
     // Remember that this basic block contains 'new' of a md array
     compCurBB->bbFlags |= BBF_HAS_NEWARRAY;
 
-    impPushOnStack(node, typeInfo(TI_REF, pResolvedToken->hClass));
+    // Result is non null and type is exact
+    impPushOnStack(node, typeInfo(TI_REF, pResolvedToken->hClass), NS_NONNULL, true);
 }
 
 GenTreePtr Compiler::impTransformThis(GenTreePtr              thisPtr,
@@ -14373,6 +14400,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 // stack changes (in generic code a 'T' becomes a 'boxed T')
                 if (!eeIsValueClass(resolvedToken.hClass))
                 {
+                    JITDUMP("optimizing box (ref type) -- nop\n");
                     verCurrentState.esStack[verCurrentState.esStackDepth - 1].seTypeInfo = tiRetVal;
                     break;
                 }

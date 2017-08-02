@@ -2889,7 +2889,7 @@ protected:
 
     void impResolveToken(const BYTE* addr, CORINFO_RESOLVED_TOKEN* pResolvedToken, CorInfoTokenKind kind);
 
-    void impPushOnStack(GenTreePtr tree, typeInfo ti);
+    void impPushOnStack(GenTreePtr tree, typeInfo ti, NullState nullState = NS_UNKNOWN, bool isExactType = false);
     void        impPushNullObjRefOnStack();
     StackEntry  impPopStack();
     StackEntry& impStackTop(unsigned n = 0);

@@ -119,11 +119,21 @@ struct BBswtDesc
     }
 };
 
+enum NullState
+{
+    NS_UNKNOWN,   // not applicable or state unknown
+    NS_NULL,      // value is null
+    NS_NONNULL    // value is not null
+};
+
 struct StackEntry
 {
     GenTree* val;
     typeInfo seTypeInfo;
+    NullState nullState; // null/non-null/not sure
+    bool isExactType : 1;    // type handle represents exact type
 };
+
 /*****************************************************************************/
 
 enum ThisInitState

@@ -6511,6 +6511,14 @@ int jitNativeCode(CORINFO_METHOD_HANDLE methodHnd,
     //
     InlineInfo* inlineInfo = (InlineInfo*)inlineInfoPtr;
 
+    static bool first = true;
+    if (first)
+    {
+        fprintf(stderr, "***** sizeof(StackEntry) = %d, sizeof(typeInfo) = %d\n",
+            sizeof(StackEntry), sizeof(typeInfo));
+        first = false;
+    }
+
     bool jitFallbackCompile = false;
 START:
     int result = CORJIT_INTERNALERROR;
