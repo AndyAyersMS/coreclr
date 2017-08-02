@@ -9422,7 +9422,7 @@ GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
     assert(op1->TypeGet() == TYP_REF);
 
     CORINFO_CLASS_HANDLE targetClass = pResolvedToken->hClass;
-    DWORD flags = 0;
+    DWORD                flags       = 0;
 
     bool            expandInline = false;
     CorInfoHelpFunc helper       = info.compCompHnd->getCastingHelper(pResolvedToken, isCastClass);
@@ -9466,7 +9466,6 @@ GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
         }
     }
 
-
     // See if we know enough about the class to predict the result.
     bool isExact   = false;
     bool isNonNull = false;
@@ -9483,66 +9482,72 @@ GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
     // nullables/variance/etc. So only do this if we can inline expand.
     if (expandInline && (knownClass != nullptr))
     {
-        printf("\n### M op %s kind %s have %s want %s", 
-            // info.compFullName,
-            GenTree::OpName(op1->OperGet()),
-            isCastClass ? "castclass" : "isinst",
-            eeGetClassName(knownClass),
-            eeGetClassName(targetClass)
-            );
+        printf("\n### M op %s kind %s have %s want %s",
+               // info.compFullName,
+               GenTree::OpName(op1->OperGet()), isCastClass ? "castclass" : "isinst", eeGetClassName(knownClass),
+               eeGetClassName(targetClass));
 
         DWORD knownClassFlags = info.compCompHnd->getClassAttribs(knownClass);
 
-        if (((knownClassFlags & CORINFO_FLG_SHAREDINST) == 0) && ((flags & CORINFO_FLG_SHAREDINST) == 0))
+        if (((knownClassFlags & CORINFO_FLG_SHAREDINST) != 0) || ((flags & CORINFO_FLG_SHAREDINST) != 0))
         {
-            // Check for downcast (subtype->supertype)
-            // eg isinst X:string object --> yes
-            if (info.compCompHnd->canCast(knownClass, targetClass))
-            {
-                // target class is knownClass or some supertype
-                printf(" Yes\n");
+            printf(" NO, have shared types\n");
+        }
+        else if (info.compCompHnd->canCast(knownClass, targetClass))
+        {
+            // target class is knownClass or some supertype
+            printf(" Optimizing SUCCESS, same type or downcast\n");
 
-                // Result of cast is op1
-                optimizedTree = op1;
-            }
-            else if (info.compCompHnd->canCast(targetClass, knownClass))
+            // Result of cast is op1
+            optimizedTree = op1;
+        }
+        // Check for exactness
+        else if (isExact && (knownClass != targetClass))
+        {
+            // target class is knownClass or some supertype
+            printf(" Optimizing FAILURE, upcast from exact ...");
+
+            // Cast is will fail
+            if (!isCastClass)
             {
-                // Cast is plausible, can't say if it will succeed or not.
-                // So evaluate at runtime.
+                optimizedTree = gtNewIconNode(0, TYP_REF);
             }
             else
             {
-                // Cast is implausible and will fail
-                if (!isCastClass)
-                {
-                    printf(" IsInst Fail, optimizing....\n");
-                    optimizedTree = gtNewIconNode(0, TYP_REF);
-
-                    // If the object being tested came from a box, try
-                    // to clean up...
-                }
-                else
-                {
-                    printf(" Castclass Fail, deferring....\n");
-                }
+                // This now must throw. Punt.
+                printf(" --- deferring....\n");
             }
         }
+        // Check if it's at least a supertype
+        else if (info.compCompHnd->canCast(targetClass, knownClass))
+        {
+            // Cast is plausible, can't say if it will succeed or
+            // not.  So must evaluate at runtime.
+            printf(" NO, have supertype\n");
+        }
+        // Types are unrelated, cast will fail
         else
         {
-            // shared case... need runtime info
+            printf(" Optimizing FAILURE, unrelated types ...");
+            // Cast is implausible and will fail
+            if (!isCastClass)
+            {
+                optimizedTree = gtNewIconNode(0, TYP_REF);
+            }
+            else
+            {
+                // This now must throw. Punt.
+                printf(" --- deferring....\n");
+            }
         }
     }
     else
     {
         // jit doesn't have type info, so can't optimize
-        printf("\n### %s op %s kind %s have U want B NoInfoMaybe", 
-            // info.compFullName, 
-            "M",
-            GenTree::OpName(op1->OperGet()),
-            isCastClass ? "castclass" : "isinst",
-            "UNKNOWN"
-            // eeGetClassName(targetClass)
-            );
+        printf("\n### %s op %s kind %s have %s want %s NO, source type unknown",
+               // info.compFullName,
+               "M", GenTree::OpName(op1->OperGet()), isCastClass ? "castclass" : "isinst", "UNKNOWN",
+               eeGetClassName(targetClass));
     }
 
     if (expandInline && (optimizedTree == nullptr))
@@ -9574,6 +9579,15 @@ GenTreePtr Compiler::impCastClassOrIsInstToTree(GenTreePtr              op1,
 
     if (optimizedTree != nullptr)
     {
+        JITDUMP("Optimizing %s\n", isCastClass ? "castclass" : "isinst");
+
+        // If we were casting a value type box just to test its type,
+        // we may be able to clean up further.
+        if ((optimizedTree != op1) && op1->IsBoxedValue())
+        {
+            gtTryRemoveBoxUpstreamEffects(op1);
+        }
+
         return optimizedTree;
     }
 
