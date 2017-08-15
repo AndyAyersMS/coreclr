@@ -141,6 +141,9 @@ struct EntryState
     ThisInitState thisInitialized; // used to track whether the this ptr is initialized.
     unsigned      esStackDepth;    // size of esStack
     StackEntry*   esStack;         // ptr to  stack
+    unsigned      esEntryStackDepth;
+    unsigned      esMinStackDepth;
+    unsigned      esFinalStackDepth;
 };
 
 // Enumeration of the kinds of memory whose state changes the compiler tracks

@@ -301,7 +301,10 @@ StackEntry Compiler::impPopStack()
 #endif // VERBOSE_VERIFY
 #endif // DEBUG
 
-    return verCurrentState.esStack[--verCurrentState.esStackDepth];
+    // Update min depth
+    unsigned int newDepth = --verCurrentState.esStackDepth;
+    verCurrentState.esMinStackDepth = min(verCurrentState.esMinStackDepth, newDepth);
+    return verCurrentState.esStack[newDepth];
 }
 
 /*****************************************************************************
@@ -2264,6 +2267,7 @@ inline void Compiler::impEvalSideEffects()
 {
     impSpillSideEffects(false, (unsigned)CHECK_SPILL_ALL DEBUGARG("impEvalSideEffects"));
     verCurrentState.esStackDepth = 0;
+    verCurrentState.esMinStackDepth = 0;
 }
 
 /*****************************************************************************
@@ -8450,6 +8454,7 @@ void Compiler::impImportLeave(BasicBlock* block)
 
     impSpillSideEffects(true, (unsigned)CHECK_SPILL_ALL DEBUGARG("impImportLeave"));
     verCurrentState.esStackDepth = 0;
+    verCurrentState.esMinStackDepth = 0;
 
     assert(block->bbJumpKind == BBJ_LEAVE);
     assert(fgBBs == (BasicBlock**)0xCDCD || fgLookupBB(jmpAddr) != NULL); // should be a BB boundary
@@ -8712,6 +8717,7 @@ void Compiler::impImportLeave(BasicBlock* block)
 
     impSpillSideEffects(true, (unsigned)CHECK_SPILL_ALL DEBUGARG("impImportLeave"));
     verCurrentState.esStackDepth = 0;
+    verCurrentState.esMinStackDepth = 0;
 
     assert(block->bbJumpKind == BBJ_LEAVE);
     assert(fgBBs == (BasicBlock**)0xCDCD || fgLookupBB(jmpAddr) != nullptr); // should be a BB boundary
@@ -15745,6 +15751,7 @@ void Compiler::impVerifyEHBlock(BasicBlock* block, bool isTryStart)
             //   the Exception Object that we are dealing with
             //
             verCurrentState.esStackDepth = 0;
+            verCurrentState.esMinStackDepth = 0;
 
             if (handlerGetsXcptnObj(hndBegBB->bbCatchTyp))
             {
@@ -15785,6 +15792,7 @@ void Compiler::impVerifyEHBlock(BasicBlock* block, bool isTryStart)
                    */
 
                 verCurrentState.esStackDepth = 0;
+                verCurrentState.esMinStackDepth = 0;
 
                 BasicBlock* filterBB = HBtab->ebdFilter;
 
@@ -15801,6 +15809,7 @@ void Compiler::impVerifyEHBlock(BasicBlock* block, bool isTryStart)
             /* Recursively process the handler block */
 
             verCurrentState.esStackDepth = 0;
+            verCurrentState.esMinStackDepth = 0;
 
             // Queue up the fault handler for importing
             //
@@ -16693,6 +16702,9 @@ unsigned Compiler::impGetSpillTmpBase(BasicBlock* block)
     unsigned baseTmp = lvaGrabTemps(verCurrentState.esStackDepth DEBUGARG("IL Stack Entries"));
     SetSpillTempsBase callback(baseTmp);
 
+    // block,depth,min
+    fprintf(stderr, "BB%02u,%u,%u\n", block->bbNum, verCurrentState.esStackDepth, verCurrentState.esMinStackDepth);
+
     // We do *NOT* need to reset the SpillClique*Members because a block can only be the predecessor
     // to one spill clique, and similarly can only be the sucessor to one spill clique
     impWalkSpillCliqueFromPred(block, &callback);
@@ -16738,6 +16750,8 @@ void Compiler::verInitBBEntryState(BasicBlock* block, EntryState* srcState)
 
     block->bbEntryState->esStackDepth    = srcState->esStackDepth;
     block->bbEntryState->thisInitialized = TIS_Bottom;
+    block->bbEntryState->esEntryStackDepth = srcState->esStackDepth;
+    block->bbEntryState->esMinStackDepth = srcState->esStackDepth;
 
     if (srcState->esStackDepth > 0)
     {
@@ -16780,11 +16794,13 @@ void Compiler::verResetCurrentState(BasicBlock* block, EntryState* destState)
     if (block->bbEntryState == nullptr)
     {
         destState->esStackDepth    = 0;
+        destState->esMinStackDepth = 0;
         destState->thisInitialized = TIS_Bottom;
         return;
     }
 
     destState->esStackDepth = block->bbEntryState->esStackDepth;
+    destState->esMinStackDepth = block->bbEntryState->esStackDepth;
 
     if (destState->esStackDepth > 0)
     {
@@ -16839,6 +16855,7 @@ void Compiler::verInitCurrentState()
     // initialize stack info
 
     verCurrentState.esStackDepth = 0;
+    verCurrentState.esMinStackDepth = 0;
     assert(verCurrentState.esStack != nullptr);
 
     // copy current state to entry state of first BB
@@ -17027,6 +17044,30 @@ void Compiler::impImport(BasicBlock* method)
     {
         block->bbFlags &= ~BBF_VISITED;
     }
+
+    // Look for blocks where min stack depth > 0
+    //
+    // Note we get "savings" in merge temps at a join only when
+    // all preds have the same amount of pass-through stack.
+    //bool foundOne = false;
+    //for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
+    //{
+    //    if (!foundOne)
+    //    {
+    //        fprintf(stderr, "*** Blocks in %s\n", info.compFullName);
+    //        foundOne = true;
+    //    }
+
+    //    EntryState* es = block->bbEntryState;
+    //    if (es != nullptr)
+    //    {
+    //        fprintf(stderr, "BB%02u,%u,%u,%u\n", block->bbNum, block->bbCodeOffs, es->esStackDepth, es->esMinStackDepth);
+    //    }
+    //    else
+    //    {
+    //        fprintf(stderr, "BB%02u,%u,%u,%u\n", block->bbNum, block->bbCodeOffs, 0, 0);
+    //    }
+    //}
 #endif
 
     assert(!compIsForInlining() || !tiVerificationNeeded);
