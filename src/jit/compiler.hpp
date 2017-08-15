@@ -878,6 +878,7 @@ void* GenTree::operator new(size_t sz, Compiler* comp, genTreeOps oper)
 // GenTree constructor
 inline GenTree::GenTree(genTreeOps oper, var_types type DEBUGARG(bool largeNode))
 {
+    if (JitTls::GetCompiler()->chatty) printf("New tree %p with op %u\n", this, oper);
     gtOper     = oper;
     gtType     = type;
     gtFlags    = 0;
@@ -1688,6 +1689,11 @@ inline unsigned Compiler::lvaGrabTemp(bool shortLifetime DEBUGARG(const char* re
         printf(")%s called for %s.\n", shortLifetime ? "" : " (a long lifetime temp)", reason);
     }
 #endif // DEBUG
+
+    if (chatty)
+    {
+        printf("AHA %u!\n", lvaCount);
+    }
 
     return tempNum;
 }
@@ -4581,6 +4587,101 @@ inline bool Compiler::lvaIsGCTracked(const LclVarDsc* varDsc)
 
 inline void Compiler::EndPhase(Phases phase)
 {
+    // Dump some info
+
+    if (true)
+    {
+        const char* name = eeGetMethodFullName(info.compMethodHnd);
+        fprintf(stderr, "### %s;%u;", name, phase);
+
+        unsigned blockCount = 0;
+        unsigned stmtCount = 0;
+        unsigned treeCount = 0;
+
+        for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
+        {
+            blockCount++;
+            if (block->IsLIR())
+            {
+                for (GenTree* node : LIR::AsRange(block))
+                {
+                    treeCount++;
+                }
+            }
+            else
+            {
+                for (GenTreePtr stmt = block->firstStmt(); stmt != nullptr; stmt = stmt->gtNext)
+                {
+                    stmtCount++;
+                    for (GenTreePtr tree = stmt->gtStmt.gtStmtList; tree; tree = tree->gtNext)
+                    {
+                        treeCount++;
+                    }
+                }
+            }
+        }
+
+        fprintf(stderr, "%s;%u;%u;%u;%u\n",
+            PhaseNames[phase], blockCount, stmtCount, treeCount, lvaCount);
+    }
+
+    if (chatty)
+    {
+        printf("\n***** locals ****\n");
+        for (unsigned lclNum = 0; lclNum < lvaCount; lclNum++)
+        {
+            LclVarDsc* varDsc = lvaTable + lclNum;
+            printf("L%02u", lclNum);
+            printf(" (%3u)", varDsc->lvRefCnt);
+
+            if (varDsc->lvIsMultiRegArg)
+            {
+                printf(" multireg-arg");
+            }
+            if (varDsc->lvIsMultiRegRet)
+            {
+                printf(" multireg-ret");
+            }
+            if (varDsc->lvMustInit)
+            {
+                printf(" must-init");
+            }
+            if (varDsc->lvAddrExposed)
+            {
+                printf(" addr-exposed");
+            }
+            if (varDsc->lvHasLdAddrOp)
+            {
+                printf(" ld-addr-op");
+            }
+            if (varDsc->lvVerTypeInfo.IsThisPtr())
+            {
+                printf(" this");
+            }
+            if (varDsc->lvPinned)
+            {
+                printf(" pinned");
+            }
+            if (varDsc->lvRefAssign)
+            {
+                printf(" ref-asgn");
+            }
+            if (varDsc->lvStackByref)
+            {
+                printf(" stack-byref");
+            }
+            if (varDsc->lvClassHnd != nullptr)
+            {
+                printf(" class-hnd");
+            }
+            if (varDsc->lvClassIsExact)
+            {
+                printf(" exact");
+            }
+            printf("\n");
+        }
+    }
+
 #if defined(FEATURE_JIT_METHOD_PERF)
     if (pCompJitTimer != nullptr)
     {

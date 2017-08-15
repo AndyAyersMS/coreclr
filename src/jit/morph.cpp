@@ -813,13 +813,13 @@ unsigned UpdateGT_LISTFlags(GenTreePtr tree)
     return tree->gtFlags;
 }
 
-#ifdef DEBUG
+//#ifdef DEBUG
 void fgArgTabEntry::Dump()
 {
-    printf("fgArgTabEntry[arg %u", argNum);
+    printf("-- fgArgTabEntry %p [arg %u", this, argNum);
     if (regNum != REG_STK)
     {
-        printf(", %s, regs=%u", getRegName(regNum), numRegs);
+        printf(", %s, regs=%u", "REG", numRegs);
     }
     if (numSlots > 0)
     {
@@ -862,9 +862,9 @@ void fgArgTabEntry::Dump()
     {
         printf(", isNonStandard");
     }
-    printf("]\n");
+    printf(" node %p flags 0x%08X]\n", node, node == nullptr ? -1 : node->gtFlags);
 }
-#endif
+//#endif
 
 fgArgInfo::fgArgInfo(Compiler* comp, GenTreeCall* call, unsigned numArgs)
 {
@@ -915,6 +915,9 @@ fgArgInfo::fgArgInfo(GenTreeCall* newCall, GenTreeCall* oldCall)
     fgArgInfoPtr oldArgInfo = oldCall->gtCall.fgArgInfo;
 
     compiler    = oldArgInfo->compiler;
+
+    if (compiler->chatty) printf("--- Copying arg info ----\n");
+
     callTree    = newCall;
     argCount    = 0; // filled in arg count, starts at zero
     nextSlotNum = INIT_ARG_STACK_SLOT;
@@ -1099,6 +1102,9 @@ void fgArgInfo::AddArg(fgArgTabEntryPtr curArgTabEntry)
     assert(argCount < argTableSize);
     argTable[argCount] = curArgTabEntry;
     argCount++;
+
+    if (compiler->chatty) printf("-- AddArg: table %p index %u\n", argTable, argCount - 1);
+    if (compiler->chatty) curArgTabEntry->Dump();
 }
 
 fgArgTabEntryPtr fgArgInfo::AddRegArg(
@@ -1478,6 +1484,7 @@ void fgArgInfo::ArgsComplete()
 #endif                                   // FEATURE_FIXED_OUT_ARGS
                 )
             {
+                if (compiler->chatty) printf("-- setting needTmp 1 on %p\n", curArgTabEntry);
                 curArgTabEntry->needTmp = true;
             }
 
@@ -1491,6 +1498,7 @@ void fgArgInfo::ArgsComplete()
                 assert(prevArgTabEntry->node);
                 if (prevArgTabEntry->node->gtOper != GT_CNS_INT)
                 {
+                    if (compiler->chatty) printf("-- setting needTmp 2 on %p\n", prevArgTabEntry);
                     prevArgTabEntry->needTmp = true;
                 }
             }
@@ -1516,6 +1524,7 @@ void fgArgInfo::ArgsComplete()
 
                 if (argTable[otherInx]->regNum == REG_STK)
                 {
+                    if (compiler->chatty) printf("-- setting CALL FLAG for index (DBG codegen) %u\n", otherInx);
                     argx->gtFlags |= GTF_CALL;
                     break;
                 }
@@ -1535,25 +1544,41 @@ void fgArgInfo::ArgsComplete()
         {
             if (argCount > 1) // If this is not the only argument
             {
+                if (compiler->chatty) printf("-- setting needTmp 3 on %p (ac=%d)\n", curArgTabEntry, argCount);
                 curArgTabEntry->needTmp = true;
             }
             else if (varTypeIsFloating(argx->TypeGet()) && (argx->OperGet() == GT_CALL))
             {
                 // Spill all arguments that are floating point calls
+                if (compiler->chatty) printf("-- setting needTmp 4 on %p\n", curArgTabEntry);
                 curArgTabEntry->needTmp = true;
             }
+            else
+            {
+                if (compiler->chatty) printf("-- NOT setting needTmp 3 on %p (ac=%d)\n", curArgTabEntry, argCount);
+            }
+
+            if (compiler->chatty) printf("-- contemplating setting needTmp 5, have %u args to check\n", curInx);
 
             // All previous arguments may need to be evaluated into temps
             for (unsigned prevInx = 0; prevInx < curInx; prevInx++)
             {
+                if (compiler->chatty) printf("-- contemplating prev arg %u\n", prevInx);
+
                 fgArgTabEntryPtr prevArgTabEntry = argTable[prevInx];
                 assert(prevArgTabEntry->argNum < curArgTabEntry->argNum);
                 assert(prevArgTabEntry->node);
 
                 // For all previous arguments, if they have any GTF_ALL_EFFECT
                 //  we require that they be evaluated into a temp
+                if ((prevArgTabEntry->node->gtFlags & GTF_ALL_EFFECT) == 0)
+                {
+                    if (compiler->chatty) printf("-- NOT setting needTmp 5 on %p, no flag\n", prevArgTabEntry);
+                }
+
                 if ((prevArgTabEntry->node->gtFlags & GTF_ALL_EFFECT) != 0)
                 {
+                    if (compiler->chatty) printf("-- setting needTmp 5 on %p\n", prevArgTabEntry);
                     prevArgTabEntry->needTmp = true;
                 }
 #if FEATURE_FIXED_OUT_ARGS
@@ -1573,6 +1598,10 @@ void fgArgInfo::ArgsComplete()
 #endif
             }
         }
+        else
+        {
+            if (compiler->chatty) printf("-- NOT considering needTmp 3 on %p (no call flag)\n", curArgTabEntry);
+        }
 
 #ifndef LEGACY_BACKEND
 #if FEATURE_MULTIREG_ARGS
@@ -1591,6 +1620,7 @@ void fgArgInfo::ArgsComplete()
             if (isMultiRegArg && ((argx->gtFlags & GTF_PERSISTENT_SIDE_EFFECTS) != 0))
             {
                 // Spill multireg struct arguments that have Assignments or Calls embedded in them
+                if (compiler->chatty) printf("-- setting needTmp 6 on %p\n", curArgTabEntry);
                 curArgTabEntry->needTmp = true;
             }
             else
@@ -1601,6 +1631,7 @@ void fgArgInfo::ArgsComplete()
                 if (isMultiRegArg && (argx->gtCostEx > (6 * IND_COST_EX)))
                 {
                     // Spill multireg struct arguments that are expensive to evaluate twice
+                    if (compiler->chatty) printf("-- setting needTmp 7 on %p\n", curArgTabEntry);
                     curArgTabEntry->needTmp = true;
                 }
 #ifndef _TARGET_ARM_
@@ -1625,6 +1656,7 @@ void fgArgInfo::ArgsComplete()
                                 // If we don't have a LclVar we need to read exactly 3,5,6 or 7 bytes
                                 // For now we use a a GT_CPBLK to copy the exact size into a GT_LCL_VAR temp.
                                 //
+                                if (compiler->chatty) printf("-- setting needTmp 8 on %p\n", curArgTabEntry);
                                 curArgTabEntry->needTmp = true;
                             }
                             break;
@@ -1641,6 +1673,7 @@ void fgArgInfo::ArgsComplete()
                             // Then we can just load all 16 bytes of the GT_LCL_VAR temp when passing
                             // the argument.
                             //
+                            if (compiler->chatty) printf("-- setting needTmp 9 on %p\n", curArgTabEntry);
                             curArgTabEntry->needTmp = true;
                             break;
 
@@ -1705,6 +1738,7 @@ void fgArgInfo::ArgsComplete()
                     //
                     if (argx->gtFlags & GTF_EXCEPT)
                     {
+                        if (compiler->chatty) printf("-- setting needTmp 10 on %p\n", curArgTabEntry);
                         curArgTabEntry->needTmp = true;
                         continue;
                     }
@@ -1719,6 +1753,7 @@ void fgArgInfo::ArgsComplete()
                         //
                         if (compiler->fgWalkTreePre(&argx, Compiler::fgChkLocAllocCB) == Compiler::WALK_ABORT)
                         {
+                            if (compiler->chatty) printf("-- setting needTmp 11 on %p\n", curArgTabEntry);
                             curArgTabEntry->needTmp = true;
                             continue;
                         }
@@ -1731,6 +1766,7 @@ void fgArgInfo::ArgsComplete()
                     //
                     if (compiler->fgWalkTreePre(&argx, Compiler::fgChkQmarkCB) == Compiler::WALK_ABORT)
                     {
+                        if (compiler->chatty) printf("-- setting needTmp 12 on %p\n", curArgTabEntry);
                         curArgTabEntry->needTmp = true;
                         continue;
                     }
@@ -1752,6 +1788,8 @@ void fgArgInfo::SortArgs()
         printf("\nSorting the arguments:\n");
     }
 #endif
+
+    if (compiler->chatty) printf("sorting call args\n");
 
     /* Shuffle the arguments around before we build the gtCallLateArgs list.
        The idea is to move all "simple" arguments like constants and local vars
@@ -1812,6 +1850,7 @@ void fgArgInfo::SortArgs()
                 //
                 if (curInx != endTab)
                 {
+                    if (compiler->chatty) printf("moving constant %p from %u to %u\n", curArgTabEntry, curInx, endTab);
                     argTable[curInx] = argTable[endTab];
                     argTable[endTab] = curArgTabEntry;
                 }
@@ -1849,6 +1888,8 @@ void fgArgInfo::SortArgs()
                     {
                         argTable[curInx] = argTable[begTab];
                         argTable[begTab] = curArgTabEntry;
+
+                        if (compiler->chatty) printf("moving call %p to from %u to %u\n", curArgTabEntry, curInx, begTab);
                     }
 
                     begTab++;
@@ -1885,6 +1926,8 @@ void fgArgInfo::SortArgs()
                     {
                         argTable[curInx] = argTable[begTab];
                         argTable[begTab] = curArgTabEntry;
+
+                        if (compiler->chatty) printf("moving temp %p from %u to %u\n", curArgTabEntry, curInx, begTab);
                     }
 
                     begTab++;
@@ -1925,6 +1968,8 @@ void fgArgInfo::SortArgs()
                     {
                         argTable[curInx] = argTable[endTab];
                         argTable[endTab] = curArgTabEntry;
+
+                        if (compiler->chatty) printf("moving local %p to from %u to %u\n", curArgTabEntry, curInx, endTab);
                     }
 
                     endTab--;
@@ -1955,6 +2000,7 @@ void fgArgInfo::SortArgs()
             //
             if (!curArgTabEntry->processed)
             {
+                if (compiler->chatty) printf("haven't yet moved moving local %p...\n", curArgTabEntry);
                 GenTreePtr argx = curArgTabEntry->node;
 
                 // We should have already handled these kinds of args
@@ -2004,6 +2050,8 @@ void fgArgInfo::SortArgs()
         {
             argTable[expensiveArg] = argTable[begTab];
             argTable[begTab]       = expensiveArgTabEntry;
+
+            if (compiler->chatty) printf("moving expensive %p to from %u to %u\n", expensiveArgTabEntry, expensiveArg, begTab);
         }
 
         begTab++;
@@ -2167,12 +2215,17 @@ void fgArgInfo::EvalArgsToTemps()
 {
     assert(argsSorted == true);
 
+    if (compiler->chatty) printf("--- EvalArgsToTemps\n");
+
     unsigned regArgInx = 0;
     // Now go through the argument table and perform the necessary evaluation into temps
     GenTreeArgList* tmpRegArgNext = nullptr;
     for (unsigned curInx = 0; curInx < argCount; curInx++)
     {
         fgArgTabEntryPtr curArgTabEntry = argTable[curInx];
+
+        if (compiler->chatty) printf("Index %u\n", curInx);
+        if (compiler->chatty) curArgTabEntry->Dump();
 
         GenTreePtr argx     = curArgTabEntry->node;
         GenTreePtr setupArg = nullptr;
@@ -4369,6 +4422,7 @@ GenTreeCall* Compiler::fgMorphArgs(GenTreeCall* call)
 
     if (call->gtCallArgs)
     {
+        if (chatty) printf("updating flags on call args\n");
         UpdateGT_LISTFlags(call->gtCallArgs);
     }
 
@@ -6196,6 +6250,7 @@ GenTreePtr Compiler::fgMorphStackArgForVarArgs(unsigned lclNum, var_types varTyp
         if (varDsc->lvAddrExposed)
         {
             tree->gtFlags |= GTF_GLOB_REF;
+            if (chatty) printf("Setting GLOB_REF 1 on %p, now 0x%08e\n", tree, tree->gtFlags);
         }
 
         return fgMorphTree(tree);
@@ -6221,6 +6276,7 @@ GenTreePtr Compiler::fgMorphLocalVar(GenTreePtr tree, bool forceRemorph)
     if (varDsc->lvAddrExposed)
     {
         tree->gtFlags |= GTF_GLOB_REF;
+        if (chatty) printf("Setting GLOB_REF 2 on local L%02u at %p, now 0x%08x\n", lclNum, tree, tree->gtFlags);
     }
 
 #ifdef _TARGET_X86_
@@ -7822,6 +7878,11 @@ GenTreePtr Compiler::fgAssignRecursiveCallArgToCallerParam(GenTreePtr       arg,
 
 GenTreePtr Compiler::fgMorphCall(GenTreeCall* call)
 {
+    if (chatty)
+    {
+        printf("---fgMorphCall\n");
+    }
+
     if (call->CanTailCall())
     {
         // It should either be an explicit (i.e. tail prefixed) or an implicit tail call
@@ -9061,6 +9122,8 @@ GenTreePtr Compiler::fgMorphOneAsgBlockOp(GenTreePtr tree)
 
             if (!fgIsIndirOfAddrOfLocal(dest))
             {
+                if (chatty) printf("Setting GLOB_REF 3 on %p\n", dest);
+                if (chatty) printf("Setting GLOB_REF 3 on %p\n", tree);
                 dest->gtFlags |= (GTF_EXCEPT | GTF_GLOB_REF | GTF_IND_TGTANYWHERE);
                 tree->gtFlags |= (GTF_EXCEPT | GTF_GLOB_REF | GTF_IND_TGTANYWHERE);
             }
@@ -9128,6 +9191,7 @@ GenTreePtr Compiler::fgMorphOneAsgBlockOp(GenTreePtr tree)
                 // Mark the GT_IND node so that we use the correct write barrier helper in case
                 // the field is a GC ref.
 
+                if (chatty) printf("Setting GLOB_REF 4 on %p\n", src);
                 src->gtFlags |= (GTF_EXCEPT | GTF_GLOB_REF | GTF_IND_TGTANYWHERE);
             }
         }
@@ -13215,6 +13279,8 @@ GenTreePtr Compiler::fgMorphSmpOp(GenTreePtr tree, MorphAddrContext* mac)
                 // is a local or clsVar, even if it has been address-exposed.
                 if (op1->OperGet() == GT_ADDR)
                 {
+
+                    if (chatty) printf("Setting GLOB_REF 5 on %p\n", tree);
                     tree->gtFlags |= (op1->gtGetOp1()->gtFlags & GTF_GLOB_REF);
                 }
                 break;
@@ -15051,6 +15117,8 @@ GenTreePtr Compiler::fgMorphTree(GenTreePtr tree, MorphAddrContext* mac)
     assert(tree);
     assert(tree->gtOper != GT_STMT);
 
+    if (chatty) printf("fgMorphTree %p flags 0x%08x\n", tree, tree->gtFlags);
+
 #ifdef DEBUG
     if (verbose)
     {
@@ -15943,6 +16011,7 @@ bool Compiler::fgMorphBlockStmt(BasicBlock* block, GenTreeStmt* stmt DEBUGARG(co
 
 void Compiler::fgMorphStmts(BasicBlock* block, bool* mult, bool* lnot, bool* loadw)
 {
+    if (chatty) printf("--- fgMorphStmts for BB%02u\n", block->bbNum);
     fgRemoveRestOfBlock = false;
 
     /* Make the current basic block address available globally */
@@ -18136,6 +18205,7 @@ void Compiler::fgRetypeImplicitByRefArgs()
             // cannot -- any uses of the struct parameter's address are uses of the pointer
             // parameter's value, and there's no way for the MSIL to reference the pointer
             // parameter's address.  So clear the address-taken bit for the parameter.
+            if (chatty) printf("AHEM: clearing address exposed on L%02u\n", lclNum);
             varDsc->lvAddrExposed     = 0;
             varDsc->lvDoNotEnregister = 0;
 
@@ -18149,6 +18219,7 @@ void Compiler::fgRetypeImplicitByRefArgs()
                 printf("Changing the lvType for struct parameter V%02d to TYP_BYREF.\n", lclNum);
             }
 #endif // DEBUG
+
         }
     }
 

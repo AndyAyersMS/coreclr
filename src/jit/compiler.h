@@ -1274,9 +1274,9 @@ struct fgArgTabEntry
     }
 #endif // !_TARGET_ARM_
 
-#ifdef DEBUG
+//#ifdef DEBUG
     void Dump();
-#endif
+//#endif
 };
 typedef struct fgArgTabEntry* fgArgTabEntryPtr;
 
@@ -1558,6 +1558,8 @@ class Compiler
 
 public:
     hashBvGlobalData hbvGlobalData; // Used by the hashBv bitvector package.
+
+    bool chatty;
 
 #ifdef DEBUG
     bool    verbose;

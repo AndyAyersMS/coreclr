@@ -10,6 +10,7 @@ class Phase
 {
 public:
     virtual void Run();
+    const char* Name() const { return name; }
 
 protected:
     Phase(Compiler* _comp, const char* _name, Phases _phase = PHASE_NUMBER_OF) : comp(_comp), name(_name), phase(_phase)

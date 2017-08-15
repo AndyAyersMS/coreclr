@@ -5204,6 +5204,11 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
 
     info.compFullName = eeGetMethodFullName(methodHnd);
 #endif // defined(DEBUG) || defined(LATE_DISASM)
+    
+    // const char* name = eeGetMethodFullName(info.compMethodHnd);
+    // const char* target = "Microsoft.Win32.OAVariantLib:ChangeType(struct,ref,short,ref):struct";
+    // chatty = strcmp(name, target) == 0;
+    chatty = false;
 
 #ifdef DEBUG
     if (!compIsForInlining())
