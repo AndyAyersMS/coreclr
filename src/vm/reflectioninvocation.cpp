@@ -2954,26 +2954,52 @@ FCIMPL2(FC_BOOL_RET, ReflectionEnum::InternalEquals, Object *pRefThis, Object* p
 }
 FCIMPLEND
 
-// preform (this & flags) != flags
-FCIMPL2(FC_BOOL_RET, ReflectionEnum::InternalHasFlag, Object *pRefThis, Object* pRefFlags)
+// perform (this & flags) != flags
+FCIMPL2(FC_BOOL_RET, ReflectionEnum::HasFlag, Object *pRefThis, Object* pRefFlags)
 {
-    FCALL_CONTRACT;
+    CONTRACTL {
+        FCALL_CHECK;
+    }
+    CONTRACTL_END;
 
     VALIDATEOBJECT(pRefThis);
+    VALIDATEOBJECT(pRefFlags);
+
+    if (pRefFlags == NULL)
+        FCThrowArgumentNull(W("flags"));
 
     BOOL cmp = false;
 
-    _ASSERTE(pRefFlags != NULL); // Enum.cs would have thrown ArgumentNullException before calling into InternalHasFlag
-
-    VALIDATEOBJECT(pRefFlags);
-
-    void * pThis = pRefThis->UnBox();
-    void * pFlags = pRefFlags->UnBox();
-
+    //Make sure we are comparing same type.
     MethodTable* pMTThis = pRefThis->GetMethodTable();
+    _ASSERTE(pMTThis->IsEnum());
 
-    _ASSERTE(!pMTThis->IsArray());  // bunch of assumptions about arrays wrong.
-    _ASSERTE(pMTThis->GetNumInstanceFieldBytes() == pRefFlags->GetMethodTable()->GetNumInstanceFieldBytes()); // Enum.cs verifies that the types are Equivalent
+    if (pMTThis != pRefFlags->GetMethodTable()) {
+
+        // Call back to managed side to throw exception.
+        struct _gc
+        {
+            OBJECTREF thisObj;
+            OBJECTREF flagsObj;
+        } gc;
+
+        gc.thisObj = ObjectToOBJECTREF(pRefThis);
+        gc.flagsObj = ObjectToOBJECTREF(pRefFlags);
+
+        HELPER_METHOD_FRAME_BEGIN_PROTECT(gc);
+        ARG_SLOT args[] =
+        {
+            ObjToArgSlot(gc.thisObj),
+            ObjToArgSlot(gc.flagsObj)
+        };
+
+        MethodDescCallSite throwError(METHOD__ENUM__THROW_TYPE_MISMATCH_ERROR);
+        throwError.Call(args);
+        HELPER_METHOD_FRAME_END();
+    }
+
+    void* pThis = pRefThis->UnBox();
+    void* pFlags = pRefFlags->UnBox();
 
     switch (pMTThis->GetNumInstanceFieldBytes()) {
     case 1:

@@ -81,7 +81,7 @@ FCFuncStart(gEnumFuncs)
     FCFuncElement("InternalBoxEnum", ReflectionEnum::InternalBoxEnum)
     FCFuncElement("Equals", ReflectionEnum::InternalEquals)
     FCFuncElement("InternalCompareTo", ReflectionEnum::InternalCompareTo)    
-    FCFuncElement("InternalHasFlag", ReflectionEnum::InternalHasFlag)
+    FCFuncElement("HasFlag", ReflectionEnum::HasFlag)
 FCFuncEnd()
 
 

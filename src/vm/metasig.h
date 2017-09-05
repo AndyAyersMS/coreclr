@@ -324,6 +324,7 @@ DEFINE_METASIG(SM(Obj_RetObj, j, j))
 DEFINE_METASIG(SM(Obj_RetArrByte, j, a(b)))
 DEFINE_METASIG(SM(Obj_Bool_RetArrByte, j F, a(b)))
 DEFINE_METASIG(SM(Obj_Obj_RefArrByte_RetArrByte, j j r(a(b)), a(b)))
+DEFINE_METASIG(SM(Obj_Obj_RetVoid, j j, v))
 
 #ifdef FEATURE_COMINTEROP
 DEFINE_METASIG_T(SM(Obj_Int_RefVariant_RetVoid, j i r(g(VARIANT)), v))

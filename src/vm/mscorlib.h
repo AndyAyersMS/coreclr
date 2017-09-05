@@ -345,6 +345,7 @@ DEFINE_FIELD(ENC_HELPER,            OBJECT_REFERENCE,       _objectReference)
 DEFINE_CLASS(ENCODING,              Text,                   Encoding)
 
 DEFINE_CLASS(ENUM,                  System,                 Enum)
+DEFINE_METHOD(ENUM,         THROW_TYPE_MISMATCH_ERROR, ThrowTypeMismatchError, SM_Obj_Obj_RetVoid)
 
 DEFINE_CLASS(ENVIRONMENT,           System,                 Environment)
 DEFINE_METHOD(ENVIRONMENT,       GET_RESOURCE_STRING_LOCAL, GetResourceStringLocal,     SM_Str_RetStr)
