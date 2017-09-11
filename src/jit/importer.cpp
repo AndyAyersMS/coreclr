@@ -14224,12 +14224,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 {
                     GenTreeArgList* helperArgs = gtNewArgList(op1);
 
-                    op1 = gtNewHelperCallNode(CORINFO_HELP_TYPEHANDLE_TO_RUNTIMETYPE_MAYBENULL, TYP_STRUCT, helperArgs);
-
-                    // The handle struct is returned in register
-                    op1->gtCall.gtReturnType = TYP_REF;
-
-                    tiRetVal = typeInfo(TI_STRUCT, impGetTypeHandleClass());
+                    op1 = gtNewHelperCallNode(CORINFO_HELP_TYPEHANDLE_TO_RUNTIMETYPE_MAYBENULL, TYP_REF, helperArgs);
+                    tiRetVal = typeInfo(TI_REF, impGetTypeHandleClass());
                 }
 
                 impPushOnStack(op1, tiRetVal);
@@ -14264,11 +14260,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 GenTreeArgList* helperArgs = gtNewArgList(op1);
 
-                op1 = gtNewHelperCallNode(helper, TYP_STRUCT, helperArgs);
-
-                // The handle struct is returned in register
-                op1->gtCall.gtReturnType = TYP_REF;
-
+                op1      = gtNewHelperCallNode(helper, TYP_REF, helperArgs);
                 tiRetVal = verMakeTypeInfo(tokenType);
                 impPushOnStack(op1, tiRetVal);
             }
