@@ -1955,6 +1955,14 @@ typedef SIZE_T GSCookie;
 
 const int MAX_EnC_HANDLER_NESTING_LEVEL = 6;
 
+// Results from type comparision queries
+enum class TypeCompareState
+{
+    MustNot = -1, // types are not equal
+    May = 0,      // types may be equal (must test at runtime)
+    Must = 1,     // type are equal
+};
+
 //
 // This interface is logically split into sections for each class of information 
 // (ICorMethodInfo, ICorModuleInfo, etc.). This split used to exist physically as well
@@ -2491,6 +2499,28 @@ public:
             CORINFO_CLASS_HANDLE        cls1,
             CORINFO_CLASS_HANDLE        cls2
             ) = 0;
+
+    // See if a cast from fromClass to toClass will succeed, fail, or needs
+    // to be resolved at runtime.
+    virtual TypeCompareState compareTypesForCast(
+            CORINFO_CLASS_HANDLE        fromClass,
+            CORINFO_CLASS_HANDLE        toClass
+            ) 
+        {
+            // stub for bringup
+            return TypeCompareState::May;
+        }
+
+    // See if types represented by cls1 and cls2 compare equal, not
+    // equal, or the comparison needs to be resolved at runtime.
+    virtual TypeCompareState compareTypesForEquality(
+            CORINFO_CLASS_HANDLE        cls1,
+            CORINFO_CLASS_HANDLE        cls2
+            )
+        {
+            // stub for bringup
+            return TypeCompareState::May;
+        }
 
     // returns is the intersection of cls1 and cls2.
     virtual CORINFO_CLASS_HANDLE mergeClasses(
