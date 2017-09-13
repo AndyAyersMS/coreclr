@@ -2015,6 +2015,7 @@ GenTreePtr Compiler::impRuntimeLookupToTree(CORINFO_RESOLVED_TOKEN* pResolvedTok
 
         unsigned slotLclNum = lvaGrabTemp(true DEBUGARG("impRuntimeLookup test"));
         impAssignTempGen(slotLclNum, slotPtrTree, NO_CLASS_HANDLE, (unsigned)CHECK_SPILL_ALL, nullptr, impCurStmtOffs);
+        lvSetIsRuntimeHandleLookup(slotLclNum);
 
         GenTree* slot = gtNewLclvNode(slotLclNum, TYP_I_IMPL);
         // downcast the pointer to a TYP_INT on 64-bit targets
@@ -2076,6 +2077,7 @@ GenTreePtr Compiler::impRuntimeLookupToTree(CORINFO_RESOLVED_TOKEN* pResolvedTok
     }
 
     impAssignTempGen(tmp, qmark, (unsigned)CHECK_SPILL_NONE);
+    lvSetIsRuntimeHandleLookup(tmp);
     return gtNewLclvNode(tmp, TYP_I_IMPL);
 }
 

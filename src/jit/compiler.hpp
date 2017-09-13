@@ -2645,6 +2645,21 @@ inline var_types Compiler::lvaGetRealType(unsigned lclNum)
     return lvaTable[lclNum].TypeGet();
 }
 
+inline void Compiler::lvaSetIsRuntimeHandleLookup(unsigned varNum)
+{
+    assert(varNum < lvaCount);
+    JITDUMP("Marking V%02u as holding a looked-up runtime handle\n", varNum);
+    LclVarDsc* varDsc = lvaTable + varNum;
+    varDsc->lvIsRuntimeHandleLookup = true;
+}
+
+inline bool Compiler::lvaIsRuntimeHandleLookup(unsigned varNum)
+{
+    assert(varNum < lvaCount);
+    LclVarDsc* varDsc = lvaTable + varNum;
+    return varDsc->lvIsRuntimeHandleLookup;
+}
+
 /*
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX

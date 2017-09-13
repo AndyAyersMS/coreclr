@@ -12051,12 +12051,25 @@ GenTreePtr Compiler::fgMorphSmpOp(GenTreePtr tree, MorphAddrContext* mac)
                     {
                         JITDUMP("Optimizing compare of types-from-handles to instead compare handles\n");
 
-                        GenTreePtr classFromHandleArg1 = tree->gtOp.gtOp1->gtCall.gtCallArgs->gtOp.gtOp1;
-                        GenTreePtr classFromHandleArg2 = tree->gtOp.gtOp2->gtCall.gtCallArgs->gtOp.gtOp1;
+                        GenTree* classFromHandleArg1 = tree->gtOp.gtOp1->gtCall.gtCallArgs->gtOp.gtOp1;
+                        GenTree* classFromHandleArg2 = tree->gtOp.gtOp2->gtCall.gtCallArgs->gtOp.gtOp1;
 
-                        GenTreePtr compare = gtNewOperNode(oper, TYP_INT, classFromHandleArg1, classFromHandleArg2);
+                        // If the handles is a known handle for a value class and the other is a runtime
+                        // lookup, then comparison must fail...?
+                        bool arg1IsKnownHandle = classFromHandleArg1->IsIntegralConst() && classFromHandleArg1->IsIconHandle();
+                        bool arg2IsKnownHandle = classFromHandleArg2->IsIntegralConst() && classFromHandleArg2->IsIconHandle();
+                        GenTree* compare = nullptr;
 
-                        compare->gtFlags |= tree->gtFlags & (GTF_RELOP_JMP_USED | GTF_RELOP_QMARK | GTF_DONT_CSE);
+                        if (arg1IsKnownHandle ^ arg2IsKnownHandle)
+                        {
+                            compare = gtNewIconNode(0);
+                        }
+                        else
+                        {
+                            compare = gtNewOperNode(oper, TYP_INT, classFromHandleArg1, classFromHandleArg2);
+
+                            compare->gtFlags |= tree->gtFlags & (GTF_RELOP_JMP_USED | GTF_RELOP_QMARK | GTF_DONT_CSE);
+                        }
 
                         // Morph and return
                         return fgMorphTree(compare);
