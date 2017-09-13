@@ -332,7 +332,7 @@ public:
 #endif                                       // FEATURE_SIMD
     unsigned char lvRegStruct : 1;           // This is a reg-sized non-field-addressed struct.
 
-    unsigned char lvClassIsExact : 1; // lvClassHandle is the exact type
+    unsigned char lvClassIsExact : 1;          // lvClassHandle is the exact type
     unsigned char lvIsRuntimeHandleLookup : 1; // local holds a looked-up runtime handle
 
 #ifdef DEBUG
@@ -2732,8 +2732,8 @@ public:
     void lvaUpdateClass(unsigned varNum, GenTreePtr tree, CORINFO_CLASS_HANDLE stackHandle = nullptr);
 
     // Note that this local holds the results of a runtime handle lookup.
-    vold lvaSetIsRuntimeHandleLookup(unsigned varNum);
-    vold lvaIsRuntimeHandleLookup(unsigned varNum);
+    void lvaSetIsRuntimeHandleLookup(unsigned varNum);
+    bool lvaIsRuntimeHandleLookup(unsigned varNum);
 
 #define MAX_NumOfFieldsInPromotableStruct 4 // Maximum number of fields in promotable struct
 

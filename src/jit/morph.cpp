@@ -12056,15 +12056,63 @@ GenTreePtr Compiler::fgMorphSmpOp(GenTreePtr tree, MorphAddrContext* mac)
 
                         // If the handles is a known handle for a value class and the other is a runtime
                         // lookup, then comparison must fail...?
-                        bool arg1IsKnownHandle = classFromHandleArg1->IsIntegralConst() && classFromHandleArg1->IsIconHandle();
-                        bool arg2IsKnownHandle = classFromHandleArg2->IsIntegralConst() && classFromHandleArg2->IsIconHandle();
+
+                        // Todo: handle indir cases
+                        bool arg1IsKnownHandle =
+                            classFromHandleArg1->IsIntegralConst() && classFromHandleArg1->IsIconHandle();
+                        bool arg2IsKnownHandle =
+                            classFromHandleArg2->IsIntegralConst() && classFromHandleArg2->IsIconHandle();
                         GenTree* compare = nullptr;
 
-                        if (arg1IsKnownHandle ^ arg2IsKnownHandle)
+                        if (arg1IsKnownHandle && !arg2IsKnownHandle)
                         {
-                            compare = gtNewIconNode(0);
+                            if (classFromHandleArg2->IsLocal())
+                            {
+                                const unsigned local2 = classFromHandleArg2->gtLclVarCommon.gtLclNum;
+
+                                if (lvaIsRuntimeHandleLookup(local2))
+                                {
+                                    CORINFO_CLASS_HANDLE arg1ClsHnd =
+                                        CORINFO_CLASS_HANDLE(classFromHandleArg1->gtIntCon.gtCompileTimeHandle);
+
+                                    if (info.compCompHnd->isValueClass(arg1ClsHnd))
+                                    {
+                                        JITDUMP("Compare is known to be false\n");
+                                        compare = gtNewIconNode(0);
+
+                                        // There's now one less reference to the generic context.
+                                        assert(lvaGenericsContextUseCount > 0);
+                                        lvaGenericsContextUseCount--;
+                                    }
+                                }
+                            }
                         }
-                        else
+                        else if (!arg1IsKnownHandle && arg2IsKnownHandle)
+                        {
+                            if (classFromHandleArg1->IsLocal())
+                            {
+                                const unsigned local1 = classFromHandleArg1->gtLclVarCommon.gtLclNum;
+
+                                if (lvaIsRuntimeHandleLookup(local1))
+                                {
+                                    CORINFO_CLASS_HANDLE arg2ClsHnd =
+                                        CORINFO_CLASS_HANDLE(classFromHandleArg2->gtIntCon.gtCompileTimeHandle);
+
+                                    if (info.compCompHnd->isValueClass(arg2ClsHnd))
+                                    {
+                                        JITDUMP("Compare is known to be false\n");
+                                        compare = gtNewIconNode(0);
+
+                                        // There's now one less reference to the generic context.
+                                        assert(lvaGenericsContextUseCount > 0);
+                                        lvaGenericsContextUseCount--;
+                                    }
+                                }
+                            }
+                        }
+
+                        // If we did not optimize the compare away, then just compare the handles.
+                        if (compare == nullptr)
                         {
                             compare = gtNewOperNode(oper, TYP_INT, classFromHandleArg1, classFromHandleArg2);
 

@@ -2649,7 +2649,7 @@ inline void Compiler::lvaSetIsRuntimeHandleLookup(unsigned varNum)
 {
     assert(varNum < lvaCount);
     JITDUMP("Marking V%02u as holding a looked-up runtime handle\n", varNum);
-    LclVarDsc* varDsc = lvaTable + varNum;
+    LclVarDsc* varDsc               = lvaTable + varNum;
     varDsc->lvIsRuntimeHandleLookup = true;
 }
 
