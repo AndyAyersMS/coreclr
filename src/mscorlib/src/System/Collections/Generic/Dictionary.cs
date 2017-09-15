@@ -378,10 +378,15 @@ namespace System.Collections.Generic
 
             if (buckets != null)
             {
-                int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
-                for (int i = buckets[hashCode % buckets.Length]; i >= 0; i = entries[i].next)
+                // Cache these two fields in locals so that it is clear to the jit
+                // that they are not modified by the calls to the comparer.
+                IEqualityComparer<TKey> cachedComparer = comparer;
+                Entry[] cachedEntries = entries;
+
+                int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
+                for (int i = buckets[hashCode % buckets.Length]; i >= 0; i = cachedEntries[i].next)
                 {
-                    if (entries[i].hashCode == hashCode && comparer.Equals(entries[i].key, key)) return i;
+                    if (cachedEntries[i].hashCode == hashCode && cachedComparer.Equals(cachedEntries[i].key, key)) return i;
                 }
             }
             return -1;
@@ -403,18 +408,24 @@ namespace System.Collections.Generic
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.key);
             }
 
-            if (buckets == null) Initialize(0);
-            int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
-            int targetBucket = hashCode % buckets.Length;            
+            // Cache these two fields in locals so that it is clear to the jit
+            // that they are not modified by the calls to the comparer.
+            IEqualityComparer<TKey> cachedComparer = comparer;
+            Entry[] cachedEntries = entries;
+
+            if (buckets == null)
+                Initialize(0);
+            int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
+            int targetBucket = hashCode % buckets.Length;
             int collisionCount = 0;
 
-            for (int i = buckets[targetBucket]; i >= 0; i = entries[i].next)
+            for (int i = buckets[targetBucket]; i >= 0; i = cachedEntries[i].next)
             {
-                if (entries[i].hashCode == hashCode && comparer.Equals(entries[i].key, key))
+                if (cachedEntries[i].hashCode == hashCode && cachedComparer.Equals(cachedEntries[i].key, key))
                 {
                     if (behavior == InsertionBehavior.OverwriteExisting)
                     {
-                        entries[i].value = value;
+                        cachedEntries[i].value = value;
                         version++;
                         return true;
                     }
@@ -429,16 +440,17 @@ namespace System.Collections.Generic
 
                 collisionCount++;
             }
+
             int index;
             if (freeCount > 0)
             {
                 index = freeList;
-                freeList = entries[index].next;
+                freeList = cachedEntries[index].next;
                 freeCount--;
             }
             else
             {
-                if (count == entries.Length)
+                if (count == cachedEntries.Length)
                 {
                     Resize();
                     targetBucket = hashCode % buckets.Length;
@@ -446,6 +458,8 @@ namespace System.Collections.Generic
                 index = count;
                 count++;
             }
+
+            // Since Resize() may have changed field values, stop using the cached entries
 
             entries[index].hashCode = hashCode;
             entries[index].next = buckets[targetBucket];
@@ -564,15 +578,20 @@ namespace System.Collections.Generic
 
             if (buckets != null)
             {
-                int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
+                // Cache these two fields in locals so that it is clear to the jit
+                // that they are not modified by the calls to the comparer.
+                IEqualityComparer<TKey> cachedComparer = comparer;
+                Entry[] cachedEntries = entries;
+
+                int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
                 int bucket = hashCode % buckets.Length;
                 int last = -1;
                 int i = buckets[bucket];
                 while (i >= 0)
                 {
-                    ref Entry entry = ref entries[i];
+                    ref Entry entry = ref cachedEntries[i];
 
-                    if (entry.hashCode == hashCode && comparer.Equals(entry.key, key))
+                    if (entry.hashCode == hashCode && cachedComparer.Equals(entry.key, key))
                     {
                         if (last < 0)
                         {
@@ -580,7 +599,7 @@ namespace System.Collections.Generic
                         }
                         else
                         {
-                            entries[last].next = entry.next;
+                            cachedEntries[last].next = entry.next;
                         }
                         entry.hashCode = -1;
                         entry.next = freeList;
@@ -618,15 +637,20 @@ namespace System.Collections.Generic
 
             if (buckets != null)
             {
-                int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
+                // Cache these two fields in locals so that it is clear to the jit
+                // that they are not modified by the calls to the comparer.
+                IEqualityComparer<TKey> cachedComparer = comparer;
+                Entry[] cachedEntries = entries;
+
+                int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
                 int bucket = hashCode % buckets.Length;
                 int last = -1;
                 int i = buckets[bucket];
                 while (i >= 0)
                 {
-                    ref Entry entry = ref entries[i];
+                    ref Entry entry = ref cachedEntries[i];
 
-                    if (entry.hashCode == hashCode && comparer.Equals(entry.key, key))
+                    if (entry.hashCode == hashCode && cachedComparer.Equals(entry.key, key))
                     {
                         if (last < 0)
                         {
@@ -634,7 +658,7 @@ namespace System.Collections.Generic
                         }
                         else
                         {
-                            entries[last].next = entry.next;
+                            cachedEntries[last].next = entry.next;
                         }
 
                         value = entry.value;
