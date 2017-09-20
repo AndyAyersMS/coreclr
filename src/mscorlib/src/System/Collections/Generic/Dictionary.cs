@@ -382,9 +382,10 @@ namespace System.Collections.Generic
                 // that they are not modified by the calls to the comparer.
                 IEqualityComparer<TKey> cachedComparer = comparer;
                 Entry[] cachedEntries = entries;
-                int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
-                int bucketIndex = hashCode < buckets.Length ? hashCode : hashCode % buckets.Length;
-                for (int i = buckets[bucketIndex]; i >= 0; i = entries[i].next)
+                int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
+                // Avoid expensive % for small hash values
+                int targetBucket = hashCode < buckets.Length ? hashCode : hashCode % buckets.Length;
+                for (int i = buckets[targetBucket]; i >= 0; i = entries[i].next)
                 {
                     if (cachedEntries[i].hashCode == hashCode && cachedComparer.Equals(cachedEntries[i].key, key)) return i;
                 }
@@ -407,16 +408,14 @@ namespace System.Collections.Generic
             {
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.key);
             }
+            if (buckets == null) Initialize(0);
 
-            // Cache these two fields in locals so that it is clear to the jit
+			// Cache these two fields in locals so that it is clear to the jit
             // that they are not modified by the calls to the comparer.
             IEqualityComparer<TKey> cachedComparer = comparer;
             Entry[] cachedEntries = entries;
-
-            if (buckets == null)
-                Initialize(0);
             int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
-            int targetBucket = hashCode % buckets.Length;
+            int targetBucket = hashCode < buckets.Length ? hashCode : hashCode % buckets.Length;
             int collisionCount = 0;
 
             for (int i = buckets[targetBucket]; i >= 0; i = cachedEntries[i].next)
@@ -453,7 +452,7 @@ namespace System.Collections.Generic
                 if (count == cachedEntries.Length)
                 {
                     Resize();
-                    targetBucket = hashCode % buckets.Length;
+                    targetBucket = hashCode < buckets.Length ? hashCode : hashCode % buckets.Length;
                 }
                 index = count;
                 count++;
@@ -584,7 +583,7 @@ namespace System.Collections.Generic
                 Entry[] cachedEntries = entries;
 
                 int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
-                int bucket = hashCode % buckets.Length;
+                int bucket = hashCode < buckets.Length ? hashCode : hashCode % buckets.Length;
                 int last = -1;
                 int i = buckets[bucket];
                 while (i >= 0)
@@ -643,7 +642,7 @@ namespace System.Collections.Generic
                 Entry[] cachedEntries = entries;
 
                 int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
-                int bucket = hashCode % buckets.Length;
+                int bucket = hashCode < buckets.Length ? hashCode : hashCode % buckets.Length;
                 int last = -1;
                 int i = buckets[bucket];
                 while (i >= 0)
