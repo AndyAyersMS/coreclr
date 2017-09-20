@@ -382,9 +382,9 @@ namespace System.Collections.Generic
                 // that they are not modified by the calls to the comparer.
                 IEqualityComparer<TKey> cachedComparer = comparer;
                 Entry[] cachedEntries = entries;
-
-                int hashCode = cachedComparer.GetHashCode(key) & 0x7FFFFFFF;
-                for (int i = buckets[hashCode % buckets.Length]; i >= 0; i = cachedEntries[i].next)
+                int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
+                int bucketIndex = hashCode < buckets.Length ? hashCode : hashCode % buckets.Length;
+                for (int i = buckets[bucketIndex]; i >= 0; i = entries[i].next)
                 {
                     if (cachedEntries[i].hashCode == hashCode && cachedComparer.Equals(cachedEntries[i].key, key)) return i;
                 }
