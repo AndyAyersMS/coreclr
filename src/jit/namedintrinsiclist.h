@@ -9,11 +9,13 @@
 
 enum NamedIntrinsic
 {
-    NI_Illegal                                                 = 0,
-    NI_System_Enum_HasFlag                                     = 1,
-    NI_MathF_Round                                             = 2,
-    NI_Math_Round                                              = 3,
-    NI_System_Collections_Generic_EqualityComparer_get_Default = 4
+    NI_Illegal                                                  = 0,
+    NI_System_Enum_HasFlag                                      = 1,
+    NI_MathF_Round                                              = 2,
+    NI_Math_Round                                               = 3,
+    NI_System_Collections_Generic_EqualityComparer_get_Default  = 4,
+    NI_System_Collections_Generic_IEqualityComparer_GetHashCode = 5,
+    NI_System_Collections_Generic_IEqualityComparer_Equals      = 6
 };
 
 #endif // _NAMEDINTRINSICLIST_H_

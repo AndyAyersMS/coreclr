@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace System.Collections.Generic
 {
@@ -11,7 +12,9 @@ namespace System.Collections.Generic
     // It is use in Dictionary class.  
     public interface IEqualityComparer<in T>
     {
+        // [Intrinsic]
         bool Equals(T x, T y);
+        // [Intrinsic]
         int GetHashCode(T obj);
     }
 }

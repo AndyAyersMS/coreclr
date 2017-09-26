@@ -3773,6 +3773,8 @@ GenTreePtr Compiler::impIntrinsic(GenTreePtr            newobjThis,
             }
 
             case NI_System_Collections_Generic_EqualityComparer_get_Default:
+            case NI_System_Collections_Generic_IEqualityComparer_GetHashCode:
+            case NI_System_Collections_Generic_IEqualityComparer_Equals:
             {
                 // Flag for later handling during devirtualization.
                 isSpecial = true;
@@ -3955,6 +3957,14 @@ NamedIntrinsic Compiler::lookupNamedIntrinsic(CORINFO_METHOD_HANDLE method)
         if ((strcmp(className, "EqualityComparer`1") == 0) && (strcmp(methodName, "get_Default") == 0))
         {
             result = NI_System_Collections_Generic_EqualityComparer_get_Default;
+        }
+        else if ((strcmp(className, "IEqualityComparer`1") == 0) && (strcmp(methodName, "GetHashCode") == 0))
+        {
+            result = NI_System_Collections_Generic_IEqualityComparer_GetHashCode;
+        }
+        else if ((strcmp(className, "IEqualityComparer`1") == 0) && (strcmp(methodName, "Equals") == 0))
+        {
+            result = NI_System_Collections_Generic_IEqualityComparer_Equals;
         }
     }
 
@@ -19043,7 +19053,16 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     //   IL_021e:  callvirt   instance int32 System.Object::GetHashCode()
     if ((objClassAttribs & CORINFO_FLG_INTERFACE) != 0)
     {
-        JITDUMP("--- obj class is interface, sorry\n");
+        JITDUMP("--- obj class is interface");
+        // If we can guess at a plausible type, insert a runtime test
+        if ((call->gtCallMoreFlags & GTF_CALL_M_SPECIAL_INTRINSIC) != 0)
+        {
+            JITDUMP(", and interface method is intrinsic, trying guarded devirtualization\n");
+            impGuardedDevirtualization(call, baseMethod);
+            return;
+        }
+
+        JITDUMP(", sorry\n");
         return;
     }
 
@@ -19259,6 +19278,52 @@ CORINFO_CLASS_HANDLE Compiler::impGetSpecialIntrinsicExactReturnType(CORINFO_MET
     }
 
     return result;
+}
+
+
+//------------------------------------------------------------------------
+// impGuardeDevirtualization: expand a virtual or interface call into a 
+//   type test followed by devirtualized call or the initial call
+//
+// Arguments:
+//    call - the call to transform
+//    baseMethod - the base method for the call
+
+void Compiler::impGuardedDevirtualization(GenTreeCall* call, CORINFO_METHOD_HANDLE baseMethod)
+{
+    NamedIntrinsic ni = lookupNamedIntrinsic(baseMethod);
+    switch (ni)
+    {
+        case NI_System_Collections_Generic_IEqualityComparer_GetHashCode:
+        case NI_System_Collections_Generic_IEqualityComparer_Equals:
+        {
+            // Extract <T>
+            CORINFO_SIG_INFO sig;
+            info.compCompHnd->getMethodSig(baseMethod, &sig);
+            assert(sig.sigInst.classInstCount == 1);
+            CORINFO_CLASS_HANDLE typeHnd = sig.sigInst.classInst[0];
+            assert(typeHnd != nullptr);
+            const DWORD typeAttribs = info.compCompHnd->getClassAttribs(typeHnd);
+            const bool  isFinalType = ((typeAttribs & CORINFO_FLG_FINAL) != 0);
+            
+            // If we do not have a final type, devirt & inlining is
+            // unlikely to result in much simplification.
+            if (isFinalType)
+            {
+                CORINFO_CLASS_HANDLE possibleType = info.compCompHnd->getDefaultEqualityComparerClass(typeHnd);
+
+                JITDUMP("impGuardedDevirtualization: introducing runtime test for type %s\n",
+                    eeGetClassName(possibleType));
+                
+                return;
+            }
+            
+            break;
+        }
+        
+        default:
+            break;
+    }
 }
 
 //------------------------------------------------------------------------

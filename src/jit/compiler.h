@@ -2972,6 +2972,7 @@ protected:
                              CORINFO_CONTEXT_HANDLE* exactContextHandle);
 
     CORINFO_CLASS_HANDLE impGetSpecialIntrinsicExactReturnType(CORINFO_METHOD_HANDLE specialIntrinsicHandle);
+    void impGuardedDevirtualization(GenTreeCall* call, CORINFO_METHOD_HANDLE baseMethod);
 
     bool impMethodInfo_hasRetBuffArg(CORINFO_METHOD_INFO* methInfo);
 
