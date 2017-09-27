@@ -3926,6 +3926,9 @@ GenTree* Compiler::impMathIntrinsic(CORINFO_METHOD_HANDLE method,
 
 NamedIntrinsic Compiler::lookupNamedIntrinsic(CORINFO_METHOD_HANDLE method)
 {
+    // TODO: We don't expect to see this called unless the method flags say
+    // this is a jit intrinsic. Check for it.
+
     NamedIntrinsic result = NI_Illegal;
 
     const char* className     = nullptr;
@@ -19055,9 +19058,12 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     {
         JITDUMP("--- obj class is interface");
         // If we can guess at a plausible type, insert a runtime test
-        if ((call->gtCallMoreFlags & GTF_CALL_M_SPECIAL_INTRINSIC) != 0)
+
+        // Sigh, can't seem to mark IEqualityComparer interface methods as new-style intrinsics.
+        // So for now just check every interface call.
+        // if ((call->gtCallMoreFlags & GTF_CALL_M_SPECIAL_INTRINSIC) != 0)
         {
-            JITDUMP(", and interface method is intrinsic, trying guarded devirtualization\n");
+            JITDUMP(", interface method is (possible) intrinsic, trying guarded devirtualization\n");
             impGuardedDevirtualization(call, baseMethod);
             return;
         }
@@ -19280,9 +19286,8 @@ CORINFO_CLASS_HANDLE Compiler::impGetSpecialIntrinsicExactReturnType(CORINFO_MET
     return result;
 }
 
-
 //------------------------------------------------------------------------
-// impGuardeDevirtualization: expand a virtual or interface call into a 
+// impGuardeDevirtualization: expand a virtual or interface call into a
 //   type test followed by devirtualized call or the initial call
 //
 // Arguments:
@@ -19291,7 +19296,8 @@ CORINFO_CLASS_HANDLE Compiler::impGetSpecialIntrinsicExactReturnType(CORINFO_MET
 
 void Compiler::impGuardedDevirtualization(GenTreeCall* call, CORINFO_METHOD_HANDLE baseMethod)
 {
-    NamedIntrinsic ni = lookupNamedIntrinsic(baseMethod);
+    CORINFO_CLASS_HANDLE possibleType = nullptr;
+    NamedIntrinsic       ni           = lookupNamedIntrinsic(baseMethod);
     switch (ni)
     {
         case NI_System_Collections_Generic_IEqualityComparer_GetHashCode:
@@ -19305,25 +19311,80 @@ void Compiler::impGuardedDevirtualization(GenTreeCall* call, CORINFO_METHOD_HAND
             assert(typeHnd != nullptr);
             const DWORD typeAttribs = info.compCompHnd->getClassAttribs(typeHnd);
             const bool  isFinalType = ((typeAttribs & CORINFO_FLG_FINAL) != 0);
-            
+
             // If we do not have a final type, devirt & inlining is
             // unlikely to result in much simplification.
             if (isFinalType)
             {
-                CORINFO_CLASS_HANDLE possibleType = info.compCompHnd->getDefaultEqualityComparerClass(typeHnd);
-
-                JITDUMP("impGuardedDevirtualization: introducing runtime test for type %s\n",
-                    eeGetClassName(possibleType));
-                
-                return;
+                possibleType = info.compCompHnd->getDefaultEqualityComparerClass(typeHnd);
             }
-            
+
             break;
         }
-        
+
         default:
             break;
     }
+
+    if (possibleType == nullptr)
+    {
+        return;
+    }
+
+    // We have a type we'd like to check for at runtime. Can we do this cheaply?
+    JITDUMP("impGuardedDevirtualization: possible type %s\n", eeGetClassName(possibleType));
+
+    // Verify that a vtable check is sufficient to establish type equality for the possible type.
+    if (!info.compCompHnd->canInlineTypeCheckWithObjectVTable(possibleType))
+    {
+        JITDUMP("can't compare method table pointers for type quality test, sorry\n");
+        return;
+    }
+
+    // Might be able to rework this to use the method handle directly
+    // instead of going back to pseudo-token resolution.
+    CORINFO_RESOLVED_TOKEN resolvedToken = {};
+
+    resolvedToken.tokenScope   = nullptr;
+    resolvedToken.tokenContext = nullptr;
+    resolvedToken.token        = mdTokenNil;
+    resolvedToken.tokenType    = CORINFO_TOKENKIND_Class;
+    resolvedToken.hClass       = possibleType;
+
+    CORINFO_GENERICHANDLE_RESULT embedInfo;
+    info.compCompHnd->embedGenericHandle(&resolvedToken, FALSE, &embedInfo);
+
+    // Bail if runtime lookup is required.
+    if (embedInfo.lookup.lookupKind.needsRuntimeLookup)
+    {
+        JITDUMP("accessing possible type method table requires runtime lookup, sorry\n");
+        return;
+    }
+
+    JITDUMP("looks like we can do a cheap runtime test, carrying on...\n");
+
+    // Ok, we're ready to do this. Conceptually, we want to change
+    //
+    //   (CALL ind obj, ...)
+    //
+    // into
+    //
+    //   (QUESTION
+    //       (EQ obj->methodTable, possibleMethodTable)
+    //       (CALL direct obj as possible type, ...)
+    //       (CALL ind obj as base type, ...))
+    //
+    // However, upstream code is not always ready for us to return a question op.
+    // Question ops must be at top level and the original call may be a subtree of
+    // a bigger expression.
+    //
+    // Calls are automatically migrated to top level if they become inline candidates,
+    // so one option here is to bubble up a "retry" indicator that markes the original
+    // indirect call as an inline candidate. This in turn will cause the call to be
+    // hoisted to to top level, and we can then reinvoke the devirtualizer to try again.
+    //
+    // To distinguish the two cases within the devirtualizer, we'll
+    // probably need to pass more context.
 }
 
 //------------------------------------------------------------------------
