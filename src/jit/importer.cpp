@@ -19287,7 +19287,7 @@ CORINFO_CLASS_HANDLE Compiler::impGetSpecialIntrinsicExactReturnType(CORINFO_MET
 }
 
 //------------------------------------------------------------------------
-// impGuardeDevirtualization: expand a virtual or interface call into a
+// impGuardedDevirtualization: expand a virtual or interface call into a
 //   type test followed by devirtualized call or the initial call
 //
 // Arguments:
@@ -19357,6 +19357,10 @@ void Compiler::impGuardedDevirtualization(GenTreeCall* call, CORINFO_METHOD_HAND
     // Bail if runtime lookup is required.
     if (embedInfo.lookup.lookupKind.needsRuntimeLookup)
     {
+        // Consider: might be worth proceeding with runtime lookup if
+        // the call is known to be in a loop, since the runtime lookup
+        // should be hoistable. However since the call will be conditional
+        // LICM may decide it's not worth the trouble to host. Hmm.
         JITDUMP("accessing possible type method table requires runtime lookup, sorry\n");
         return;
     }
@@ -19379,7 +19383,7 @@ void Compiler::impGuardedDevirtualization(GenTreeCall* call, CORINFO_METHOD_HAND
     // a bigger expression.
     //
     // Calls are automatically migrated to top level if they become inline candidates,
-    // so one option here is to bubble up a "retry" indicator that markes the original
+    // so one option here is to bubble up a "retry" indicator that marks the original
     // indirect call as an inline candidate. This in turn will cause the call to be
     // hoisted to to top level, and we can then reinvoke the devirtualizer to try again.
     //
