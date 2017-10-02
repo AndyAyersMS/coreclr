@@ -1901,6 +1901,12 @@ AGAIN:
                                                     reinterpret_cast<uintptr_t>(tree->gtAllocObj.gtAllocObjClsHnd)));
                     hash = genTreeHashAdd(hash, tree->gtAllocObj.gtNewHelper);
                     break;
+                case GT_RUNTIMELOOKUP:
+                    hash =
+                        genTreeHashAdd(hash,
+                                       static_cast<unsigned>(reinterpret_cast<uintptr_t>(tree->gtRuntimeLookup.gtHnd)));
+                    break;
+
                 case GT_OBJ:
                     hash =
                         genTreeHashAdd(hash, static_cast<unsigned>(reinterpret_cast<uintptr_t>(tree->gtObj.gtClass)));
@@ -5432,6 +5438,7 @@ bool GenTree::TryGetUse(GenTree* def, GenTree*** use)
         case GT_BLK:
         case GT_BOX:
         case GT_ALLOCOBJ:
+        case GT_RUNTIMELOOKUP:
         case GT_INIT_VAL:
         case GT_JTRUE:
         case GT_SWITCH:
@@ -7506,6 +7513,15 @@ GenTreePtr Compiler::gtCloneExpr(
             }
             break;
 
+            case GT_RUNTIMELOOKUP:
+            {
+                GenTreeRuntimeLookup* asRuntimeLookup = tree->AsRuntimeLookup();
+
+                copy = new (this, GT_RUNTIMELOOKUP)
+                    GenTreeRuntimeLookup(asRuntimeLookup->gtHnd, asRuntimeLookup->gtHndType, asRuntimeLookup->gtOp1);
+            }
+            break;
+
             case GT_ARR_LENGTH:
                 copy = gtNewArrLen(tree->TypeGet(), tree->gtOp.gtOp1, tree->gtArrLen.ArrLenOffset());
                 break;
@@ -8825,6 +8841,7 @@ GenTreeUseEdgeIterator::GenTreeUseEdgeIterator(GenTree* node)
         case GT_BLK:
         case GT_BOX:
         case GT_ALLOCOBJ:
+        case GT_RUNTIMELOOKUP:
         case GT_INIT_VAL:
         case GT_JTRUE:
         case GT_SWITCH:
@@ -10055,6 +10072,31 @@ void Compiler::gtDispNode(GenTreePtr tree, IndentStack* indentStack, __in __in_z
             if (tree->IsArgPlaceHolderNode() && (tree->gtArgPlace.gtArgPlaceClsHnd != nullptr))
             {
                 printf(" => [clsHnd=%08X]", dspPtr(tree->gtArgPlace.gtArgPlaceClsHnd));
+            }
+
+            if (tree->gtOper == GT_RUNTIMELOOKUP)
+            {
+#ifdef _TARGET_64BIT_
+                printf(" 0x%llx", dspPtr(tree->gtRuntimeLookup.gtHnd));
+#else
+                printf(" 0x%x", dspPtr(tree->gtRuntimeLookup.gtHnd));
+#endif
+
+                switch (tree->gtRuntimeLookup.gtHndType)
+                {
+                    case CORINFO_HANDLETYPE_CLASS:
+                        printf(" class");
+                        break;
+                    case CORINFO_HANDLETYPE_METHOD:
+                        printf(" method");
+                        break;
+                    case CORINFO_HANDLETYPE_FIELD:
+                        printf(" field");
+                        break;
+                    default:
+                        printf(" unknown");
+                        break;
+                }
             }
         }
 
@@ -12894,6 +12936,11 @@ GenTreePtr Compiler::gtFoldExprConst(GenTreePtr tree)
 #endif // FEATURE_SIMD
 
     if (tree->gtOper == GT_ALLOCOBJ)
+    {
+        return tree;
+    }
+
+    if (tree->gtOper == GT_RUNTIMELOOKUP)
     {
         return tree;
     }
