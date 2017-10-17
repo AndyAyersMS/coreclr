@@ -452,6 +452,9 @@ struct BasicBlock : private LIR::Range
 
 #define BBF_DOMINATED_BY_EXCEPTIONAL_ENTRY 0x400000000 // Block is dominated by exceptional entry.
 
+#define BBF_IMPORT_SKIPPED 0x800000000 // Block importation potentially skipped by importer branch folding
+#define BBF_IMPORT_FOLDED 0x1000000000 // Block importation folded branch in this block
+
 // Flags that relate blocks to loop structure.
 
 #define BBF_LOOP_FLAGS (BBF_LOOP_PREHEADER | BBF_LOOP_HEAD | BBF_LOOP_CALL0 | BBF_LOOP_CALL1)

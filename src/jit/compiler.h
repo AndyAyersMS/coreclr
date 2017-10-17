@@ -3689,6 +3689,9 @@ public:
     bool     impBoxTempInUse; // the temp below is valid and available
     unsigned impBoxTemp;      // a temporary that is used for boxing
 
+    bool impFoldedBranch;    // True iff branch was folded during importation
+    bool impIsFoldSensitive; // True iff some spill clique stack has a type that might be impacted by folding
+
 #ifdef DEBUG
     bool jitFallbackCompile; // Are we doing a fallback compile? That is, have we executed a NO_WAY assert,
                              //   and we are trying to compile again in a "safer", minopts mode?

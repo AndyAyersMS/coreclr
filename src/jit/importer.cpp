@@ -11918,27 +11918,32 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     /* gtFoldExpr() should prevent this as we don't want to make any blocks
                        unreachable under compDbgCode */
                     assert(!opts.compDbgCode);
-
+                    JITDUMP("\nFolding conditional branch during importation\n");
                     BBjumpKinds foldedJumpKind = (BBjumpKinds)(op1->gtIntCon.gtIconVal ? BBJ_ALWAYS : BBJ_NONE);
                     assertImp((block->bbJumpKind == BBJ_COND)            // normal case
                               || (block->bbJumpKind == foldedJumpKind)); // this can happen if we are reimporting the
                                                                          // block for the second time
 
-                    block->bbJumpKind = foldedJumpKind;
-#ifdef DEBUG
-                    if (verbose)
+                    // Update block jump kind to reflect folding, and mark the non-targeted
+                    // block as skipped in case we need to import it later on.
+                    if (block->bbJumpKind == BBJ_COND)
                     {
-                        if (op1->gtIntCon.gtIconVal)
+                        block->bbJumpKind = foldedJumpKind;
+                        block->bbFlags |= BBF_IMPORT_FOLDED;
+                        impFoldedBranch = true;
+
+                        if (foldedJumpKind == BBJ_ALWAYS)
                         {
-                            printf("\nThe conditional jump becomes an unconditional jump to BB%02u\n",
-                                   block->bbJumpDest->bbNum);
+                            JITDUMP("Now an unconditional jump to BB%02u\n", block->bbJumpDest->bbNum);
+                            block->bbNext->bbFlags |= BBF_IMPORT_SKIPPED;
                         }
                         else
                         {
-                            printf("\nThe block falls through into the next BB%02u\n", block->bbNext->bbNum);
+                            JITDUMP("Now a fall through to next BB%02u\n", block->bbNext->bbNum);
+                            block->bbJumpDest->bbFlags |= BBF_IMPORT_SKIPPED;
                         }
                     }
-#endif
+
                     break;
                 }
 
@@ -16504,11 +16509,20 @@ SPILLSTACK:
                 lvaTable[tempNum].lvType = TYP_I_IMPL;
                 reimportSpillClique      = true;
             }
-            else if (genActualType(tree->gtType) == TYP_INT && lvaTable[tempNum].lvType == TYP_I_IMPL)
+            else if (genActualType(tree->gtType) == TYP_INT)
             {
-                // Spill clique has decided this should be "native int", but this block only pushes an "int".
-                // Insert a sign-extension to "native int" so we match the clique.
-                verCurrentState.esStack[level].val = gtNewCastNode(TYP_I_IMPL, tree, TYP_I_IMPL);
+                if (lvaTable[tempNum].lvType == TYP_I_IMPL)
+                {
+                    // Spill clique has decided this should be "native int", but this block only pushes an "int".
+                    // Insert a sign-extension to "native int" so we match the clique.
+                    verCurrentState.esStack[level].val = gtNewCastNode(TYP_I_IMPL, tree, TYP_I_IMPL);
+                }
+                else // if (lvaTable[tempNum].lvType == TYP_INT)
+                {
+                    // The spill clique temp's type is potentially impacted by importer branch folding.
+                    JITDUMP("\nEval stack input to BB%02u contains fold-sensitive int32\n", block->bbNum);
+                    impIsFoldSensitive = true;
+                }
             }
 
             // Consider the case where one branch left a 'byref' on the stack and the other leaves
@@ -16528,11 +16542,14 @@ SPILLSTACK:
                     lvaTable[tempNum].lvType = TYP_BYREF;
                     reimportSpillClique      = true;
                 }
-                else if (genActualType(tree->gtType) == TYP_INT && lvaTable[tempNum].lvType == TYP_BYREF)
+                else if (genActualType(tree->gtType) == TYP_INT)
                 {
-                    // Spill clique has decided this should be "byref", but this block only pushes an "int".
-                    // Insert a sign-extension to "native int" so we match the clique size.
-                    verCurrentState.esStack[level].val = gtNewCastNode(TYP_I_IMPL, tree, TYP_I_IMPL);
+                    if (lvaTable[tempNum].lvType == TYP_BYREF)
+                    {
+                        // Spill clique has decided this should be "byref", but this block only pushes an "int".
+                        // Insert a sign-extension to "native int" so we match the clique size.
+                        verCurrentState.esStack[level].val = gtNewCastNode(TYP_I_IMPL, tree, TYP_I_IMPL);
+                    }
                 }
             }
 #endif // _TARGET_64BIT_
@@ -16557,11 +16574,20 @@ SPILLSTACK:
                 lvaTable[tempNum].lvType = TYP_DOUBLE;
                 reimportSpillClique      = true;
             }
-            else if (tree->gtType == TYP_FLOAT && lvaTable[tempNum].lvType == TYP_DOUBLE)
+            else if (tree->gtType == TYP_FLOAT)
             {
-                // Spill clique has decided this should be "double", but this block only pushes a "float".
-                // Insert a cast to "double" so we match the clique.
-                verCurrentState.esStack[level].val = gtNewCastNode(TYP_DOUBLE, tree, TYP_DOUBLE);
+                if (lvaTable[tempNum].lvType == TYP_DOUBLE)
+                {
+                    // Spill clique has decided this should be "double", but this block only pushes a "float".
+                    // Insert a cast to "double" so we match the clique.
+                    verCurrentState.esStack[level].val = gtNewCastNode(TYP_DOUBLE, tree, TYP_DOUBLE);
+                }
+                else
+                {
+                    // The spill clique temp's type is potentially impacted by importer branch folding.
+                    JITDUMP("\nEval stack input to BB%02u contains fold-sensitive float\n", block->bbNum);
+                    impIsFoldSensitive = true;
+                }
             }
 
 #endif // FEATURE_X87_DOUBLES
@@ -16654,27 +16680,34 @@ SPILLSTACK:
     {
         // This will re-import all the successors of block (as well as each of their predecessors)
         impReimportSpillClique(block);
+    }
 
-        // For blocks that haven't been imported yet, we still need to mark them as pending import.
-        const unsigned numSuccs = block->NumSucc();
-        for (unsigned i = 0; i < numSuccs; i++)
+    // For blocks that haven't been imported yet, we still need to mark them as pending import.
+    const unsigned numSuccs = block->NumSucc();
+    for (unsigned i = 0; i < numSuccs; i++)
+    {
+        BasicBlock* succ = block->GetSucc(i);
+        if ((succ->bbFlags & BBF_IMPORTED) == 0)
         {
-            BasicBlock* succ = block->GetSucc(i);
-            if ((succ->bbFlags & BBF_IMPORTED) == 0)
-            {
-                impImportBlockPending(succ);
-            }
+            succ->bbFlags &= ~BBF_IMPORT_SKIPPED;
+            impImportBlockPending(succ);
         }
     }
-    else // the normal case
-    {
-        // otherwise just import the successors of block
 
-        /* Does this block jump to any other blocks? */
-        const unsigned numSuccs = block->NumSucc();
-        for (unsigned i = 0; i < numSuccs; i++)
+    // If this block had a folded conditional jump, find the no
+    // longer branched to successor and prepare that block's entry
+    // state, in case we need to import it later.
+    if ((block->bbFlags & BBF_IMPORT_FOLDED) != 0)
+    {
+        if (block->bbJumpKind == BBJ_ALWAYS)
         {
-            impImportBlockPending(block->GetSucc(i));
+            JITDUMP("\nSetting up non-taken target BB%02u just in case\n", block->bbNext->bbNum);
+            impImportBlockPending(block->bbNext);
+        }
+        else
+        {
+            JITDUMP("\nSetting up non-taken target BB%02u just in case\n", block->bbJumpDest->bbNum);
+            impImportBlockPending(block->bbJumpDest);
         }
     }
 }
@@ -16702,8 +16735,8 @@ void Compiler::impImportBlockPending(BasicBlock* block)
     // or if it has, but merging in a predecessor's post-state changes the block's pre-state.
     // (When we're doing verification, we always attempt the merge to detect verification errors.)
 
-    // If the block has not been imported, add to pending set.
-    bool addToPending = ((block->bbFlags & BBF_IMPORTED) == 0);
+    // If the block has not been imported and is not being skipped, add to pending set.
+    bool addToPending = ((block->bbFlags & (BBF_IMPORTED | BBF_IMPORT_SKIPPED)) == 0);
 
     // Initialize bbEntryState just the first time we try to add this block to the pending list
     // Just because bbEntryState is NULL, doesn't mean the pre-state wasn't previously set
@@ -16714,8 +16747,13 @@ void Compiler::impImportBlockPending(BasicBlock* block)
         verInitBBEntryState(block, &verCurrentState);
         assert(block->bbStkDepth == 0);
         block->bbStkDepth = static_cast<unsigned short>(verCurrentState.esStackDepth);
-        assert(addToPending);
         assert(impGetPendingBlockMember(block) == 0);
+
+        if (!addToPending)
+        {
+            assert((block->bbFlags & BBF_IMPORT_SKIPPED) != 0);
+            return;
+        }
     }
     else
     {
@@ -16812,7 +16850,7 @@ void Compiler::impImportBlockPending(BasicBlock* block)
     block->bbFlags &= ~BBF_IMPORTED;
 
 #ifdef DEBUG
-    if (verbose && 0)
+    if (verbose)
     {
         printf("Added PendingDsc - %08p for BB%02u\n", dspPtr(dsc), block->bbNum);
     }
@@ -17323,6 +17361,8 @@ void Compiler::impImport(BasicBlock* method)
 
     impPendingList = impPendingFree = nullptr;
 
+    impIsFoldSensitive = false;
+
     /* Add the entry-point to the worker-list */
 
     // Skip leading internal blocks. There can be one as a leading scratch BB, and more
@@ -17341,60 +17381,86 @@ void Compiler::impImport(BasicBlock* method)
 
     /* Import blocks in the worker-list until there are no more */
 
+    unsigned passCount = 0;
+
     while (impPendingList)
     {
-        /* Remove the entry at the front of the list */
+        // Reset some per-pass state
+        impFoldedBranch = false;
+        passCount++;
 
-        PendingDsc* dsc = impPendingList;
-        impPendingList  = impPendingList->pdNext;
-        impSetPendingBlockMember(dsc->pdBB, 0);
-
-        /* Restore the stack state */
-
-        verCurrentState.thisInitialized = dsc->pdThisPtrInit;
-        verCurrentState.esStackDepth    = dsc->pdSavedStack.ssDepth;
-        if (verCurrentState.esStackDepth)
+        while (impPendingList)
         {
-            impRestoreStackState(&dsc->pdSavedStack);
-        }
+            /* Remove the entry at the front of the list */
 
-        /* Add the entry to the free list for reuse */
+            PendingDsc* dsc = impPendingList;
+            impPendingList  = impPendingList->pdNext;
+            impSetPendingBlockMember(dsc->pdBB, 0);
 
-        dsc->pdNext    = impPendingFree;
-        impPendingFree = dsc;
+            /* Restore the stack state */
 
-        /* Now import the block */
+            verCurrentState.thisInitialized = dsc->pdThisPtrInit;
+            verCurrentState.esStackDepth    = dsc->pdSavedStack.ssDepth;
+            if (verCurrentState.esStackDepth)
+            {
+                impRestoreStackState(&dsc->pdSavedStack);
+            }
 
-        if (dsc->pdBB->bbFlags & BBF_FAILED_VERIFICATION)
-        {
+            /* Add the entry to the free list for reuse */
+
+            dsc->pdNext    = impPendingFree;
+            impPendingFree = dsc;
+
+            /* Now import the block */
+
+            if (dsc->pdBB->bbFlags & BBF_FAILED_VERIFICATION)
+            {
 
 #ifdef _TARGET_64BIT_
-            // On AMD64, during verification we have to match JIT64 behavior since the VM is very tighly
-            // coupled with the JIT64 IL Verification logic.  Look inside verHandleVerificationFailure
-            // method for further explanation on why we raise this exception instead of making the jitted
-            // code throw the verification exception during execution.
-            if (tiVerificationNeeded && opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IMPORT_ONLY))
-            {
-                BADCODE("Basic block marked as not verifiable");
+                // On AMD64, during verification we have to match JIT64 behavior since the VM is very tighly
+                // coupled with the JIT64 IL Verification logic.  Look inside verHandleVerificationFailure
+                // method for further explanation on why we raise this exception instead of making the jitted
+                // code throw the verification exception during execution.
+                if (tiVerificationNeeded && opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IMPORT_ONLY))
+                {
+                    BADCODE("Basic block marked as not verifiable");
+                }
+                else
+#endif // _TARGET_64BIT_
+                {
+                    verConvertBBToThrowVerificationException(dsc->pdBB DEBUGARG(true));
+                    impEndTreeList(dsc->pdBB);
+                }
             }
             else
-#endif // _TARGET_64BIT_
             {
-                verConvertBBToThrowVerificationException(dsc->pdBB DEBUGARG(true));
-                impEndTreeList(dsc->pdBB);
+                impImportBlock(dsc->pdBB);
+
+                if (compDonotInline())
+                {
+                    return;
+                }
+                if (compIsForImportOnly() && !tiVerificationNeeded)
+                {
+                    return;
+                }
             }
         }
-        else
-        {
-            impImportBlock(dsc->pdBB);
 
-            if (compDonotInline())
+        // If the importer folded any branches in the last importer pass AND has found any spill
+        // clique blocks with types that are sensitive to folding, then the importer must also
+        // import blocks that were skipped to get the types correct.
+        if (impFoldedBranch && impIsFoldSensitive)
+        {
+            printf("####### %s triggers sensitive reimport\n", info.compFullName);
+            JITDUMP("\nAfter import pass %u: folded a branch AND have a fold sensitive clique.\n", passCount);
+            for (BasicBlock* block = fgFirstBB; block; block = block->bbNext)
             {
-                return;
-            }
-            if (compIsForImportOnly() && !tiVerificationNeeded)
-            {
-                return;
+                if ((block->bbFlags & (BBF_IMPORT_SKIPPED | BBF_IMPORTED)) == BBF_IMPORT_SKIPPED)
+                {
+                    block->bbFlags &= ~BBF_IMPORT_SKIPPED;
+                    impImportBlockPending(block);
+                }
             }
         }
     }

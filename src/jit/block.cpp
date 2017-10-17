@@ -273,6 +273,14 @@ void BasicBlock::dspFlags()
     {
         printf("i ");
     }
+    if (bbFlags & BBF_IMPORT_SKIPPED)
+    {
+        printf("s ");
+    }
+    if (bbFlags & BBF_IMPORT_FOLDED)
+    {
+        printf("f ");
+    }
     if (bbFlags & BBF_INTERNAL)
     {
         printf("internal ");
