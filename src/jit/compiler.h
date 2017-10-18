@@ -2890,7 +2890,7 @@ public:
 public:
     void impInit();
 
-    void impImport(BasicBlock* method);
+    void impImport(BasicBlock* method, bool disableFolding = false);
 
     CORINFO_CLASS_HANDLE impGetRefAnyClass();
     CORINFO_CLASS_HANDLE impGetRuntimeArgumentHandle();
@@ -3233,6 +3233,10 @@ private:
 
     PendingDsc* impPendingList; // list of BBs currently waiting to be imported.
     PendingDsc* impPendingFree; // Freed up dscs that can be reused
+
+    bool impDisableBranchFold;     // When true, importer is not allowed to fold branches
+    bool impHasFoldedBranch;       // True if importer folded any conditional branch
+    bool impHasFoldSensitiveBlock; // True if types in some block might be affected by folding
 
     // We keep a byte-per-block map (dynamically extended) in the top-level Compiler object of a compilation.
     ExpandArray<BYTE> impPendingBlockMembers;

@@ -11924,22 +11924,27 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                               || (block->bbJumpKind == foldedJumpKind)); // this can happen if we are reimporting the
                                                                          // block for the second time
 
-                    block->bbJumpKind = foldedJumpKind;
-#ifdef DEBUG
-                    if (verbose)
+                    // When branch folding is enabled, update block jump kind
+                    // and note that the importer has folded a branch.
+                    if (!impDisableBranchFold && (block->bbJumpKind == BBJ_COND))
                     {
-                        if (op1->gtIntCon.gtIconVal)
-                        {
-                            printf("\nThe conditional jump becomes an unconditional jump to BB%02u\n",
-                                   block->bbJumpDest->bbNum);
-                        }
-                        else
-                        {
-                            printf("\nThe block falls through into the next BB%02u\n", block->bbNext->bbNum);
-                        }
+                        JITDUMP("Folded branch; now %s to BB%02u\n",
+                                (foldedJumpKind == BBJ_ALWAYS) ? "an unconditional jump" : "a fall through",
+                                block->bbJumpDest->bbNum);
+
+                        block->bbJumpKind  = foldedJumpKind;
+                        impHasFoldedBranch = true;
+
+                        // Break out early as we don't need to generate the JTRUE.
+                        break;
                     }
-#endif
-                    break;
+                    // When folding is disabled, we need to undo any prior folding
+                    else if (impDisableBranchFold && (block->bbJumpKind == foldedJumpKind))
+                    {
+                        assert(impDisableBranchFold);
+                        JITDUMP("\nUn-folding branch to ensure full import\n");
+                        block->bbJumpKind = BBJ_COND;
+                    }
                 }
 
                 op1 = gtNewOperNode(GT_JTRUE, TYP_VOID, op1);
@@ -16504,11 +16509,20 @@ SPILLSTACK:
                 lvaTable[tempNum].lvType = TYP_I_IMPL;
                 reimportSpillClique      = true;
             }
-            else if (genActualType(tree->gtType) == TYP_INT && lvaTable[tempNum].lvType == TYP_I_IMPL)
+            else if (genActualType(tree->gtType) == TYP_INT)
             {
-                // Spill clique has decided this should be "native int", but this block only pushes an "int".
-                // Insert a sign-extension to "native int" so we match the clique.
-                verCurrentState.esStack[level].val = gtNewCastNode(TYP_I_IMPL, tree, TYP_I_IMPL);
+                if (lvaTable[tempNum].lvType == TYP_I_IMPL)
+                {
+                    // Spill clique has decided this should be "native int", but this block only pushes an "int".
+                    // Insert a sign-extension to "native int" so we match the clique.
+                    verCurrentState.esStack[level].val = gtNewCastNode(TYP_I_IMPL, tree, TYP_I_IMPL);
+                }
+                else
+                {
+                    // The spill clique temp's type is potentially impacted by importer branch folding.
+                    JITDUMP("\nEval stack input to BB%02u contains fold-sensitive int32\n", block->bbNum);
+                    impHasFoldSensitiveBlock = true;
+                }
             }
 
             // Consider the case where one branch left a 'byref' on the stack and the other leaves
@@ -16533,6 +16547,8 @@ SPILLSTACK:
                     // Spill clique has decided this should be "byref", but this block only pushes an "int".
                     // Insert a sign-extension to "native int" so we match the clique size.
                     verCurrentState.esStack[level].val = gtNewCastNode(TYP_I_IMPL, tree, TYP_I_IMPL);
+
+                    // Note "fold sensitive" int-> (possible) byref is caught by the check above
                 }
             }
 #endif // _TARGET_64BIT_
@@ -16557,11 +16573,20 @@ SPILLSTACK:
                 lvaTable[tempNum].lvType = TYP_DOUBLE;
                 reimportSpillClique      = true;
             }
-            else if (tree->gtType == TYP_FLOAT && lvaTable[tempNum].lvType == TYP_DOUBLE)
+            else if (tree->gtType == TYP_FLOAT)
             {
-                // Spill clique has decided this should be "double", but this block only pushes a "float".
-                // Insert a cast to "double" so we match the clique.
-                verCurrentState.esStack[level].val = gtNewCastNode(TYP_DOUBLE, tree, TYP_DOUBLE);
+                if (lvaTable[tempNum].lvType == TYP_DOUBLE)
+                {
+                    // Spill clique has decided this should be "double", but this block only pushes a "float".
+                    // Insert a cast to "double" so we match the clique.
+                    verCurrentState.esStack[level].val = gtNewCastNode(TYP_DOUBLE, tree, TYP_DOUBLE);
+                }
+                else
+                {
+                    // The spill clique temp's type is potentially impacted by importer branch folding.
+                    JITDUMP("\nEval stack input to BB%02u contains fold-sensitive float\n", block->bbNum);
+                    impHasFoldSensitiveBlock = true;
+                }
             }
 
 #endif // FEATURE_X87_DOUBLES
@@ -17001,8 +17026,11 @@ void Compiler::ReimportSpillClique::Visit(SpillCliqueDir predOrSucc, BasicBlock*
         // the pending list) then just ignore it for now.
 
         // This block has either never been imported (EntryState == NULL) or it failed
-        // verification. Neither state requires us to force it to be imported now.
-        assert((blk->bbEntryState == nullptr) || (blk->bbFlags & BBF_FAILED_VERIFICATION));
+        // verification, or we are in a full reimport triggred type-sensitve folding.
+        //
+        // None of these are sufficient to force importation now.
+        assert((blk->bbEntryState == nullptr) || (blk->bbFlags & BBF_FAILED_VERIFICATION) ||
+               m_pComp->impDisableBranchFold);
         return;
     }
 
@@ -17274,7 +17302,7 @@ void Compiler::impSpillCliqueSetMember(SpillCliqueDir predOrSucc, BasicBlock* bl
  *  basic flowgraph has already been constructed and is passed in.
  */
 
-void Compiler::impImport(BasicBlock* method)
+void Compiler::impImport(BasicBlock* method, bool disableFolding)
 {
 #ifdef DEBUG
     if (verbose)
@@ -17322,6 +17350,9 @@ void Compiler::impImport(BasicBlock* method)
     impBoxTemp = BAD_VAR_NUM;
 
     impPendingList = impPendingFree = nullptr;
+    impHasFoldedBranch              = false;
+    impHasFoldSensitiveBlock        = false;
+    impDisableBranchFold            = disableFolding;
 
     /* Add the entry-point to the worker-list */
 
@@ -17399,10 +17430,35 @@ void Compiler::impImport(BasicBlock* method)
         }
     }
 
-#ifdef DEBUG
-    if (verbose && info.compXcptnsCount)
+    // If the importer folded any branches in the last importer pass AND has found any
+    // blocks with types that are sensitive
+    if (impHasFoldedBranch && impHasFoldSensitiveBlock)
     {
-        printf("\nAfter impImport() added block for try,catch,finally");
+        assert(!impDisableBranchFold);
+        assert(!disableFolding);
+
+        JITDUMP("\n *** Importer folded branch might lead to mistyping. Disabling folding and reimporting\n");
+        printf("#### Importer folding triggered full reimport of %s\n", info.compFullName);
+
+        // Mark all blocks as not imported
+        for (BasicBlock* block = fgFirstBB; block; block = block->bbNext)
+        {
+            impReimportMarkBlock(block);
+        }
+
+        // Rerun import, this time with folding disabled
+        disableFolding = true;
+        impImport(fgFirstBB, disableFolding);
+    }
+    else if (disableFolding)
+    {
+        return;
+    }
+
+#ifdef DEBUG
+    if (verbose)
+    {
+        printf("\nAfter impImport()\n");
         fgDispBasicBlocks();
         printf("\n");
     }
