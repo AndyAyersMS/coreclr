@@ -14690,6 +14690,25 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 if (canExpandInline && shouldExpandInline)
                 {
+                    // See if we happen to know anything about the
+                    // type of the object being unboxed.
+
+                    bool isExact = false;
+                    bool isNonNull = false;
+                    CORINFO_CLASS_HANDLE clsHnd = gtGetClassHandle(op1, &isExact, &isNonNull);
+                    
+                    if ((clsHnd != nullptr) && isExact)
+                    {
+                        const TypeCompareState compare =
+                            info.compCompHnd->compareTypesForEquality(resolvedToken.hClass, clsHnd);
+
+                        if (compare == TypeCompareState::Must)
+                        {
+                            printf("#### Can optimize %s (%s) in %s (%s)\n", opcode == CEE_UNBOX ? "UNBOX" : "UNBOX.ANY",
+                                eeGetClassName(clsHnd), info.compFullName, impInlineRoot()->info.compFullName);
+                        }
+                    }
+
                     JITDUMP("\n Importing %s as inline sequence\n", opcode == CEE_UNBOX ? "UNBOX" : "UNBOX.ANY");
                     // we are doing normal unboxing
                     // inline the common case of the unbox helper
