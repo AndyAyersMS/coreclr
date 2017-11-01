@@ -84,13 +84,13 @@ def main(argv):
 
     print("Downloading .Net CLI")
     if platform == 'Linux':
-        dotnetcliUrl = "https://go.microsoft.com/fwlink/?linkid=839628"
+        dotnetcliUrl = "https://www.microsoft.com/net/download/thank-you/dotnet-sdk-2.0.2-linux-x64-binaries"
         dotnetcliFilename = os.path.join(dotnetcliPath, 'dotnetcli-jitutils.tar.gz')
     elif platform == 'OSX':
         dotnetcliUrl = "https://go.microsoft.com/fwlink/?linkid=839641"
         dotnetcliFilename = os.path.join(dotnetcliPath, 'dotnetcli-jitutils.tar.gz')
     elif platform == 'Windows_NT':
-        dotnetcliUrl = "https://go.microsoft.com/fwlink/?linkid=839634"
+        dotnetcliUrl = "https://www.microsoft.com/net/download/thank-you/dotnet-sdk-2.0.2-windows-x64-binaries"
         dotnetcliFilename = os.path.join(dotnetcliPath, 'dotnetcli-jitutils.zip')
     else:
         print('Unknown os ', os)
