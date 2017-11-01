@@ -14058,7 +14058,7 @@ DONE_MORPHING_CHILDREN:
                     /* The left operand is worthless, throw it away */
                     if (lvaLocalVarRefCounted)
                     {
-                        lvaRecursiveDecRefCounts(op1);
+                        // lvaRecursiveDecRefCounts(op1);
                     }
                     op2->gtFlags |= (tree->gtFlags & (GTF_DONT_CSE | GTF_LATE_ARG));
                     DEBUG_DESTROY_NODE(tree);
@@ -16236,6 +16236,14 @@ bool Compiler::fgMorphBlockStmt(BasicBlock* block, GenTreeStmt* stmt DEBUGARG(co
     compCurBB   = block;
     compCurStmt = stmt;
 
+    // Assume entire tree will be rewritten
+    if (lvaLocalVarRefCounted)
+    {
+        JITDUMP("Predecrementing ref counts for morph of [%06u]\n", dspTreeID(stmt));
+        lvaRecursiveDecRefCounts(stmt->gtStmtExpr);
+        JITDUMP("... done predecrementing\n");
+    }
+
     GenTree* morph = fgMorphTree(stmt->gtStmtExpr);
 
     // Bug 1106830 - During the CSE phase we can't just remove
@@ -16281,8 +16289,10 @@ bool Compiler::fgMorphBlockStmt(BasicBlock* block, GenTreeStmt* stmt DEBUGARG(co
 
     if (lvaLocalVarRefCounted)
     {
+        JITDUMP("Postincrementing ref counts for morph of [%06u]\n", dspTreeID(stmt));
         // fgMorphTree may have introduced new lclVar references. Bump the ref counts if requested.
         lvaRecursiveIncRefCounts(stmt->gtStmtExpr);
+        JITDUMP("... done postincrementing\n");
     }
 
     // Can the entire tree be removed?

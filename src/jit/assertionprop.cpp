@@ -2704,7 +2704,7 @@ GenTreePtr Compiler::optConstantAssertionProp(AssertionDsc* curAssertion,
 #endif
     if (lvaLocalVarRefCounted)
     {
-        lvaTable[lclNum].decRefCnts(compCurBB->getBBWeight(this), this);
+        // lvaTable[lclNum].decRefCnts(compCurBB->getBBWeight(this), this);
     }
 
     return optAssertionProp_Update(newTree, tree, stmt);
@@ -3106,7 +3106,7 @@ GenTreePtr Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions,
         }
 #endif
         // Decrement the ref counts, before we change the oper.
-        lvaTable[op1->gtLclVar.gtLclNum].decRefCnts(compCurBB->getBBWeight(this), this);
+        // lvaTable[op1->gtLclVar.gtLclNum].decRefCnts(compCurBB->getBBWeight(this), this);
 
         // Change the oper to const.
         if (genActualType(op1->TypeGet()) == TYP_INT)
@@ -3166,7 +3166,7 @@ GenTreePtr Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions,
             gtDispTree(tree, nullptr, nullptr, true);
         }
 #endif
-        lvaTable[op1->gtLclVar.gtLclNum].decRefCnts(compCurBB->getBBWeight(this), this);
+        // lvaTable[op1->gtLclVar.gtLclNum].decRefCnts(compCurBB->getBBWeight(this), this);
 
         // If floating point, don't just substitute op1 with op2, this won't work if
         // op2 is NaN. Just turn it into a "true" or "false" yielding expression.
@@ -3177,7 +3177,7 @@ GenTreePtr Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions,
             // point only on JTrue nodes, so if the condition held earlier, it will hold
             // now. We don't create OAK_EQUAL assertion on floating point from GT_ASG
             // because we depend on value num which would constant prop the NaN.
-            lvaTable[op2->gtLclVar.gtLclNum].decRefCnts(compCurBB->getBBWeight(this), this);
+            // lvaTable[op2->gtLclVar.gtLclNum].decRefCnts(compCurBB->getBBWeight(this), this);
             op1->ChangeOperConst(GT_CNS_DBL);
             op1->gtDblCon.gtDconVal = 0;
             op2->ChangeOperConst(GT_CNS_DBL);
@@ -3187,7 +3187,7 @@ GenTreePtr Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions,
         else
         {
             noway_assert(varTypeIsIntegralOrI(op1->TypeGet()));
-            lvaTable[op2->gtLclVar.gtLclNum].incRefCnts(compCurBB->getBBWeight(this), this);
+            // lvaTable[op2->gtLclVar.gtLclNum].incRefCnts(compCurBB->getBBWeight(this), this);
             op1->AsLclVarCommon()->SetLclNum(op2->AsLclVarCommon()->GetLclNum());
             op1->AsLclVarCommon()->SetSsaNum(op2->AsLclVarCommon()->GetSsaNum());
         }
