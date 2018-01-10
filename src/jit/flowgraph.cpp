@@ -5926,19 +5926,34 @@ void Compiler::fgFindBasicBlocks()
         // or if the inlinee has GC ref locals.
         if ((info.compRetNativeType != TYP_VOID) && ((retBlocks > 1) || impInlineInfo->HasGcRefLocals()))
         {
-            // The lifetime of this var might expand multiple BBs. So it is a long lifetime compiler temp.
-            lvaInlineeReturnSpillTemp                  = lvaGrabTemp(false DEBUGARG("Inline return value spill temp"));
-            lvaTable[lvaInlineeReturnSpillTemp].lvType = info.compRetNativeType;
+            // If we've spilled the ret expr to a temp we can reuse the temp
+            // as the inlinee return spill temp.
+            //
+            // Todo: see if it is even better to always use this existing temp
+            // for return values, even if we otherwise wouldn't need a return spill temp...
+            lvaInlineeReturnSpillTemp = impInlineInfo->inlineCandidateInfo->preexistingSpillTemp;
 
-            // If the method returns a ref class, set the class of the spill temp
-            // to the method's return value. We may update this later if it turns
-            // out we can prove the method returns a more specific type.
-            if (info.compRetType == TYP_REF)
+            if (lvaInlineeReturnSpillTemp != BAD_VAR_NUM)
             {
-                CORINFO_CLASS_HANDLE retClassHnd = impInlineInfo->inlineCandidateInfo->methInfo.args.retTypeClass;
-                if (retClassHnd != nullptr)
+                // This temp should already have the type of the return value.
+                JITDUMP("\nInliner: re-using pre-existing spill temp V%02u\n", lvaInlineeReturnSpillTemp);
+            }
+            else
+            {
+                // The lifetime of this var might expand multiple BBs. So it is a long lifetime compiler temp.
+                lvaInlineeReturnSpillTemp = lvaGrabTemp(false DEBUGARG("Inline return value spill temp"));
+                lvaTable[lvaInlineeReturnSpillTemp].lvType = info.compRetNativeType;
+
+                // If the method returns a ref class, set the class of the spill temp
+                // to the method's return value. We may update this later if it turns
+                // out we can prove the method returns a more specific type.
+                if (info.compRetType == TYP_REF)
                 {
-                    lvaSetClass(lvaInlineeReturnSpillTemp, retClassHnd);
+                    CORINFO_CLASS_HANDLE retClassHnd = impInlineInfo->inlineCandidateInfo->methInfo.args.retTypeClass;
+                    if (retClassHnd != nullptr)
+                    {
+                        lvaSetClass(lvaInlineeReturnSpillTemp, retClassHnd);
+                    }
                 }
             }
         }
@@ -22326,42 +22341,6 @@ Compiler::fgWalkResult Compiler::fgUpdateInlineReturnExpressionPlaceHolder(GenTr
             }
 #endif // DEBUG
         } while (tree->gtOper == GT_RET_EXPR);
-
-        // Now see if this return value expression feeds the 'this'
-        // object at a virtual call site.
-        //
-        // Note for void returns where the inline failed, the
-        // GT_RET_EXPR may be top-level.
-        //
-        // May miss cases where there are intermediaries between call
-        // and this, eg commas.
-        GenTreePtr parentTree = data->parent;
-
-        if ((parentTree != nullptr) && (parentTree->gtOper == GT_CALL))
-        {
-            GenTreeCall* call  = parentTree->AsCall();
-            bool tryLateDevirt = call->IsVirtual() && (call->gtCallObjp == tree) && (call->gtCallType == CT_USER_FUNC);
-
-#ifdef DEBUG
-            tryLateDevirt = tryLateDevirt && (JitConfig.JitEnableLateDevirtualization() == 1);
-#endif // DEBUG
-
-            if (tryLateDevirt)
-            {
-#ifdef DEBUG
-                if (comp->verbose)
-                {
-                    printf("**** Late devirt opportunity\n");
-                    comp->gtDispTree(call);
-                }
-#endif // DEBUG
-
-                CORINFO_METHOD_HANDLE  method      = call->gtCallMethHnd;
-                unsigned               methodFlags = 0;
-                CORINFO_CONTEXT_HANDLE context     = nullptr;
-                comp->impDevirtualizeCall(call, &method, &methodFlags, &context, nullptr);
-            }
-        }
     }
 
 #if FEATURE_MULTIREG_RET
@@ -22414,6 +22393,34 @@ Compiler::fgWalkResult Compiler::fgUpdateInlineReturnExpressionPlaceHolder(GenTr
 
 #endif // defined(DEBUG)
 #endif // FEATURE_MULTIREG_RET
+
+    // Make another attempt to devirtualize virtual call sites, since
+    // inlining may have improved our knowledge of types.
+    if (tree->gtOper == GT_CALL)
+    {
+        GenTreeCall* call          = tree->AsCall();
+        bool         tryLateDevirt = call->IsVirtual() && (call->gtCallType == CT_USER_FUNC);
+
+#ifdef DEBUG
+        tryLateDevirt = tryLateDevirt && (JitConfig.JitEnableLateDevirtualization() == 1);
+#endif // DEBUG
+
+        if (tryLateDevirt)
+        {
+#ifdef DEBUG
+            if (comp->verbose)
+            {
+                printf("**** Late devirt opportunity\n");
+                comp->gtDispTree(call);
+            }
+#endif // DEBUG
+
+            CORINFO_METHOD_HANDLE  method      = call->gtCallMethHnd;
+            unsigned               methodFlags = 0;
+            CORINFO_CONTEXT_HANDLE context     = nullptr;
+            comp->impDevirtualizeCall(call, &method, &methodFlags, &context, nullptr);
+        }
+    }
 
     return WALK_CONTINUE;
 }
