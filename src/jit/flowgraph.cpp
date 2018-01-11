@@ -5929,7 +5929,7 @@ void Compiler::fgFindBasicBlocks()
             // If we've spilled the ret expr to a temp we can reuse the temp
             // as the inlinee return spill temp.
             //
-            // Todo: see if it is even better to always use this existing temp
+            // TODO: see if it is even better to always use this existing temp
             // for return values, even if we otherwise wouldn't need a return spill temp...
             lvaInlineeReturnSpillTemp = impInlineInfo->inlineCandidateInfo->preexistingSpillTemp;
 
@@ -5937,6 +5937,7 @@ void Compiler::fgFindBasicBlocks()
             {
                 // This temp should already have the type of the return value.
                 JITDUMP("\nInliner: re-using pre-existing spill temp V%02u\n", lvaInlineeReturnSpillTemp);
+                // assert(lvaTable[lvaInlineeReturnSpillTemp].lvType == info.compRetNativeType);
             }
             else
             {

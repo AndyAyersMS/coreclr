@@ -2234,17 +2234,26 @@ bool Compiler::impSpillStackEntry(unsigned level,
     /* Assign the spilled entry to the temp */
     impAssignTempGen(tnum, tree, verCurrentState.esStack[level].seTypeInfo.GetClassHandle(), level);
 
-    // If temp is newly introduced and a ref type, grab what type info we can.
-    if (isNewTemp && (lvaTable[tnum].lvType == TYP_REF))
+    // For new temps, we do some special tracking as we know they will
+    // have a single defintion.
+    if (isNewTemp)
     {
-        CORINFO_CLASS_HANDLE stkHnd = verCurrentState.esStack[level].seTypeInfo.GetClassHandle();
-        lvaSetClass(tnum, tree, stkHnd);
-
-        // If we're assigning a GT_RET_EXPR, note the temp over on the call,
-        // so the inliner can use it in case it needs a return spill temp.
-        if (tree->OperGet() == GT_RET_EXPR)
+        // If temp is a ref type, grab what type info we can.
+        if (lvaTable[tnum].lvType == TYP_REF)
         {
-            JITDUMP("\n*** see V%02u = GT_RET_EXPR, noting temp\n", tnum);
+            CORINFO_CLASS_HANDLE stkHnd = verCurrentState.esStack[level].seTypeInfo.GetClassHandle();
+            lvaSetClass(tnum, tree, stkHnd);
+        }
+
+        // If we're assigning a GT_RET_EXPR to a non-struct temp and we're not
+        // make a note of the temp id over in the call's inline info, so the
+        // inliner can use if it needs a return spill temp.
+        //
+        // Struct type temps are exempted for now because their processing is
+        // more complex.
+        if ((tree->OperGet() == GT_RET_EXPR) && (lvaTable[tnum].TypeGet() != TYP_STRUCT))
+        {
+            JITDUMP("\n*** see V%02u = GT_RET_EXPR, noting temp for possible later re-use\n", tnum);
             GenTree*             call = tree->gtRetExpr.gtInlineCandidate;
             InlineCandidateInfo* ici  = call->gtCall.gtInlineCandidateInfo;
             ici->preexistingSpillTemp = tnum;
