@@ -7144,6 +7144,16 @@ bool Compiler::fgAddrCouldBeNull(GenTreePtr addr)
         {
             return false;
         }
+
+        // Shared non-static (instance) methods have non-null this pointers
+        if (impIsThis(addr))
+        {
+            DWORD attribs = impInlineRoot()->info.compClassAttr;
+            if ((attribs & (CORINFO_FLG_SHAREDINST & CORINFO_FLG_STATIC)) == CORINFO_FLG_SHAREDINST)
+            {
+                return false;
+            }
+        }
     }
     else if (addr->gtOper == GT_ADDR)
     {

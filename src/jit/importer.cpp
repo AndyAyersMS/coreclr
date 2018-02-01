@@ -1939,7 +1939,7 @@ GenTreePtr Compiler::getRuntimeContextTree(CORINFO_RUNTIME_LOOKUP_KIND kind)
 
         // Vtable pointer of this object
         ctxTree = gtNewOperNode(GT_IND, TYP_I_IMPL, ctxTree);
-        ctxTree->gtFlags |= GTF_EXCEPT; // Null-pointer exception
+        ctxTree->gtFlags |= GTF_IND_NONFAULTING;    
         ctxTree->gtFlags |= GTF_IND_INVARIANT;
     }
     else
