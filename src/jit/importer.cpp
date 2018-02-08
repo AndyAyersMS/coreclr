@@ -849,6 +849,13 @@ GenTreeArgList* Compiler::impPopList(unsigned count, CORINFO_SIG_INFO* sig, GenT
 
         if (varTypeIsStruct(temp))
         {
+            // If we have popped the current impNewObjTemp, it's now free.
+            if (impNewObjTempInUse && (temp->gtOper == GT_LCL_VAR) && (temp->gtLclVarCommon.gtLclNum == impNewObjTemp))
+            {
+                JITDUMP("\nFreeing up impNewObjTemp V%02u\n", impNewObjTemp);
+                impNewObjTempInUse = false;
+            }
+
             // Morph trees that aren't already OBJs or MKREFANY to be OBJs
             assert(ti.IsType(TI_STRUCT));
             structType = ti.GetClassHandleForValueClass();
@@ -10217,8 +10224,11 @@ void Compiler::impImportBlockCode(BasicBlock* block)
         }
         else
         {
-            lastSpillOffs   = opcodeOffs;
-            impBoxTempInUse = false; // nothing on the stack, box temp OK to use again
+            lastSpillOffs = opcodeOffs;
+
+            // nothing on the stack, reusable temps OK to use again
+            impBoxTempInUse    = false;
+            impNewObjTempInUse = false;
         }
 
         /* Compute the current instr offset */
@@ -13183,26 +13193,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 {
                     // This is the normal case where the size of the object is
                     // fixed.  Allocate the memory and call the constructor.
-
-                    // Note: We cannot add a peep to avoid use of temp here
-                    // becase we don't have enough interference info to detect when
-                    // sources and destination interfere, example: s = new S(ref);
-
-                    // TODO: We find the correct place to introduce a general
-                    // reverse copy prop for struct return values from newobj or
-                    // any function returning structs.
-
-                    /* get a temporary for the new object */
-                    lclNum = lvaGrabTemp(true DEBUGARG("NewObj constructor temp"));
-                    if (compDonotInline())
-                    {
-                        // Fail fast if lvaGrabTemp fails with CALLSITE_TOO_MANY_LOCALS.
-                        assert(compInlineResult->GetObservation() == InlineObservation::CALLSITE_TOO_MANY_LOCALS);
-                        return;
-                    }
-
-                    // In the value class case we only need clsHnd for size calcs.
                     //
+                    // In the value class case we only need clsHnd for size calcs.
                     // The lookup of the code pointer will be handled by CALL in this case
                     if (clsFlags & CORINFO_FLG_VALUECLASS)
                     {
@@ -13233,20 +13225,71 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                             }
                         }
 
+                        // Find a temp to use for object construction.
+                        //
+                        // Note: We cannot add a peep to avoid use of temp here
+                        // because we don't have enough interference info to detect when
+                        // sources and destination interfere, example: s = new S(ref);
+                        //
+                        // TODO: We find the correct place to introduce a general
+                        // reverse copy prop for struct return values from newobj or
+                        // any function returning structs.
+                        //
+                        // See if we can re-use an existing temp.
+                        bool createdNewTemp = false;
+                        if (impNewObjTempInUse || impNewObjTemp == BAD_VAR_NUM ||
+                            lvaTable[impNewObjTemp].lvVerTypeInfo.GetClassHandle() != resolvedToken.hClass)
+                        {
+                            JITDUMP("\nAllocating a new newobj struct temp, because %s\n",
+                                    impNewObjTempInUse
+                                        ? "existing temp is in use"
+                                        : (impNewObjTemp == BAD_VAR_NUM) ? "no temp allocated"
+                                                                         : "temp available but has wrong class");
+
+                            // We need a new temp. We'll update the cache too.
+                            impNewObjTemp = lvaGrabTemp(true DEBUGARG("NewObj struct constructor temp"));
+
+                            if (compDonotInline())
+                            {
+                                // Fail fast if lvaGrabTemp fails with CALLSITE_TOO_MANY_LOCALS.
+                                assert(compInlineResult->GetObservation() ==
+                                       InlineObservation::CALLSITE_TOO_MANY_LOCALS);
+                                return;
+                            }
+
+                            createdNewTemp = true;
+                        }
+                        else
+                        {
+                            JITDUMP("\nRe-using struct temp V%02u\n", impNewObjTemp);
+                        }
+
+                        // Note that the new obj temp is now live, and set up its type.
+                        lclNum             = impNewObjTemp;
+                        impNewObjTempInUse = true;
+
                         CorInfoType jitTyp = info.compCompHnd->asCorInfoType(resolvedToken.hClass);
                         unsigned    size   = info.compCompHnd->getClassSize(resolvedToken.hClass);
 
                         if (impIsPrimitive(jitTyp))
                         {
-                            lvaTable[lclNum].lvType = JITtype2varType(jitTyp);
+                            if (createdNewTemp)
+                            {
+                                lvaTable[lclNum].lvType = JITtype2varType(jitTyp);
+                            }
+                            else
+                            {
+                                assert(lvaTable[lclNum].lvType == JITtype2varType(jitTyp));
+                            }
                         }
-                        else
+                        else if (createdNewTemp)
                         {
                             // The local variable itself is the allocated space.
                             // Here we need unsafe value cls check, since the address of struct is taken for further use
                             // and potentially exploitable.
                             lvaSetStruct(lclNum, resolvedToken.hClass, true /* unsafe value cls check */);
                         }
+
                         if (compIsForInlining() || fgStructTempNeedsExplicitZeroInit(lvaTable + lclNum, block))
                         {
                             // Append a tree to zero-out the temp
@@ -13306,6 +13349,14 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                         // to a temp. Note that the pattern "temp = allocObj" is required
                         // by ObjectAllocator phase to be able to determine GT_ALLOCOBJ nodes
                         // without exhaustive walk over all expressions.
+                        lclNum = lvaGrabTemp(true DEBUGARG("NewObj ref class constructor temp"));
+
+                        if (compDonotInline())
+                        {
+                            // Fail fast if lvaGrabTemp fails with CALLSITE_TOO_MANY_LOCALS.
+                            assert(compInlineResult->GetObservation() == InlineObservation::CALLSITE_TOO_MANY_LOCALS);
+                            return;
+                        }
 
                         impAssignTempGen(lclNum, op1, (unsigned)CHECK_SPILL_NONE);
                         lvaSetClass(lclNum, resolvedToken.hClass, true /* is Exact */);
@@ -16468,9 +16519,10 @@ SPILLSTACK:
 
     if (verCurrentState.esStackDepth != 0)
     {
-        impBoxTemp = BAD_VAR_NUM; // if a box temp is used in a block that leaves something
-                                  // on the stack, its lifetime is hard to determine, simply
-                                  // don't reuse such temps.
+        // To be conservative assume reusable temps might
+        // escape the block... (do this only if "in use" ?)
+        impBoxTemp    = BAD_VAR_NUM;
+        impNewObjTemp = BAD_VAR_NUM;
 
         GenTree* addStmt = nullptr;
 
@@ -17453,7 +17505,8 @@ void Compiler::impImport(BasicBlock* method)
     impLastILoffsStmt   = nullptr;
     impNestedStackSpill = false;
 #endif
-    impBoxTemp = BAD_VAR_NUM;
+    impBoxTemp    = BAD_VAR_NUM;
+    impNewObjTemp = BAD_VAR_NUM;
 
     impPendingList = impPendingFree = nullptr;
 

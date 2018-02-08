@@ -3773,6 +3773,9 @@ public:
     bool     impBoxTempInUse; // the temp below is valid and available
     unsigned impBoxTemp;      // a temporary that is used for boxing
 
+    bool     impNewObjTempInUse; // the temp below is valid and available
+    unsigned impNewObjTemp;      // a temporary that is used for struct newobjs
+
 #ifdef DEBUG
     bool jitFallbackCompile; // Are we doing a fallback compile? That is, have we executed a NO_WAY assert,
                              //   and we are trying to compile again in a "safer", minopts mode?
