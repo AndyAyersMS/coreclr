@@ -2115,6 +2115,11 @@ void Compiler::lvaSetVarAddrExposed(unsigned varNum)
 
     LclVarDsc* varDsc = &lvaTable[varNum];
 
+    if (!varDsc->lvAddrExposed)
+    {
+        JITDUMP("\nMarking V%02u address-exposed\n", varNum);
+    }
+
     varDsc->lvAddrExposed = 1;
 
     if (varDsc->lvPromoted)

@@ -849,7 +849,7 @@ GenTreeArgList* Compiler::impPopList(unsigned count, CORINFO_SIG_INFO* sig, GenT
 
         if (varTypeIsStruct(temp))
         {
-            // If we have popped the current impNewObjTemp, it's now free.
+            // If we have just popped the current impNewObjTemp, it's now free.
             if (impNewObjTempInUse && (temp->gtOper == GT_LCL_VAR) && (temp->gtLclVarCommon.gtLclNum == impNewObjTemp))
             {
                 JITDUMP("\nFreeing up impNewObjTemp V%02u\n", impNewObjTemp);
@@ -13235,16 +13235,26 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                         // reverse copy prop for struct return values from newobj or
                         // any function returning structs.
                         //
-                        // See if we can re-use an existing temp.
+                        // See if we can and should re-use an existing temp.
+                        //
+                        // Can: temp exists, is free, and has right type.
+                        //
+                        // Should: if the constructor we're about to call is an inline
+                        // candidate.
                         bool createdNewTemp = false;
-                        if (impNewObjTempInUse || impNewObjTemp == BAD_VAR_NUM ||
-                            lvaTable[impNewObjTemp].lvVerTypeInfo.GetClassHandle() != resolvedToken.hClass)
+                        bool cannotReuseTemp =
+                            impNewObjTempInUse || (impNewObjTemp == BAD_VAR_NUM) ||
+                            (lvaTable[impNewObjTemp].lvVerTypeInfo.GetClassHandle() != resolvedToken.hClass);
+                        bool shouldNotReuseTemp = bbInCatchHandlerILRange(compCurBB);
+                        if (cannotReuseTemp || shouldNotReuseTemp)
                         {
                             JITDUMP("\nAllocating a new newobj struct temp, because %s\n",
-                                    impNewObjTempInUse
-                                        ? "existing temp is in use"
-                                        : (impNewObjTemp == BAD_VAR_NUM) ? "no temp allocated"
-                                                                         : "temp available but has wrong class");
+                                    cannotReuseTemp
+                                        ? (impNewObjTempInUse ? "existing temp is in use"
+                                                              : (impNewObjTemp == BAD_VAR_NUM)
+                                                                    ? "no temp allocated"
+                                                                    : "temp is available but has wrong class")
+                                        : "temp feeds non-inlinable ctor");
 
                             // We need a new temp. We'll update the cache too.
                             impNewObjTemp = lvaGrabTemp(true DEBUGARG("NewObj struct constructor temp"));
@@ -16521,8 +16531,12 @@ SPILLSTACK:
     {
         // To be conservative assume reusable temps might
         // escape the block... (do this only if "in use" ?)
-        impBoxTemp    = BAD_VAR_NUM;
-        impNewObjTemp = BAD_VAR_NUM;
+        impBoxTemp = BAD_VAR_NUM;
+
+        if (impNewObjTempInUse)
+        {
+            impNewObjTemp = BAD_VAR_NUM;
+        }
 
         GenTree* addStmt = nullptr;
 
