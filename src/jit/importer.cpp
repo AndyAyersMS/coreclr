@@ -3699,7 +3699,24 @@ GenTreePtr Compiler::impIntrinsic(GenTreePtr            newobjThis,
 
             if (isReadOnly)
             {
-                result = gtNewOperNode(GT_IND, resultType, result);
+                // Use GT_OBJ for true structs, GT_IND otherwise.
+                bool useObj = false;
+
+                if (varTypeIsStruct(resultType))
+                {
+                    CorInfoType spanElemJitType = info.compCompHnd->asCorInfoType(spanElemHnd);
+                    useObj                      = !impIsPrimitive(spanElemJitType);
+                }
+
+                if (useObj)
+                {
+                    result = gtNewObjNode(spanElemHnd, result);
+                }
+                else
+                {
+                    result = gtNewOperNode(GT_IND, resultType, result);
+                    result->gtFlags |= GTF_IND_TGTANYWHERE | GTF_GLOB_REF;
+                }
             }
             else
             {
