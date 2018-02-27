@@ -16529,9 +16529,11 @@ SPILLSTACK:
 
     if (verCurrentState.esStackDepth != 0)
     {
-        // To be conservative assume reusable temps might
-        // escape the block... (do this only if "in use" ?)
-        impBoxTemp = BAD_VAR_NUM;
+        // To be conservative assume reusable temps might escape the block.
+        if (impBoxTempInUse)
+        {
+            impBoxTemp = BAD_VAR_NUM;
+        }
 
         if (impNewObjTempInUse)
         {
