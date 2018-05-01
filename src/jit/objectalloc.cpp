@@ -345,7 +345,6 @@ GenTree* ObjectAllocator::MorphAllocObjNodeIntoStackAlloc(GenTreeAllocObj* alloc
     //------------------------------------------------------------------------
 
     tree = comp->gtNewLclvNode(lclNum, TYP_STRUCT);
-    tree = comp->gtNewOperNode(GT_ADDR, TYP_BYREF, tree);
     tree = comp->gtNewBlkOpNode(tree, comp->gtNewIconNode(0), structSize, false, false);
 
     GenTreeStmt* newStmt = comp->gtNewStmt(tree);
@@ -453,6 +452,10 @@ Compiler::fgWalkResult ObjectAllocator::BuildConnGraphVisitor(GenTree** pTree, C
                     //                      AND
                     //   2. The lhs of the GT_ASG is not another lclVar
                     //------------------------------------------------------------------------
+                    if (!callbackData->IsLclVarNonStackAlloc(lclNum))
+                    {
+                        JITDUMP("V%02u first escapes via [%06u]\n", lclNum, tree->gtTreeID);
+                    }
                     callbackData->MarkLclVarAsNonStackAlloc(lclNum);
                 }
             }
