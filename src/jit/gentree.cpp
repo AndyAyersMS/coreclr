@@ -11819,13 +11819,13 @@ void Compiler::gtDispTree(GenTree*     tree,
     switch (tree->gtOper)
     {
         case GT_FIELD:
-            if (tree->gtField.gtFldHnd != nullptr)
+            if (FieldSeqStore::IsPseudoField(tree->gtField.gtFldHnd))
             {
-                printf(" %s", eeGetFieldName(tree->gtField.gtFldHnd), 0);
+                printf(" #PseudoField:0x%x", tree->gtField.gtFldOffset);
             }
             else
             {
-                printf(" @field:0x%x", tree->gtField.gtFldOffset);
+                printf(" %s", eeGetFieldName(tree->gtField.gtFldHnd), 0);
             }
 
             if (tree->gtField.gtFldObj && !topOnly)
