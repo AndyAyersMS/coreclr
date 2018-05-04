@@ -5640,6 +5640,7 @@ void Compiler::impImportAndPushBox(CORINFO_RESOLVED_TOKEN* pResolvedToken)
             // since we then know the exact class of the box temp.
             impBoxTemp                  = lvaGrabTemp(true DEBUGARG("Single-def Box Helper"));
             lvaTable[impBoxTemp].lvType = TYP_REF;
+            lvaTable[impBoxTemp].lvIsNonNull = true;
             const bool isExact          = true;
             lvaSetClass(impBoxTemp, pResolvedToken->hClass, isExact);
         }
@@ -12603,6 +12604,10 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     if (type == TYP_REF)
                     {
                         lvaSetClass(tmpNum, tree, tiRetVal.GetClassHandle());
+                        if (tree->IsBoxedValue())
+                        {
+                            lvaTable[tmpNum].lvIsNonNull = true;
+                        }
                     }
                 }
 
