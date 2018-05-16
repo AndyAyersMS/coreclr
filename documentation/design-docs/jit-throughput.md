@@ -197,4 +197,4 @@ Jit time is also fairly well corelated with method IL size. For example a linear
 
 Perhaps not too surprisingly the size of the jit produced code is also fairly well correlated with the IL size:
 
-![jit code size vs IL size](./JitCodeSizeVsILSize2.jpg)
+![jit code size vs IL size](./JitCodeSizeVSILSize2.jpg)
