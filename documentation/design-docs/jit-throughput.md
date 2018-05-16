@@ -191,10 +191,10 @@ The distribution of jit times is typically left-leaning with a long tail to the 
 
 Jit time is also fairly well corelated with method IL size. For example a linear regression model of the per-method jit time data from the run above shows a correlation coefficient of ~0.79.
 
-![jit time vs IL size](./JitTimeVSILSize2.jpg)
+![jit time vs IL size](./JitTimeVsILSize2.jpg)
 
 ### Jit Output Size Distribution
 
 Perhaps not too surprisingly the size of the jit produced code is also fairly well correlated with the IL size:
 
-![jit code size vs IL size](./JitCodeSizeVSILSize2.jpg)
+![jit code size vs IL size](./JitCodeSizeVsILSize2.jpg)
