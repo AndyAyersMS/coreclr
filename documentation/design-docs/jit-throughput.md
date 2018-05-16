@@ -112,7 +112,7 @@ Open issues:
 
 We measure throughput currently by crossgenning a set of assemblies. For example here is the recent history for time spent crossgenning Microsoft.CodeAnalysis.CSharp in CoreCLR master:
 
-![throughput chart](CrossgenData2.jpg)
+![throughput chart](./CrossgenData2.jpg)
 
 We can see PGO provides a throughput reasonable benefit, around 6% or so, and that the data is fairly noisy. 
 
@@ -122,8 +122,8 @@ So we likely need to foster the development of some alternative measurement appr
 
 ### Measurement Approaches
 
-| Driver |Measurement  | Per-Method | Per-Phase | Noise | Details    |
-| :-----     | :-----       | :---------- | ---------| --- | --- | --- |
+| Driver | Measurement | Per-Method | Per-Phase | Noise | Details    |
+| ------ | ----------- | ---------- | --------- | ----- | -----------|
 | App | ETW | Yes | No | Med | Enable jit ETW events, then post-process ETL |
 | App | jit time log | Yes | No | ? | Enable internal jit logging | 
 | App | profiler | No | Yes | Med | CPU cycle sampling |
@@ -181,7 +181,7 @@ If you profile a .Net process via stack sampling and visualize the results (say,
 
 For example, the blue frames in the flame graph below show the jit frames. In this example jitting took around 105 ms and was 32% of total process time.
 
-![flame graph](flame2.jpg)
+![flame graph](./JitFlameGraph.jpg)
 
 To determine the total amount of time spent jitting, an *inclusive* profile estimate is the most appropriate.
 
@@ -191,10 +191,10 @@ The distribution of jit times is typically left-leaning with a long tail to the 
 
 Jit time is also fairly well corelated with method IL size. For example a linear regression model of the per-method jit time data from the run above shows a correlation coefficient of ~0.79.
 
-![jit time vs IL size](JitTimeVSILSize2.jpg)
+![jit time vs IL size](./JitTimeVSILSize2.jpg)
 
 ### Jit Output Size Distribution
 
 Perhaps not too surprisingly the size of the jit produced code is also fairly well correlated with the IL size:
 
-![jit code size vs IL size](JitCodeSizeVsILSize2.jpg)
+![jit code size vs IL size](./JitCodeSizeVsILSize2.jpg)
