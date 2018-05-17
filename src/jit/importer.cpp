@@ -5909,6 +5909,16 @@ void Compiler::impImportNewObjArray(CORINFO_RESOLVED_TOKEN* pResolvedToken, CORI
     // Remember that this basic block contains 'new' of a md array
     compCurBB->bbFlags |= BBF_HAS_NEWARRAY;
 
+    // If optimizing, assign the new array to a temp so we have
+    // some place to keep the type.
+    if (!opts.compDbgCode && !opts.MinOpts())
+    {
+        const unsigned lclNum = lvaGrabTemp(true DEBUGARG("NewArray constructor temp"));
+        impAssignTempGen(lclNum, node, (unsigned)CHECK_SPILL_NONE);
+        lvaSetClass(lclNum, pResolvedToken->hClass, true /* is Exact */);
+        node = gtNewLclvNode(lclNum, TYP_REF);
+    }
+
     impPushOnStack(node, typeInfo(TI_REF, pResolvedToken->hClass));
 }
 
@@ -14339,6 +14349,16 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 }
 
                 op1->gtCall.compileTimeHelperArgumentHandle = (CORINFO_GENERIC_HANDLE)resolvedToken.hClass;
+
+                // If optimizing, assign the new array to a temp so we have
+                // some place to keep the type.... hmmm....
+                if (!opts.compDbgCode && !opts.MinOpts())
+                {
+                    const unsigned lclNum = lvaGrabTemp(true DEBUGARG("NewArray constructor temp"));
+                    impAssignTempGen(lclNum, op1, (unsigned)CHECK_SPILL_NONE);
+                    lvaSetClass(lclNum, resolvedToken.hClass, true /* is Exact */);
+                    op1 = gtNewLclvNode(lclNum, TYP_REF);
+                }
 
                 /* Remember that this basic block contains 'new' of an sd array */
 

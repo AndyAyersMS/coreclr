@@ -13087,14 +13087,16 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
     // Just one operand creates a type from a handle.
     //
     // If the other operand is fetching the type from an object,
-    // we can sometimes optimize the type compare into a simpler
-    // method table comparison.
+    // we can sometimes optimize the type compare directly, or
+    // change it to a simpler method table comparison.
     //
     // TODO: if other operand is null...
     if (op1Kind != TPK_GetType && op2Kind != TPK_GetType)
     {
         return tree;
     }
+
+    JITDUMP("  Trying to optimize type-from-handle compared to GetType()\n");
 
     GenTree* const opHandle = op1IsFromHandle ? op1 : op2;
     GenTree* const opOther  = op1IsFromHandle ? op2 : op1;
@@ -13103,6 +13105,7 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
     GenTree* const       opHandleArgument = opHandle->gtCall.gtCallArgs->gtOp.gtOp1;
     GenTree*             opHandleLiteral  = opHandleArgument;
     CORINFO_CLASS_HANDLE clsHnd           = nullptr;
+    unsigned             runtimeLookupCount = 0;
 
     // Unwrap any GT_NOP node used to prevent constant folding
     if ((opHandleLiteral->gtOper == GT_NOP) && (opHandleLiteral->gtType == TYP_I_IMPL))
@@ -13114,6 +13117,7 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
     if (opHandleLiteral->gtOper == GT_RUNTIMELOOKUP)
     {
         clsHnd = opHandleLiteral->AsRuntimeLookup()->GetClassHandle();
+        runtimeLookupCount++;
     }
     else
     {
@@ -13135,7 +13139,48 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
     // If we couldn't find the class handle, give up.
     if (clsHnd == nullptr)
     {
+        JITDUMP("  Sorry, unable to find handle from handle operand\n");
         return tree;
+    }
+
+    JITDUMP("  Found handle; examining obj pointer operand to GetType()\n");
+
+    // We know opOther is a call to GetType().
+    // See if we happen to know the exact type of opOther's "this".
+    GenTree* opOtherThis = opOther->gtOp.gtOp1;
+    bool isExact = false;
+    bool isNonNull = false;
+    CORINFO_CLASS_HANDLE otherClsHnd = gtGetClassHandle(opOtherThis, &isExact, &isNonNull);
+
+    if ((otherClsHnd != nullptr) && isExact)
+    {
+        JITDUMP("Asking runtime to compare %p (%s) and %p (%s) for equality\n", dspPtr(clsHnd),
+            info.compCompHnd->getClassName(clsHnd), dspPtr(otherClsHnd), info.compCompHnd->getClassName(otherClsHnd));
+        TypeCompareState s = info.compCompHnd->compareTypesForEquality(clsHnd, otherClsHnd);
+
+        if (s != TypeCompareState::May)
+        {
+            // TODO: we may need a residual null check here on opOtherThis
+
+            // Type comparison result is known.
+            const bool typesAreEqual = (s == TypeCompareState::Must);
+            const bool operatorIsEQ  = (oper == GT_EQ);
+            const int  compareResult = operatorIsEQ ^ typesAreEqual ? 0 : 1;
+            JITDUMP("Runtime reports comparison is known at jit time: %u\n", compareResult);
+            GenTree* result = gtNewIconNode(compareResult);
+            
+            // Any runtime lookups that fed into this compare are
+            // now dead code, so they no longer require the runtime context.
+            assert(lvaGenericsContextUseCount >= runtimeLookupCount);
+            lvaGenericsContextUseCount -= runtimeLookupCount;
+            return result;
+        }
+    }
+    else
+    {
+        JITDUMP("Other operand this [%06u] %s\n\n", 
+            dspTreeID(opOtherThis),
+            otherClsHnd == nullptr ? "had no type" : "type was not exact");
     }
 
     // Ask the VM if this type can be equality tested by a simple method
