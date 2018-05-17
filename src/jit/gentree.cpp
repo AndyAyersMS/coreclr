@@ -13102,9 +13102,9 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
     GenTree* const opOther  = op1IsFromHandle ? op2 : op1;
 
     // Tunnel through the handle operand to get at the class handle involved.
-    GenTree* const       opHandleArgument = opHandle->gtCall.gtCallArgs->gtOp.gtOp1;
-    GenTree*             opHandleLiteral  = opHandleArgument;
-    CORINFO_CLASS_HANDLE clsHnd           = nullptr;
+    GenTree* const       opHandleArgument   = opHandle->gtCall.gtCallArgs->gtOp.gtOp1;
+    GenTree*             opHandleLiteral    = opHandleArgument;
+    CORINFO_CLASS_HANDLE clsHnd             = nullptr;
     unsigned             runtimeLookupCount = 0;
 
     // Unwrap any GT_NOP node used to prevent constant folding
@@ -13147,15 +13147,16 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
 
     // We know opOther is a call to GetType().
     // See if we happen to know the exact type of opOther's "this".
-    GenTree* opOtherThis = opOther->gtOp.gtOp1;
-    bool isExact = false;
-    bool isNonNull = false;
+    GenTree*             opOtherThis = opOther->gtOp.gtOp1;
+    bool                 isExact     = false;
+    bool                 isNonNull   = false;
     CORINFO_CLASS_HANDLE otherClsHnd = gtGetClassHandle(opOtherThis, &isExact, &isNonNull);
 
     if ((otherClsHnd != nullptr) && isExact)
     {
         JITDUMP("Asking runtime to compare %p (%s) and %p (%s) for equality\n", dspPtr(clsHnd),
-            info.compCompHnd->getClassName(clsHnd), dspPtr(otherClsHnd), info.compCompHnd->getClassName(otherClsHnd));
+                info.compCompHnd->getClassName(clsHnd), dspPtr(otherClsHnd),
+                info.compCompHnd->getClassName(otherClsHnd));
         TypeCompareState s = info.compCompHnd->compareTypesForEquality(clsHnd, otherClsHnd);
 
         if (s != TypeCompareState::May)
@@ -13168,7 +13169,7 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
             const int  compareResult = operatorIsEQ ^ typesAreEqual ? 0 : 1;
             JITDUMP("Runtime reports comparison is known at jit time: %u\n", compareResult);
             GenTree* result = gtNewIconNode(compareResult);
-            
+
             // Any runtime lookups that fed into this compare are
             // now dead code, so they no longer require the runtime context.
             assert(lvaGenericsContextUseCount >= runtimeLookupCount);
@@ -13178,9 +13179,8 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
     }
     else
     {
-        JITDUMP("Other operand this [%06u] %s\n\n", 
-            dspTreeID(opOtherThis),
-            otherClsHnd == nullptr ? "had no type" : "type was not exact");
+        JITDUMP("Other operand this [%06u] %s\n\n", dspTreeID(opOtherThis),
+                otherClsHnd == nullptr ? "had no type" : "type was not exact");
     }
 
     // Ask the VM if this type can be equality tested by a simple method
