@@ -99,15 +99,23 @@ The Jit-EE interface is fairly broad and currently has about 150 methods. These 
 Open issues:
 * [#7453](https://github.com/dotnet/coreclr/issues/7453) Reduce time spent in calls through ICorJitInfo.
 
+This is an area that deserves closer scrutiny. We should leverage the SPMI infrastructure (or similar tech) to look for cases where the jit is invoking a Jit-EE interface repeatedly with the same arguments when jitting a method.
 ### Jit Implementation Fundamentals
 
 We can improve implementaton of the jit by removing inefficiencies and streamlining the work the jit must perform.
 
-Open issues:
+Open issues (subset):
+* [#1043](https://github.com/dotnet/coreclr/issues/1043) Look in to temp reuse during importation.
 * [#3408](https://github.com/dotnet/coreclr/issues/3408) Look at how efficiently the jit requests memory.
 * [#7457](https://github.com/dotnet/coreclr/issues/7457) Reduce cost of fast jitting by simplifying IR.
+* [#7458](https://github.com/dotnet/coreclr/issues/7458) Reduce size of jit data structures by eliminating padding.
+* [#10422](https://github.com/dotnet/coreclr/issues/10422) Look at impact of `SimplerHashTable`.
+* [#10423](https://github.com/dotnet/coreclr/issues/10423) Look into the peanut-butter costs from usually inlined methods.
 * [#13280](https://github.com/dotnet/coreclr/issues/13280) Local var ref counting impact on througput.
+* [#10731](https://github.com/dotnet/coreclr/issues/10731) Selective importation by more aggressively folding branches. We do some of this already in optimized jitting; the idea here is to extend it (where suitable) to fast jitting.
+* [#14474](https://github.com/dotnet/coreclr/issues/14474) Run some simple optimizations in tier 0.
 
+There are also a number of issues specific to the register allocator (RA), which broadly speaking takes up about 20% of fast jitting time (I should add a typical profile to the Appendix).
 ## Throughput Measurements
 
 We measure throughput currently by crossgenning a set of assemblies. For example here is the recent history for time spent crossgenning Microsoft.CodeAnalysis.CSharp in CoreCLR master:
@@ -139,8 +147,7 @@ So we likely need to foster the development of some alternative measurement appr
 
 Notes on the driver:
 * App: run an app (or set of apps) to measure jit througput impact.
-* SPMI: use SPMI to capture jit behavior, then replay it. Requires large, fragile
-data files to hold the replay data.
+* SPMI: use SPMI to capture jit behavior, then replay it. Requires large, fragile data files to hold the replay data.
 * PMI: use PMI (Prepare Method) to forcefully jit large numbers of methods
 * CoreRT: use CoreRT to jit large numbers of methods
 * Crossgen: use crossgen to prejit large numbers of methods.
