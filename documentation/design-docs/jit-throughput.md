@@ -24,7 +24,7 @@ So, please consider this very much a rough draft.
 ## Background
 
 **Jit throughput** is the speed at which the jit can generate code. In .Net Core
-and .Net Frameork, the jit runs in-process with the .Net application. So time
+and .Net Framework, the jit runs in-process with the .Net application. So time
 spent jitting impacts the overall execution time of applications, sometimes
 dramatically. The impact is usually most noticeable early in the life of the
 application, where it impacts startup time. But the jit can also be invoked
@@ -41,7 +41,7 @@ The jit has different codegen modes:
 * **Optimized jitting** (release / tier1): here the goal is to strike a reasonable
   balance between the time spent jitting and the performance of the native code.
 * **Robust jitting** (minopts): a mode that is used to ensure that optimizations
-  don't cause .Net applations to fail. Used for very large methods, methods that
+  don't cause .Net applications to fail. Used for very large methods, methods that
   are known only to execute once (class constructors), and methods where the jit
   has encountered a recoverable failure when optimizing.
 * **Pre jitting** or AOT compilation (crossgen / ngen / CoreRT): here the jit is
@@ -87,7 +87,7 @@ related side data) but still have the jit run relatively quickly. This means:
 * Optimization costs need to be carefully controlled
 * Optimizations should be "pay for play" and only incur costs when they provide
   benefit
-* Even when optimizaing, overall jit throughput is fairly well correlated the
+* Even when optimizing, overall jit throughput is fairly well correlated the
   volume of native code generated, so we must carefully engineer code-expanding
   optimizations like inlining and loop transformations.
 
@@ -106,7 +106,7 @@ most promising of these are:
 * [#7457](https://github.com/dotnet/coreclr/issues/7457) Reduce cost of fast
   jitting by simplifying IR.
 * [#13280](https://github.com/dotnet/coreclr/issues/13280) Local var ref
-  counting impact on througput.
+  counting impact on throughput.
 * [#14474](https://github.com/dotnet/coreclr/issues/14474) Run some simple
   optimizations in tier 0.
 
@@ -120,7 +120,7 @@ Optimized jitting would also benefit, perhaps especially so when prejtting.
 ### Comparative Studies
 
 We can often learn a lot by looking at performance relative to other .Net jits.
-In paricular we can compare the performance of RyuJit to Jit32 (for x86) and to
+In particular we can compare the performance of RyuJit to Jit32 (for x86) and to
 the Mono jits and perhaps the Mono interpreter. Interpretation can be tricky at
 times.
 
@@ -129,7 +129,7 @@ improving and not regressing. Note the input assemblies may also be changing,
 which can complicate the comparison process.
 
 We can compare cross-architecture or cross-os, to try and ensure that say x86
-jit thrpughput is comparable to x64 jit throughput, or Linux jit throughput is
+jit throughput is comparable to x64 jit throughput, or Linux jit throughput is
 comparable to Windows jit throughput.
 
 Open issues:
@@ -138,7 +138,7 @@ Open issues:
 * [#12454](https://github.com/dotnet/coreclr/issues/12454) Comparative
   throughput of x86 vs x64 in .Net Core 2.0.
 
-Anecdotally we have heard that the performance of Roslyn on Mono is often beter
+Anecdotally we have heard that the performance of Roslyn on Mono is often better
 than on .Net Core. Roslyn performance (without the compile server) is often
 dominated by jit throughput. So this is worth further investigation.
 
@@ -159,7 +159,7 @@ needs to call back into the runtime. For instance the jit can invoke
 
 A certain amount of Jit-EE interface traffic is required when jitting.  But not
 all such traffic is strictly required. The jit may invoke Jit-EE interface calls
-repeatedly, or unneccessarily, or speculatively, or as part of an optimization
+repeatedly, or unnecessarily, or speculatively, or as part of an optimization
 phase. And the design and implementation of the interface are also open to
 question.
 
@@ -182,7 +182,7 @@ infrastructure (or similar tech) to look for cases where the jit is invoking a
 Jit-EE interface repeatedly with the same arguments when jitting a method.
 ### Jit Implementation Fundamentals
 
-We can improve implementaton of the jit by removing inefficiencies and
+We can improve implementation of the jit by removing inefficiencies and
 streamlining the work the jit must perform.
 
 Open issues (subset):
@@ -199,7 +199,7 @@ Open issues (subset):
 * [#10423](https://github.com/dotnet/coreclr/issues/10423) Look into the
   peanut-butter costs from usually inlined methods.
 * [#13280](https://github.com/dotnet/coreclr/issues/13280) Local var ref
-  counting impact on througput.
+  counting impact on throughput.
 * [#10731](https://github.com/dotnet/coreclr/issues/10731) Selective importation
   by more aggressively folding branches. We do some of this already in optimized
   jitting; the idea here is to extend it (where suitable) to fast jitting.
@@ -211,22 +211,24 @@ broadly speaking takes up about 20% of fast jitting time (I should add a typical
 profile to the Appendix).
 ## Throughput Measurements
 
-We measure throughput currently by crossgenning a set of assemblies. For example
-here is the recent history for time spent crossgenning
-Microsoft.CodeAnalysis.CSharp in CoreCLR master:
+We measure throughput currently by crossgenning a set of assemblies. Data is
+gathered on a rolling basis and archived in //benchview. For example here is the
+recent history for time spent crossgenning Microsoft.CodeAnalysis.CSharp in
+CoreCLR master:
 
 ![throughput chart](./CrossgenData2.jpg)
 
 We can see PGO provides a throughput reasonable benefit, around 6% or so, and
-that the data is fairly noisy. 
+that the data is fairly noisy.
 
 The crossgen timing data is probably is sufficient for discovering serious
 throughput regressions. But most jit team members haven't found this sort of
-data to be useful in day to day development work. Aside from the noise issues,
-it is not easy to aggregate the data and op overall trends. And crossgen only
-touches on some of the key codepaths in the jit. Also we're not measuring jit
-time directly -- in most cases the jit is responsible for about 2/3 of the
-crossgen time. So the impact of regressions and improvements is a bit muted.
+data to be useful in day to day development work. Issues include:
+* noise level too high to measure most jit throughput improvements or regressions
+* not all that easy to aggregate results across assemblies
+* crossgen only touches on some code paths in the jit
+* time spent jitting is typically about 2/3 of total crossgen time. So, the
+  impact of regressions and improvements is a bit muted.
 
 So we likely need to foster the development of some alternative measurement
 approaches. Below are some ideas.
@@ -249,7 +251,7 @@ approaches. Below are some ideas.
 | Crossgen | profiler | No | Yes | Med | CPU cycle sampling |
 
 Notes on the driver:
-* App: run an app (or set of apps) to measure jit througput impact.
+* App: run an app (or set of apps) to measure jit throughput impact.
 * SPMI: use SPMI to capture jit behavior, then replay it. Requires large,
   fragile data files to hold the replay data.
 * PMI: use PMI (Prepare Method) to forcefully jit large numbers of methods
@@ -264,7 +266,7 @@ Notes on the measurement approaches:
   time based so probably a little noisy. All of this is easily scriptable.
   Requires ADMIN rights on Windows.
 * Jit Time Log: the jit can internally track the time spent jitting, including
-  per methond and per phase times. Output is a text file .
+  per method and per phase times. Output is a text file .
 * Sampling profile: traditional profiling can show exclusive/inclusive time in
   the jit.
 * HW Counter: sampling on instructions retired can give considerably more
@@ -275,7 +277,7 @@ Notes on the measurement approaches:
   tabulations. However may not get many samples in small methods.
 * SPMI: use SPMI replay and measure jit via SPMI timing
 * [Pin](https://software.intel.com/en-us/articles/pin-a-dynamic-binary-instrumentation-tool)
-  uses dynamic binary instrumentation. A number of jit devs have used this
+  uses dynamic binary instrumentation. A number of jit developers have used this
   successfully.
 
 Notes on coverage:
@@ -292,7 +294,7 @@ Notes on coverage:
 
 For ongoing dev work we likely need some kind of low-noise, high coverage
 measurement approach. That suggests either SPMI or a combination of PMI and
-Crossgen (with HW sampling) as the go-to approaches for dev innerloops.
+Crossgen (with HW sampling) as the go-to approaches for dev inner loops.
 
 For longer-term tracking we may want something similar either as a replacement
 for or as additional data to supplement our "time how long crossgen" runs
@@ -322,7 +324,7 @@ is called, so below the jit on the stack one typically finds some runtime
 frames, and below that, some managed code frames. But there are also often
 frames above the jit frames, both for runtime utilities that the jit invokes
 (via the JIT-EE interface), and sometimes frames for managed code that runs as a
-prerequiste to jitting some method. And in rare cases the execution of *that*
+prerequisite to jitting some method. And in rare cases the execution of *that*
 code can inspire further jitting, so there can be several layers of
 managed/runtime/jit frames.
 
@@ -341,7 +343,7 @@ right. In this example average method took about 1.02ms to jit, but the median
 jit time was 0.5ms. The slowest jitting method took 8.03ms, and the fastest
 0.11ms.
 
-Jit time is also fairly well corelated with method IL size. For example a linear
+Jit time is also fairly well correlated with method IL size. For example a linear
 regression model of the per-method jit time data from the run above shows a
 correlation coefficient of ~0.79.
 
