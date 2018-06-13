@@ -741,11 +741,9 @@ fi
 # This is where all built CoreClr libraries will copied to.
 export __CMakeBinDir="$__BinDir"
 
-if [ ! -d "$__BinDir" ] || [ ! -d "$__BinDir/bin" ]; then
-
-    echo "Cannot find build directory for the CoreCLR Product or native tests."
-    echo "Please make sure CoreCLR and native tests are built before building managed tests."
-    echo "Example use: './build.sh $__BuildArch $__BuildType' without -skiptests switch"
+if [ ! -d "$__BinDir" ]; then
+    echo "Cannot find build directory for the CoreCLR Product."
+    echo "Expected to find '$__BinDir'"
     exit 1
 fi
 
