@@ -32,7 +32,7 @@ protected:
     // Thus if we want to make this smaller, we need to do a reserve / commit scheme
     enum
     {
-        DEFAULT_PAGE_SIZE = 16 * OS_page_size,
+        DEFAULT_PAGE_SIZE = 4 * OS_page_size,
         MIN_PAGE_SIZE     = sizeof(PageDescriptor)
     };
 

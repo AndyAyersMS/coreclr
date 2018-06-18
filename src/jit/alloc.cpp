@@ -250,11 +250,10 @@ void ArenaAllocator::destroy()
 // OS rather than going through the hosting APIs. In order to do so,
 // it must undef the macros that are usually in place to prevent
 // accidental uses of the OS allocator.
-#if defined(DEBUG)
+
 #undef GetProcessHeap
 #undef HeapAlloc
 #undef HeapFree
-#endif
 
 //------------------------------------------------------------------------
 // ArenaAllocator::allocateHostMemory:
@@ -268,20 +267,7 @@ void ArenaAllocator::destroy()
 //    A pointer to the allocated memory.
 void* ArenaAllocator::allocateHostMemory(size_t size)
 {
-    assert(isInitialized());
-
-#if defined(DEBUG)
-    if (bypassHostAllocator())
-    {
-        return ::HeapAlloc(GetProcessHeap(), 0, size);
-    }
-    else
-    {
-        return ClrAllocInProcessHeap(0, S_SIZE_T(size));
-    }
-#else  // defined(DEBUG)
-    return m_memoryManager->ClrVirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_READWRITE);
-#endif // !defined(DEBUG)
+    return ::HeapAlloc(GetProcessHeap(), 0, size);
 }
 
 //------------------------------------------------------------------------
@@ -293,19 +279,7 @@ void* ArenaAllocator::allocateHostMemory(size_t size)
 void ArenaAllocator::freeHostMemory(void* block)
 {
     assert(isInitialized());
-
-#if defined(DEBUG)
-    if (bypassHostAllocator())
-    {
-        ::HeapFree(GetProcessHeap(), 0, block);
-    }
-    else
-    {
-        ClrFreeInProcessHeap(0, block);
-    }
-#else  // defined(DEBUG)
-    m_memoryManager->ClrVirtualFree(block, 0, MEM_RELEASE);
-#endif // !defined(DEBUG)
+    ::HeapFree(GetProcessHeap(), 0, block);
 }
 
 //------------------------------------------------------------------------
