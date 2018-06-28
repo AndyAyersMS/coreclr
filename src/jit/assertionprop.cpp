@@ -543,7 +543,7 @@ void Compiler::optAssertionInit(bool isLocalProp)
     static const AssertionIndex countFunc[] = {64, 128, 256, 64};
     static const unsigned       lowerBound  = 0;
     static const unsigned       upperBound  = _countof(countFunc) - 1;
-    const unsigned              codeSize    = info.compILCodeSize / 512;
+    unsigned                    codeSize    = info.compILCodeSize / 512;
     optMaxAssertionCount                    = countFunc[isLocalProp ? lowerBound : min(upperBound, codeSize)];
 
     optLocalAssertionProp  = isLocalProp;
@@ -566,6 +566,11 @@ void Compiler::optAssertionInit(bool isLocalProp)
     optAssertionCount      = 0;
     optAssertionPropagated = false;
     bbJtrueAssertionOut    = nullptr;
+
+#if DEBUG
+    numberAssertionsDuped = 0;
+    numberAssertionsDropped = 0;
+#endif
 }
 
 #ifdef DEBUG
@@ -1543,6 +1548,7 @@ AssertionIndex Compiler::optAddAssertion(AssertionDsc* newAssertion)
     if (optAssertionVnInvolvesNan(newAssertion))
     {
         JITDUMP("Assertion involved Nan not adding\n");
+        numberAssertionsDropped++;
         return NO_ASSERTION_INDEX;
     }
 
@@ -1552,6 +1558,7 @@ AssertionIndex Compiler::optAddAssertion(AssertionDsc* newAssertion)
         AssertionDsc* curAssertion = optGetAssertion(index);
         if (curAssertion->Equals(newAssertion, !optLocalAssertionProp))
         {
+            numberAssertionsDuped++;
             return index;
         }
     }
@@ -1559,6 +1566,7 @@ AssertionIndex Compiler::optAddAssertion(AssertionDsc* newAssertion)
     // Check if we are within max count.
     if (optAssertionCount >= optMaxAssertionCount)
     {
+        numberAssertionsDropped++;
         return NO_ASSERTION_INDEX;
     }
 
@@ -2703,6 +2711,8 @@ GenTree* Compiler::optConstantAssertionProp(AssertionDsc* curAssertion,
         lvaTable[lclNum].decRefCnts(compCurBB->getBBWeight(this), this);
     }
 
+    curAssertion->useCount++;
+
     return optAssertionProp_Update(newTree, tree, stmt);
 }
 
@@ -2830,6 +2840,7 @@ GenTree* Compiler::optCopyAssertionProp(AssertionDsc* curAssertion,
 #endif
 
     // Update and morph the tree.
+    curAssertion->useCount++;
     return optAssertionProp_Update(tree, tree, stmt);
 }
 
@@ -3204,6 +3215,7 @@ GenTree* Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions, Gen
     }
 #endif
 
+    curAssertion->useCount++;
     return optAssertionProp_Update(newTree, tree, stmt);
 }
 
@@ -3295,6 +3307,7 @@ GenTree* Compiler::optAssertionPropLocal_RelOp(ASSERT_VALARG_TP assertions, GenT
     op2->gtIntCon.gtIconVal = foldResult;
     op2->gtType             = TYP_INT;
 
+    curAssertion->useCount++;
     return optAssertionProp_Update(op2, tree, stmt);
 }
 
@@ -3358,6 +3371,7 @@ GenTree* Compiler::optAssertionProp_Cast(ASSERT_VALARG_TP assertions, GenTree* t
                     }
 #endif
                     tree->gtFlags &= ~GTF_OVERFLOW; // This cast cannot overflow
+                    optGetAssertion(index)->useCount++;
                     return optAssertionProp_Update(tree, tree, stmt);
                 }
             }
@@ -3385,6 +3399,7 @@ GenTree* Compiler::optAssertionProp_Cast(ASSERT_VALARG_TP assertions, GenTree* t
             }
             noway_assert(tmp == lcl);
             tmp->gtType = toType;
+            optGetAssertion(index)->useCount++;
         }
 
 #ifdef DEBUG
@@ -3463,13 +3478,17 @@ GenTree* Compiler::optAssertionProp_Ind(ASSERT_VALARG_TP assertions, GenTree* tr
                       : printf("\nNon-null prop for index #%02u in BB%02u:\n", index, compCurBB->bbNum);
             gtDispTree(tree, nullptr, nullptr, true);
         }
+
+        if (index != NO_ASSERTION_INDEX)
+        {
+            optGetAssertion(index)->useCount++;
+        }
 #endif
         tree->gtFlags &= ~GTF_EXCEPT;
         tree->gtFlags |= GTF_IND_NONFAULTING;
 
         // Set this flag to prevent reordering
         tree->gtFlags |= GTF_ORDER_SIDEEFF;
-
         return optAssertionProp_Update(tree, tree, stmt);
     }
 
@@ -3600,6 +3619,11 @@ GenTree* Compiler::optNonNullAssertionProp_Call(ASSERT_VALARG_TP assertions, Gen
                       : printf("\nNon-null prop for index #%02u in BB%02u:\n", index, compCurBB->bbNum);
             gtDispTree(call, nullptr, nullptr, true);
         }
+
+        if (index != NO_ASSERTION_INDEX)
+        {
+            optGetAssertion(index)->useCount++;
+        }
 #endif
         call->gtFlags &= ~GTF_CALL_NULLCHECK;
         call->gtFlags &= ~GTF_EXCEPT;
@@ -3665,6 +3689,7 @@ GenTree* Compiler::optAssertionProp_Call(ASSERT_VALARG_TP assertions, GenTreeCal
                     fgSetTreeSeq(arg1);
                 }
 
+                optGetAssertion(index)->useCount++;
                 return optAssertionProp_Update(arg1, call, stmt);
             }
         }
@@ -3799,6 +3824,8 @@ GenTree* Compiler::optAssertionProp_BndsChk(ASSERT_VALARG_TP assertions, GenTree
 
         // Defer actually removing the tree until processing reaches its parent comma, since
         // optRemoveRangeCheck needs to rewrite the whole comma tree.
+        optGetAssertion(assertionIndex)->useCount++;
+
         arrBndsChk->gtFlags |= GTF_ARR_BOUND_INBND;
         return nullptr;
     }
@@ -4964,9 +4991,13 @@ void Compiler::optAssertionPropMain()
     noway_assert(optAssertionCount == 0);
 
     // First discover all value assignments and record them in the table.
+    int blockCount = 0;
+    int stmtCount = 0;
+    int treeCount = 0;
     for (BasicBlock* block = fgFirstBB; block; block = block->bbNext)
     {
         compCurBB = block;
+        blockCount++;
 
         fgRemoveRestOfBlock = false;
 
@@ -5000,9 +5031,12 @@ void Compiler::optAssertionPropMain()
                 }
             }
 
+            stmtCount++;
+
             // Perform assertion gen for control flow based assertions.
             for (GenTree* tree = stmt->gtStmt.gtStmtList; tree; tree = tree->gtNext)
             {
+                treeCount++;
                 optAssertionGen(tree);
             }
 
@@ -5013,6 +5047,8 @@ void Compiler::optAssertionPropMain()
 
     if (!optAssertionCount)
     {
+        optDumpAssertionStats(blockCount, stmtCount, treeCount);
+        
         return;
     }
 
@@ -5148,11 +5184,74 @@ void Compiler::optAssertionPropMain()
     fgDebugCheckLinks();
 #endif
 
-    // Assertion propagation may have changed the reference counts
-    // We need to resort the variable table
+    optDumpAssertionStats(blockCount, stmtCount, treeCount);
 
     if (optAssertionPropagated)
     {
         lvaSortAgain = true;
     }
+}
+
+static bool first = true;
+
+void Compiler::optDumpAssertionStats(int blockCount, int stmtCount, int treeCount)
+{
+    if (first)
+    {
+        // Dump Schema
+        first = false;
+
+        //               1  2  3  4  5  6  7  8  9  0  1  2
+        printf("\n@@@@@ %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
+            "Count", "Duped", "Total", 
+            "Dropped", "Max", "Used", 
+            "TotalUse", "Blocks", "Stmts", 
+            "Trees", "ILSize", "InlSize");
+
+        printf(",%s,%s,%s", "EqCount", "EqUsed", "EqTotalUse");
+        printf(",%s,%s,%s", "NeCount", "NeUsed", "NeTotalUse");
+        printf(",%s,%s,%s", "SuCount", "SuUsed", "SuTotalUse");
+        printf(",%s,%s,%s", "NtCount", "NtUsed", "NtTotalUse");
+        
+        printf("\n");
+    }
+
+    // Gather other stats
+    int used = 0;
+    int totalUsage = 0;
+    int numberByKind[OAK_COUNT] = {};
+    int usageByKind[OAK_COUNT] = {};
+    int totalUsageByKind[OAK_COUNT] = {};
+
+    for (AssertionIndex ind = 1; ind <= optAssertionCount; ind++)
+    {
+        AssertionDsc* assertion = optGetAssertion(ind);
+
+        numberByKind[assertion->assertionKind]++;
+
+        if (assertion->useCount > 0) 
+        {
+            used++;
+            totalUsage += assertion->useCount;
+            usageByKind[assertion->assertionKind]++;
+            totalUsageByKind[assertion->assertionKind] += assertion->useCount;
+        }
+    }
+
+    int totalAssertions = optAssertionCount + numberAssertionsDropped; 
+
+    //               1  2  3  4  5  6  7  8  9  0  1  2
+    printf("\n@@@@@ %u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u",
+        optAssertionCount, numberAssertionsDuped, totalAssertions,
+        numberAssertionsDropped, optMaxAssertionCount, used,
+        totalUsage, blockCount, stmtCount, 
+        treeCount, info.compILCodeSize, m_inlineStrategy->GetCurrentSizeEstimate());
+
+    printf(",%u,%u,%u", numberByKind[OAK_EQUAL], usageByKind[OAK_EQUAL], totalUsageByKind[OAK_EQUAL]);
+    printf(",%u,%u,%u", numberByKind[OAK_NOT_EQUAL], usageByKind[OAK_NOT_EQUAL], totalUsageByKind[OAK_NOT_EQUAL]);
+    printf(",%u,%u,%u", numberByKind[OAK_SUBRANGE], usageByKind[OAK_SUBRANGE], totalUsageByKind[OAK_SUBRANGE]);
+    printf(",%u,%u,%u", numberByKind[OAK_NO_THROW], usageByKind[OAK_NO_THROW], totalUsageByKind[OAK_NO_THROW]);
+
+    printf("\n");
+
 }

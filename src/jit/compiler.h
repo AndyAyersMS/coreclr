@@ -5952,6 +5952,8 @@ public:
     };
     struct AssertionDsc
     {
+        AssertionDsc() : assertionKind(OAK_INVALID), useCount(0) {}
+        int useCount;
         optAssertionKind assertionKind;
         struct SsaVar
         {
@@ -6179,6 +6181,7 @@ protected:
     AssertionIndex optMaxAssertionCount;
 
 public:
+    void optDumpAssertionStats(int blockCount, int treeCount, int stmtCount);
     void optVnNonNullPropCurStmt(BasicBlock* block, GenTree* stmt, GenTree* tree);
     fgWalkResult optVNConstantPropCurStmt(BasicBlock* block, GenTree* stmt, GenTree* tree);
     GenTree* optVNConstantPropOnRelOp(GenTree* tree);
@@ -6284,6 +6287,11 @@ public:
     void optDebugCheckAssertions(AssertionIndex AssertionIndex);
 #endif
     void optAddCopies();
+
+#ifdef DEBUG
+    int numberAssertionsDuped;
+    int numberAssertionsDropped;
+#endif
 #endif // ASSERTION_PROP
 
     /**************************************************************************
