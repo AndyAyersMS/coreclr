@@ -125,7 +125,6 @@ bool ArenaAllocator::bypassHostAllocator()
     // When JitDirectAlloc is set, all JIT allocations requests are forwarded
     // directly to the OS. This allows taking advantage of pageheap and other gflag
     // knobs for ensuring that we do not have buffer overruns in the JIT.
-
     return JitConfig.JitDirectAlloc() != 0;
 #else  // defined(DEBUG)
     return false;
@@ -341,13 +340,15 @@ void* ArenaAllocator::allocateHostMemory(IEEMemoryManager* memoryManager, size_t
     {
         return ::HeapAlloc(GetProcessHeap(), 0, size);
     }
-    else
-    {
-        return ClrAllocInProcessHeap(0, S_SIZE_T(size));
-    }
-#else  // defined(DEBUG)
+#endif // defined(DEBUG)
+
+#if defined(DEBUG) || defined(FEATURE_CORECLR)
+    // .Net Core uses host provided access to the process heap.
+    // .Net Framework only uses it for debug builds of the jit.
+    return ClrAllocInProcessHeap(0, S_SIZE_T(size));
+#else
     return memoryManager->ClrVirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_READWRITE);
-#endif // !defined(DEBUG)
+#endif // defined(DEBUG) || defined(FEATURE_CORECLR)
 }
 
 //------------------------------------------------------------------------
@@ -364,14 +365,17 @@ void ArenaAllocator::freeHostMemory(IEEMemoryManager* memoryManager, void* block
     if (bypassHostAllocator())
     {
         ::HeapFree(GetProcessHeap(), 0, block);
+        return;
     }
-    else
-    {
-        ClrFreeInProcessHeap(0, block);
-    }
+#endif // !defined(DEBUG)
+
+#if defined(DEBUG) || defined(FEATURE_CORECLR)
+    // .Net Core uses host provided access to the process heap.
+    // .Net Framework only uses it for debug builds of the jit.
+    ClrFreeInProcessHeap(0, block);
 #else  // defined(DEBUG)
     memoryManager->ClrVirtualFree(block, 0, MEM_RELEASE);
-#endif // !defined(DEBUG)
+#endif // defined(DEBUG) || defined(FEATURE_CORECLR)
 }
 
 //------------------------------------------------------------------------
