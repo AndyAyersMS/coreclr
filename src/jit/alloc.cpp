@@ -315,11 +315,11 @@ void ArenaAllocator::destroy()
 // OS rather than going through the hosting APIs. In order to do so,
 // it must undef the macros that are usually in place to prevent
 // accidental uses of the OS allocator.
-#if defined(DEBUG)
+// #if defined(DEBUG)
 #undef GetProcessHeap
 #undef HeapAlloc
 #undef HeapFree
-#endif
+// #endif
 
 //------------------------------------------------------------------------
 // ArenaAllocator::allocateHostMemory:
@@ -345,7 +345,7 @@ void* ArenaAllocator::allocateHostMemory(IEEMemoryManager* memoryManager, size_t
 #if defined(DEBUG) || defined(FEATURE_CORECLR)
     // .Net Core uses host provided access to the process heap.
     // .Net Framework only uses it for debug builds of the jit.
-    return ClrAllocInProcessHeap(0, S_SIZE_T(size));
+    return ::HeapAlloc(GetProcessHeap(), 0, size);
 #else
     return memoryManager->ClrVirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_READWRITE);
 #endif // defined(DEBUG) || defined(FEATURE_CORECLR)
@@ -372,7 +372,7 @@ void ArenaAllocator::freeHostMemory(IEEMemoryManager* memoryManager, void* block
 #if defined(DEBUG) || defined(FEATURE_CORECLR)
     // .Net Core uses host provided access to the process heap.
     // .Net Framework only uses it for debug builds of the jit.
-    ClrFreeInProcessHeap(0, block);
+    ::HeapFree(GetProcessHeap(), 0, block);
 #else  // defined(DEBUG)
     memoryManager->ClrVirtualFree(block, 0, MEM_RELEASE);
 #endif // defined(DEBUG) || defined(FEATURE_CORECLR)
