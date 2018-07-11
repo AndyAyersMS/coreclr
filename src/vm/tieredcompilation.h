@@ -35,6 +35,8 @@ public:
     void Shutdown();
     static CORJIT_FLAGS GetJitFlags(NativeCodeVersion nativeCodeVersion);
 
+    bool HasMethodsToOptimize();
+
 private:
 
     static VOID WINAPI Tier1DelayTimerCallback(PVOID parameter, BOOLEAN timerFired);

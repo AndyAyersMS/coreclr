@@ -178,23 +178,47 @@ void JitHost::freeSlab(void* slab, size_t actualSize)
     delete [] (BYTE*)slab;
 }
 
+static DWORD s_lastFlush = 0;
+
 void JitHost::Init()
 {
     s_JitSlabAllocatorCrst.Init(CrstLeafLock);
+    s_lastFlush = ::GetTickCount();
 }
-
-DWORD s_lastFlush = 0;
 
 void JitHost::Reclaim()
 {
     if (s_pCurrentCachedList != NULL || s_pPreviousCachedList != NULL)
     {
         DWORD ticks = ::GetTickCount();
-        if (ticks - s_lastFlush < 2000) // Flush the free lists every 2 seconds
+
+        // Flush the free lists every 2 seconds
+        if (ticks - s_lastFlush < 2000)
+        {
             return;
-        s_lastFlush = ticks;
+        }
+
+#if defined(FEATURE_TIERED_COMPILATION)
+
+        // If tiering, and we have a backlog of requests, defer flushing the free list.
+        if (g_pConfig->TieredCompilation())
+        {
+            TieredCompilationManager* manager =             
+                SystemDomain::System()->DefaultDomain()->GetTieredCompilationManager();
+            _ASSERTE(manager != NULL);
+            
+            if (manager->HasMethodsToOptimize())
+            {
+                return;
+            }
+        }
+
+#endif
+
+        // TODO: something similar for multicore jit
 
         // Flush all slabs in s_pPreviousCachedList
+        s_lastFlush = ticks;
         for (;;)
         {
             Slab* slabToDelete = NULL;

@@ -564,6 +564,14 @@ void TieredCompilationManager::ActivateCodeVersion(NativeCodeVersion nativeCodeV
     }
 }
 
+// Check if there are any methods needing optimization
+bool TieredCompilationManager::HasMethodsToOptimize()
+{
+    STANDARD_VM_CONTRACT;
+    SpinLockHolder holder(&m_lock);
+    return !m_methodsToOptimize.IsEmpty();
+}
+
 // Dequeues the next method in the optmization queue.
 // This should be called with m_lock already held and runs
 // on the background thread.
