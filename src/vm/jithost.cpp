@@ -76,6 +76,8 @@ static CrstStatic s_JitSlabAllocatorCrst;
 static Slab* s_pCurrentCachedList;
 static Slab* s_pPreviousCachedList;
 static size_t s_TotalCached;
+static int s_CurrentCachedCount;
+static int s_PreviousCachedCount;
 
 void* JitHost::allocateSlab(size_t size, size_t* pActualSize)
 {
@@ -87,6 +89,9 @@ void* JitHost::allocateSlab(size_t size, size_t* pActualSize)
         CrstHolder lock(&s_JitSlabAllocatorCrst);
         Slab** ppCandidate = NULL;
 
+        int i = 0;
+        bool current = true;
+
         for (Slab ** ppList = &s_pCurrentCachedList; *ppList != NULL; ppList = &(*ppList)->pNext)
         {
             Slab* p = *ppList;
@@ -96,10 +101,16 @@ void* JitHost::allocateSlab(size_t size, size_t* pActualSize)
                 if (p->affinity == pCurrentThread)
                     break;
             }
+
+            i++;
+            _ASSERTE(i <= s_CurrentCachedCount);
         }
 
         if (ppCandidate == NULL)
         {
+            current = false;
+            int i = 0;
+
             for (Slab ** ppList = &s_pPreviousCachedList; *ppList != NULL; ppList = &(*ppList)->pNext)
             {
                 Slab* p = *ppList;
@@ -109,6 +120,9 @@ void* JitHost::allocateSlab(size_t size, size_t* pActualSize)
                     if (p->affinity == pCurrentThread)
                         break;
                 }
+
+                i++;
+                _ASSERTE(i <= s_PreviousCachedCount);
             }
         }
 
@@ -119,6 +133,17 @@ void* JitHost::allocateSlab(size_t size, size_t* pActualSize)
 
             s_TotalCached -= p->size;
             *pActualSize = p->size;
+
+            if (current)
+            {
+                _ASSERTE(s_CurrentCachedCount > 0);
+                s_CurrentCachedCount--;
+            }
+            else
+            {
+                _ASSERTE(s_PreviousCachedCount > 0);
+                s_PreviousCachedCount--;
+            }
 
             return p;
         }
@@ -145,6 +170,7 @@ void JitHost::freeSlab(void* slab, size_t actualSize)
             pSlab->affinity = GetThread();
             pSlab->pNext = s_pCurrentCachedList;
             s_pCurrentCachedList = pSlab;
+            s_CurrentCachedCount++;
             return;
         }
     }
@@ -178,11 +204,19 @@ void JitHost::Reclaim()
                 slabToDelete = s_pPreviousCachedList;
                 if (slabToDelete == NULL)
                 {
+                    _ASSERTE(s_PreviousCachedCount == 0);
                     s_pPreviousCachedList = s_pCurrentCachedList;
+                    s_PreviousCachedCount = s_CurrentCachedCount;
+                    s_pCurrentCachedList = NULL;
+                    s_CurrentCachedCount = 0;
                     break;
                 }
+
+                _ASSERTE(s_PreviousCachedCount > 0);
+                _ASSERTE(s_TotalCached > s_TotalCached - slabToDelete->size);
                 s_TotalCached -= slabToDelete->size;
                 s_pPreviousCachedList = slabToDelete->pNext;
+                s_PreviousCachedCount--;
             }
 
             delete[](BYTE*)slabToDelete;
