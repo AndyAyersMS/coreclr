@@ -4486,6 +4486,7 @@ void Compiler::fgFindJumpTargets(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
                 if (makeInlineObservations)
                 {
                     compInlineResult->Note(InlineObservation::CALLEE_HAS_SWITCH);
+                    fgObserveInlineConstants(opcode, pushedStack, isInlining);
 
                     // Fail fast, if we're inlining and can't handle this.
                     if (isInlining && compInlineResult->IsFailure())

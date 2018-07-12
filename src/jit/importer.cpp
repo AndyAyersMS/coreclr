@@ -12214,7 +12214,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 goto COND_JUMP;
 
             case CEE_SWITCH:
-                assert(!compIsForInlining());
+                // assert(!compIsForInlining());
 
                 if (tiVerificationNeeded)
                 {
