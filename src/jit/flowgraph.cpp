@@ -5042,7 +5042,7 @@ void Compiler::fgObserveInlineConstants(OPCODE opcode, const FgStack& stack, boo
 
     if (lookForBranchCases)
     {
-        if (opcode == CEE_BRFALSE || opcode == CEE_BRFALSE_S || opcode == CEE_BRTRUE || opcode == CEE_BRTRUE_S)
+        if (opcode == CEE_BRFALSE || opcode == CEE_BRFALSE_S || opcode == CEE_BRTRUE || opcode == CEE_BRTRUE_S || opcode == CEE_SWITCH)
         {
             unsigned slot0 = stack.GetSlot0();
             if (FgStack::IsArgument(slot0))
@@ -5056,7 +5056,15 @@ void Compiler::fgObserveInlineConstants(OPCODE opcode, const FgStack& stack, boo
                     unsigned varNum = FgStack::SlotTypeToArgNum(slot0);
                     if (impInlineInfo->inlArgInfo[varNum].argNode->OperIsConst())
                     {
-                        compInlineResult->Note(InlineObservation::CALLSITE_CONSTANT_ARG_FEEDS_TEST);
+                        if (opcode == CEE_SWITCH)
+                        {
+                            printf("\n@@@@ CONSTANT FEEDS SWITCH @@@@\n");
+                            compInlineResult->Note(InlineObservation::CALLSITE_CONSTANT_ARG_FEEDS_SWITCH);
+                        }
+                        else
+                        {
+                            compInlineResult->Note(InlineObservation::CALLSITE_CONSTANT_ARG_FEEDS_TEST);
+                        }
                     }
                 }
             }

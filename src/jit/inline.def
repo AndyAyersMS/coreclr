@@ -167,6 +167,7 @@ INLINE_OBSERVATION(RARE_GC_STRUCT,            bool,   "rarely called, has gc str
 
 // ------ Call Site Information ------- 
 
+INLINE_OBSERVATION(CONSTANT_ARG_FEEDS_SWITCH, bool,   "constant argument feeds switch",INFORMATION, CALLSITE)
 INLINE_OBSERVATION(CONSTANT_ARG_FEEDS_TEST,   bool,   "constant argument feeds test",  INFORMATION, CALLSITE)
 INLINE_OBSERVATION(DEPTH,                     int,    "depth",                         INFORMATION, CALLSITE)
 INLINE_OBSERVATION(FREQUENCY,                 int,    "rough call site frequency",     INFORMATION, CALLSITE)

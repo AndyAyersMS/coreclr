@@ -304,11 +304,14 @@ void DefaultPolicy::NoteBool(InlineObservation obs, bool value)
                 break;
 
             case InlineObservation::CALLEE_HAS_SWITCH:
+                break;
+
             case InlineObservation::CALLEE_UNSUPPORTED_OPCODE:
                 propagate = true;
                 break;
 
             case InlineObservation::CALLSITE_CONSTANT_ARG_FEEDS_TEST:
+            case InlineObservation::CALLSITE_CONSTANT_ARG_FEEDS_SWITCH:
                 // We shouldn't see this for a prejit root since
                 // we don't know anything about callers.
                 assert(!m_IsPrejitRoot);
