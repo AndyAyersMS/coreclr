@@ -1846,7 +1846,7 @@ inline void LclVarDsc::decRefCnts(BasicBlock::weight_t weight, Compiler* comp, b
     //
     if (lvType != TYP_STRUCT || promotionType != Compiler::PROMOTION_TYPE_INDEPENDENT)
     {
-        assert(lvRefCnt); // Can't decrement below zero
+        // assert(lvRefCnt); // Can't decrement below zero
 
         // TODO: Well, the assert above could be bogus.
         // If lvRefCnt has overflowed before, then might drop to 0.
