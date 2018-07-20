@@ -5516,7 +5516,6 @@ CORINFO_CLASS_HANDLE Interpreter::GetTypeFromToken(BYTE* codePtr, CorInfoTokenKi
 
     GCX_PREEMP();
 
-    CORINFO_GENERICHANDLE_RESULT embedInfo;
     CORINFO_RESOLVED_TOKEN typeTok;
     ResolveToken(&typeTok, getU4LittleEndian(codePtr), tokKind InterpTracingArg(rtk));
     return typeTok.hClass;
