@@ -721,11 +721,18 @@ GenTree* Compiler::impHWIntrinsic(NamedIntrinsic        intrinsic,
             if (baseType == TYP_UNKNOWN) // the second argument is not a vector
             {
                 baseType = JITtype2varType(strip(info.compCompHnd->getArgType(sig, secondArg, &secondArgClass)));
-                assert(baseType != TYP_STRUCT);
+
+                if (baseType == TYP_STRUCT)
+                {
+                    return impUnsupportedHWIntrinsic(CORINFO_HELP_THROW_TYPE_NOT_SUPPORTED, method, sig, mustExpand);
+                }
             }
         }
+    }
 
-        assert(baseType != TYP_UNKNOWN);
+    if (baseType == TYP_UNKNOWN)
+    {
+        return impUnsupportedHWIntrinsic(CORINFO_HELP_THROW_TYPE_NOT_SUPPORTED, method, sig, mustExpand);
     }
 
     if ((HWIntrinsicInfo::IsOneTypeGeneric(intrinsic) || HWIntrinsicInfo::IsTwoTypeGeneric(intrinsic)) &&
