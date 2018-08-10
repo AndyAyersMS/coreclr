@@ -5985,8 +5985,8 @@ void Interpreter::NewArr()
         }
 #endif
 
-        MethodTable *pArrayMT = (MethodTable *) elemClsHnd;
-
+        TypeHandle th(elemClsHnd);
+        MethodTable* pArrayMT = th.GetMethodTable();
         pArrayMT->CheckRunClassInitThrowing();
 
         INT32 size32 = (INT32)sz;
