@@ -10440,6 +10440,11 @@ void Interpreter::DoStringLength()
 
     Object* obj = OpStackGet<Object*>(ind);
 
+    if (obj == NULL)
+    {
+        ThrowNullPointerException();
+    }
+
 #ifdef _DEBUG
     if (obj->GetMethodTable() != g_pStringClass)
     {
@@ -10475,6 +10480,11 @@ void Interpreter::DoStringGetChar()
 #endif // _DEBUG
 
     Object* obj = OpStackGet<Object*>(strInd);
+
+    if (obj == NULL)
+    {
+        ThrowNullPointerException();
+    }
 
 #ifdef _DEBUG
     if (obj->GetMethodTable() != g_pStringClass)
