@@ -1764,6 +1764,8 @@ private:
     void DoStringLength();
     void DoStringGetChar();
     void DoGetTypeFromHandle();
+    void DoByReferenceCtor();
+    void DoByReferenceValue();
 
     // Returns the proper generics context for use in resolving tokens ("precise" in the sense of including generic instantiation
     // information).

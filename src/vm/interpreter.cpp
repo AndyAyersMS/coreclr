@@ -9046,6 +9046,14 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
             DoGetTypeFromHandle();
             didIntrinsic = true;
             break;
+        case CORINFO_INTRINSIC_ByReference_Ctor:
+            DoByReferenceCtor();
+            didIntrinsic = true;
+            break;
+        case CORINFO_INTRINSIC_ByReference_Value:
+            DoByReferenceValue();
+            didIntrinsic = true;
+            break;
 #if INTERP_ILSTUBS
         case CORINFO_INTRINSIC_StubHelpers_GetStubContext:
             OpStackSet<void*>(m_curStackHt, GetStubContext());
@@ -10545,6 +10553,76 @@ void Interpreter::DoGetTypeFromHandle()
 #endif // _DEBUG
 
     OpStackTypeSet(ind, InterpreterType(CORINFO_TYPE_CLASS));
+}
+
+void Interpreter::DoByReferenceCtor()
+{
+    CONTRACTL {
+        SO_TOLERANT;
+        THROWS;
+        GC_TRIGGERS;
+        MODE_COOPERATIVE;
+    } CONTRACTL_END;
+
+    // Note 'this' is not passed on the operand stack...
+    assert(m_curStackHt > 0);
+    assert(m_callThisArg != NULL);
+    unsigned valInd = m_curStackHt - 1;
+    CorInfoType valCit = OpStackTypeGet(valInd).ToCorInfoType();
+
+#ifdef _DEBUG
+    if (valCit != CORINFO_TYPE_BYREF)
+    {
+        VerificationError("ByReference<T>.ctor called with non-byref value.");
+    }
+#endif // _DEBUG
+
+#if INTERP_TRACING
+    if (s_TraceInterpreterILFlag.val(CLRConfig::INTERNAL_TraceInterpreterIL))
+    {
+        fprintf(GetLogFile(), "    ByReference<T>.ctor -- intrinsic\n");
+    }
+#endif // INTERP_TRACING
+
+    GCX_FORBID();
+    void** thisPtr = reinterpret_cast<void**>(m_callThisArg);
+    void* val = OpStackGet<void*>(valInd);
+    *thisPtr = val;
+    m_curStackHt--;
+}
+
+void Interpreter::DoByReferenceValue()
+{
+    CONTRACTL {
+        SO_TOLERANT;
+        THROWS;
+        GC_TRIGGERS;
+        MODE_COOPERATIVE;
+    } CONTRACTL_END;
+
+    assert(m_curStackHt > 0);
+    unsigned slot = m_curStackHt - 1;
+    CorInfoType thisCit = OpStackTypeGet(slot).ToCorInfoType();
+
+#ifdef _DEBUG
+    if (thisCit != CORINFO_TYPE_BYREF)
+    {
+        VerificationError("ByReference<T>.get_Value called with non-byref this");
+    }
+#endif // _DEBUG
+
+#if INTERP_TRACING
+    if (s_TraceInterpreterILFlag.val(CLRConfig::INTERNAL_TraceInterpreterIL))
+    {
+        fprintf(GetLogFile(), "    ByReference<T>.getValue -- intrinsic\n");
+    }
+#endif // INTERP_TRACING
+
+    GCX_FORBID();
+    void** thisPtr = OpStackGet<void**>(slot);
+    void* value = *thisPtr;
+    OpStackSet<void*>(slot, value);
+    OpStackTypeSet(slot, InterpreterType(CORINFO_TYPE_BYREF));
 }
 
 void Interpreter::RecordConstrainedCall()
