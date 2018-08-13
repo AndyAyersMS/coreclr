@@ -9085,6 +9085,29 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
             thrd->m_dwLastError = thrd->m_dwLastErrorInterp;
             didIntrinsic = true;
         }
+
+        // Check for the simd class...
+        if (exactClass != NULL)
+        {
+            GCX_PREEMP();
+            bool isSIMD = m_interpCeeInfo.isInSIMDModule(exactClass);
+
+            if (isSIMD)
+            {
+                // SIMD intrinsics are recognized by name.
+                const char* namespaceName = NULL;
+                const char* className = NULL;
+                const char* methodName = m_interpCeeInfo.getMethodNameFromMetadata((CORINFO_METHOD_HANDLE)methToCall, &className, &namespaceName);
+                if (strcmp(methodName, "get_IsHardwareAccelerated") == 0)
+                {
+                    GCX_COOP();
+                    DoSIMDHwAccelerated();
+                    didIntrinsic = true;
+                    // Must block caching or we lose easy access to the class 
+                    doNotCache = true;
+                }
+            }
+        }
     }
 
     if (didIntrinsic)
@@ -10623,6 +10646,25 @@ void Interpreter::DoByReferenceValue()
     void* value = *thisPtr;
     OpStackSet<void*>(slot, value);
     OpStackTypeSet(slot, InterpreterType(CORINFO_TYPE_BYREF));
+}
+
+void Interpreter::DoSIMDHwAccelerated()
+{
+    CONTRACTL {
+        SO_TOLERANT;
+        THROWS;
+        GC_TRIGGERS;
+        MODE_COOPERATIVE;
+    } CONTRACTL_END;
+
+#if INTERP_TRACING
+    if (s_TraceInterpreterILFlag.val(CLRConfig::INTERNAL_TraceInterpreterIL))
+    {
+        fprintf(GetLogFile(), "    System.Numerics.Vector.IsHardwareAccelerated -- intrinsic\n");
+    }
+#endif // INTERP_TRACING
+
+    LdIcon(1);
 }
 
 void Interpreter::RecordConstrainedCall()
