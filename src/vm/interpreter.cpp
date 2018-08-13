@@ -2282,7 +2282,9 @@ EvalLoop:
                     {
                         // If looseInt is true, we are relying on auto-downcast in case *retVal
                         // is small (but this is guaranteed not to happen by def'n of ARG_SLOT.)
-                        assert(sz == sizeof(INT64));
+                        //
+                        // Note structs of size 5, 6, 7 may be returned as 8 byte ints.
+                        assert(sz <= sizeof(INT64));
                         *retVal = OpStackGet<INT64>(0);
                     }
                 }
