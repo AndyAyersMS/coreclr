@@ -9086,9 +9086,11 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
             didIntrinsic = true;
         }
 
-        // Check for the simd class...
-        if (exactClass != NULL)
+#if FEATURE_SIMD
+        if (fFeatureSIMD.val(CLRConfig::EXTERNAL_FeatureSIMD) != 0)
         {
+            // Check for the simd class...
+            assert(exactClass != NULL);
             GCX_PREEMP();
             bool isSIMD = m_interpCeeInfo.isInSIMDModule(exactClass);
 
@@ -9103,11 +9105,17 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
                     GCX_COOP();
                     DoSIMDHwAccelerated();
                     didIntrinsic = true;
-                    // Must block caching or we lose easy access to the class 
-                    doNotCache = true;
                 }
             }
+
+            if (didIntrinsic)
+            {
+                // Must block caching or we lose easy access to the class
+                doNotCache = true;
+            }
         }
+#endif // FEATURE_SIMD
+
     }
 
     if (didIntrinsic)
