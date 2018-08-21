@@ -5631,12 +5631,47 @@ void Interpreter::StObj()
         void* dest = OpStackGet<void*>(destInd);
         ThrowOnInvalidPointer(dest);
 
-        assert(   (OpStackTypeGet(valInd).ToCorInfoType() == CORINFO_TYPE_VALUECLASS &&
-                   OpStackTypeGet(valInd).ToClassHandle() == clsHnd)
-               ||
-                  (OpStackTypeGet(valInd).ToCorInfoType() == 
-                   CorInfoTypeStackNormalize(GetTypeForPrimitiveValueClass(clsHnd)))
-               || (s_InterpreterLooseRules && sz <= sizeof(dest)));
+#ifdef _DEBUG
+        // Try and validate types
+        InterpreterType vit = OpStackTypeGet(valInd);
+        CorInfoType vitc = vit.ToCorInfoType();
+
+        if (vitc == CORINFO_TYPE_VALUECLASS)
+        {
+            CORINFO_CLASS_HANDLE vClsHnd = vit.ToClassHandle();
+            const bool isClass = (vClsHnd == clsHnd);
+            const bool isPrim = (vitc == CorInfoTypeStackNormalize(GetTypeForPrimitiveValueClass(clsHnd)));
+            bool isShared = false;
+
+            // If operand type is shared we need a more complex check;
+            // the IL type may not be shared
+            if (!isPrim && !isClass)
+            {
+                DWORD vClsAttribs;
+                {
+                    GCX_PREEMP();
+                    vClsAttribs = m_interpCeeInfo.getClassAttribs(vClsHnd);
+                }
+
+                if ((vClsAttribs & CORINFO_FLG_SHAREDINST) != 0)
+                {
+                    MethodTable* clsMT2 = clsMT->GetCanonicalMethodTable();
+                    if (((CORINFO_CLASS_HANDLE) clsMT2) == vClsHnd)
+                    {
+                        isShared = true;
+                    }
+                }
+            }
+
+            assert(isClass || isPrim || isShared);
+        }
+        else
+        {
+            const bool isSz = s_InterpreterLooseRules && sz <= sizeof(dest);
+            assert(isSz);
+        }
+
+#endif // _DEBUG
 
         GCX_FORBID();
 
