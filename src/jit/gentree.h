@@ -3547,6 +3547,7 @@ struct GenTreeCall final : public GenTree
                                                     // the comma result is unused.
 #define GTF_CALL_M_DEVIRTUALIZED         0x00040000 // GT_CALL -- this call was devirtualized
 #define GTF_CALL_M_UNBOXED               0x00080000 // GT_CALL -- this call was optimized to use the unboxed entry point
+#define GTF_CALL_M_SPECULATIVE_DEVIRT    0x00100000 // GT_CALL -- this call is a candidate for speculative devirtualization
 
     // clang-format on
 

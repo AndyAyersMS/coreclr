@@ -19077,10 +19077,19 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
         return;
     }
 
+    CORINFO_METHOD_HANDLE fncHandle = call->gtCallMethHnd;
+
     if (call->IsVirtual())
     {
-        inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_NOT_DIRECT);
-        return;
+        if ((call->gtCallMoreFlags & GTF_CALL_M_SPECULATIVE_DEVIRT) != 0)
+        {
+            // update fncHandle ....
+        }
+        else
+        {
+            inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_NOT_DIRECT);
+            return;
+        }
     }
 
     /* Ignore helper calls */
@@ -19102,8 +19111,7 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
      * restricts the inliner to non-expanding inlines.  I removed the check to allow for non-expanding
      * inlining in throw blocks.  I should consider the same thing for catch and filter regions. */
 
-    CORINFO_METHOD_HANDLE fncHandle = call->gtCallMethHnd;
-    unsigned              methAttr;
+    unsigned methAttr;
 
     // Reuse method flags from the original callInfo if possible
     if (fncHandle == callInfo->hMethod)
@@ -19378,6 +19386,10 @@ bool Compiler::IsMathIntrinsic(GenTree* tree)
 //     to instead make a local copy. If that is doable, the call is
 //     updated to invoke the unboxed entry on the local copy.
 //
+//     When speculative devirtualization is enabled, the jit may
+//     transform the call even if the type of the `this` is not exactly
+//     known.
+
 void Compiler::impDevirtualizeCall(GenTreeCall*            call,
                                    CORINFO_METHOD_HANDLE*  method,
                                    unsigned*               methodFlags,
@@ -19622,6 +19634,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // the time of jitting, objClass has no subclasses that
         // override this method), then perhaps we'd be willing to
         // make a bet...?
+        call->gtCallMoreFlags |= GTF_CALL_M_SPECULATIVE_DEVIRT;
         JITDUMP("    Class not final or exact, method not final, no devirtualization\n");
         return;
     }
@@ -19629,6 +19642,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     // For interface calls we must have an exact type or final class.
     if (isInterface && !isExact && !objClassIsFinal)
     {
+        call->gtCallMoreFlags |= GTF_CALL_M_SPECULATIVE_DEVIRT;
         JITDUMP("    Class not final or exact for interface, no devirtualization\n");
         return;
     }
