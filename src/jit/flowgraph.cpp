@@ -25490,34 +25490,50 @@ public:
     //------------------------------------------------------------------------
     // Run: run transformation for each block.
     //
-    void Run()
+    // Returns:
+    //   Count of calls transformed.
+    int Run()
     {
+        int count = 0;
+
         for (BasicBlock* block = compiler->fgFirstBB; block != nullptr; block = block->bbNext)
         {
-            TransformBlock(block);
+            count += TransformBlock(block);
         }
+
+        return count;
     }
 
 private:
     //------------------------------------------------------------------------
-    // TransformBlock: look through statements and transform statements with fat pointer calls.
+    // TransformBlock: look through statements and transform statements with
+    //   particular indirect calls
     //
-    void TransformBlock(BasicBlock* block)
+    // Returns:
+    //   Count of calls transformed.
+    //
+    int TransformBlock(BasicBlock* block)
     {
+        int count = 0;
+
         for (GenTreeStmt* stmt = block->firstStmt(); stmt != nullptr; stmt = stmt->gtNextStmt)
         {
             if (ContainsFatCalli(stmt))
             {
                 FatPointerCallTransformer transformer(compiler, block, stmt);
                 transformer.Run();
+                count++;
             }
 
             if (ContainsSpeculativeDevirtualizationCandidate(stmt))
             {
                 SpeculativeDevirtualizationTransformer transformer(compiler, block, stmt);
                 transformer.Run();
+                count++;
             }
         }
+
+        return count;
     }
 
     //------------------------------------------------------------------------
@@ -25571,13 +25587,13 @@ private:
         //
         virtual void Run()
         {
+            origCall = GetCall(stmt);
             Transform();
         }
 
         void Transform()
         {
             JITDUMP("*** %s Transforming [%06u]\n", Name(), compiler->dspTreeID(stmt));
-            origCall = GetCall(stmt);
             ClearFlag();
             CreateRemainder();
             CreateCheck();
@@ -25877,15 +25893,25 @@ private:
         //
         virtual void Run()
         {
-            GenTreeCall* call = GetCall(stmt);
+            origCall = GetCall(stmt);
 
-            if (call->IsInlineCandidate())
+            if (origCall->IsInlineCandidate())
             {
-                Transform();
+                // Simplify bringup for now
+                if (compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
+                {
+                    JITDUMP("*** %s Bailing on [%06u] -- prejitting\n", Name(), compiler->dspTreeID(origCall));
+                    ClearFlag();
+                }
+                else
+                {
+                    Transform();
+                }
             }
             else
             {
-                JITDUMP("*** %s Bailing on [%06u] -- not an inline candidate\n", Name(), compiler->dspTreeID(stmt));
+                // Currently we need inline candidate info to speculative devirt.
+                JITDUMP("*** %s Bailing on [%06u] -- not an inline candidate\n", Name(), compiler->dspTreeID(origCall));
                 ClearFlag();
             }
         }
@@ -25920,7 +25946,7 @@ private:
             origCall->ClearSpeculativeDevirtualizationCandidate();
             // Currently all speculative devirt cases are also inline candidates
             // as that's how we smuggle in extra state
-            origCall->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
+            // origCall->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
         }
 
         //------------------------------------------------------------------------
@@ -25977,8 +26003,10 @@ private:
             CORINFO_CONTEXT_HANDLE context     = nullptr;
             compiler->impDevirtualizeCall(call, &methodHnd, &methodFlags, &context, nullptr);
 
-            // Restore candidacy.... ??? may not be the same target we started with
-            // if we've changed to unboxed EP, etc. Hmm.
+            // TODO: Restore candidacy.... ??? may not be the same target we started with
+            // if we've changed to unboxed EP, etc. Should be able to repair the inlineInfo
+            // to make it viable.
+            call->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
         }
     };
 
@@ -26030,12 +26058,25 @@ void Compiler::fgTransformIndirectCalls()
 {
     JITDUMP("\n*************** in fgTransformIndirectCalls()\n");
     IndirectCallTransformer indirectCallTransformer(this);
-    indirectCallTransformer.Run();
+    int                     count = indirectCallTransformer.Run();
     // Generalize....
     clearMethodHasFatPointer();
 #ifdef DEBUG
     CheckNoTransformableIndirectCallsRemain();
 #endif
+
+    if (count > 0)
+    {
+        JITDUMP("\n*************** After fgTransformIndirectCalls() [%d calls transformed]\n", count);
+        if (verbose)
+        {
+            fgDispBasicBlocks(true);
+        }
+    }
+    else
+    {
+        JITDUMP(" -- no transforms done\n");
+    }
 }
 
 //------------------------------------------------------------------------
