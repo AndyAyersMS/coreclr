@@ -4529,9 +4529,9 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
         fgRemovePreds();
     }
 
-    if (IsTargetAbi(CORINFO_CORERT_ABI) && doesMethodHaveFatPointer())
+    // if (IsTargetAbi(CORINFO_CORERT_ABI) && doesMethodHaveFatPointer())
     {
-        fgTransformFatCalli();
+        fgTransformIndirectCalls();
     }
 
     EndPhase(PHASE_IMPORTATION);

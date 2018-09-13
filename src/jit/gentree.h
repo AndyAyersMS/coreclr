@@ -3740,6 +3740,11 @@ struct GenTreeCall final : public GenTree
         return (gtCallMoreFlags & GTF_CALL_M_FAT_POINTER_CHECK) != 0;
     }
 
+    bool IsSpeculativeDevirtualizationCandidate() const
+    {
+        return (gtCallMoreFlags & GTF_CALL_M_SPECULATIVE_DEVIRT) != 0;
+    }
+
     bool IsPure(Compiler* compiler) const;
 
     bool HasSideEffects(Compiler* compiler, bool ignoreExceptions = false, bool ignoreCctors = false) const;
@@ -3762,6 +3767,16 @@ struct GenTreeCall final : public GenTree
     bool IsUnboxed() const
     {
         return (gtCallMoreFlags & GTF_CALL_M_UNBOXED) != 0;
+    }
+
+    void ClearSpeculativeDevirtualizationCandidate()
+    {
+        gtCallMoreFlags &= ~GTF_CALL_M_SPECULATIVE_DEVIRT;
+    }
+
+    void SetSpeculativeDevirtualizationCandidate()
+    {
+        gtCallMoreFlags |= GTF_CALL_M_SPECULATIVE_DEVIRT;
     }
 
     unsigned gtCallMoreFlags; // in addition to gtFlags

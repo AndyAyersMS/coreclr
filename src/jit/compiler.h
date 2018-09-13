@@ -4110,7 +4110,7 @@ public:
 
     void fgImport();
 
-    void fgTransformFatCalli();
+    void fgTransformIndirectCalls();
 
     void fgInline();
 
@@ -5331,8 +5331,8 @@ private:
 #ifdef DEBUG
     static fgWalkPreFn fgDebugCheckInlineCandidates;
 
-    void               CheckNoFatPointerCandidatesLeft();
-    static fgWalkPreFn fgDebugCheckFatPointerCandidates;
+    void               CheckNoTransformableIndirectCallsRemain();
+    static fgWalkPreFn fgDebugCheckForTransformableIndirectCalls;
 #endif
 
     void fgPromoteStructs();
@@ -6113,6 +6113,7 @@ public:
 #define OMF_HAS_VTABLEREF 0x00000008  // Method contains method table reference.
 #define OMF_HAS_NULLCHECK 0x00000010  // Method contains null check.
 #define OMF_HAS_FATPOINTER 0x00000020 // Method contains call, that needs fat pointer transformation.
+#define OMF_HAS_SPECDEVIRT 0x00000040 // Method contains call that may be speculatively devirtualized.
 
     bool doesMethodHaveFatPointer()
     {

@@ -19081,9 +19081,10 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
 
     if (call->IsVirtual())
     {
-        if ((call->gtCallMoreFlags & GTF_CALL_M_SPECULATIVE_DEVIRT) != 0)
+        if (call->IsSpeculativeDevirtualizationCandidate())
         {
-            // update fncHandle ....
+            // TODO: update fncHandle to reflect the expected target
+            // so we have inline info for it....
         }
         else
         {
@@ -19634,16 +19635,16 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // the time of jitting, objClass has no subclasses that
         // override this method), then perhaps we'd be willing to
         // make a bet...?
-        call->gtCallMoreFlags |= GTF_CALL_M_SPECULATIVE_DEVIRT;
-        JITDUMP("    Class not final or exact, method not final, no devirtualization\n");
+        call->SetSpeculativeDevirtualizationCandidate();
+        JITDUMP("    Class not final or exact, method not final, will try speculative devirtualization\n");
         return;
     }
 
     // For interface calls we must have an exact type or final class.
     if (isInterface && !isExact && !objClassIsFinal)
     {
-        call->gtCallMoreFlags |= GTF_CALL_M_SPECULATIVE_DEVIRT;
-        JITDUMP("    Class not final or exact for interface, no devirtualization\n");
+        call->SetSpeculativeDevirtualizationCandidate();
+        JITDUMP("    Class not final or exact for interface, will try speculative devirtualization\n");
         return;
     }
 
