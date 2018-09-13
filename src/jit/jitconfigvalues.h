@@ -360,6 +360,11 @@ CONFIG_INTEGER(JitEnableRemoveEmptyTry, W("JitEnableRemoveEmptyTry"), 0)
 #endif // defined(FEATURE_CORECLR)
 #endif // DEBUG
 
+#if defined(DEBUG)
+CONFIG_INTEGER(JitEnableGuardedDevirtualization, W("JitEnableGuardedDevirtualization"), 1)
+CONFIG_INTEGER(JitEnableGuardedDevirtualizationEvenIfNoInline, W("JitEnableGuardedDevirtualizationEvenIfNoInline"), 0)
+#endif // DEBUG
+
 #undef CONFIG_INTEGER
 #undef CONFIG_STRING
 #undef CONFIG_METHODSET

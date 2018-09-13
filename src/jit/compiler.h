@@ -3278,6 +3278,12 @@ public:
         return IsTargetAbi(CORINFO_CORERT_ABI) ? TYP_I_IMPL : TYP_REF;
     }
 
+    void impDevirtualizeCall(GenTreeCall*            call,
+                             CORINFO_METHOD_HANDLE*  method,
+                             unsigned*               methodFlags,
+                             CORINFO_CONTEXT_HANDLE* contextHandle,
+                             CORINFO_CONTEXT_HANDLE* exactContextHandle);
+
     //=========================================================================
     //                          PROTECTED
     //=========================================================================
@@ -3334,12 +3340,6 @@ protected:
                             int                prefixFlags,
                             CORINFO_CALL_INFO* callInfo,
                             IL_OFFSET          rawILOffset);
-
-    void impDevirtualizeCall(GenTreeCall*            call,
-                             CORINFO_METHOD_HANDLE*  method,
-                             unsigned*               methodFlags,
-                             CORINFO_CONTEXT_HANDLE* contextHandle,
-                             CORINFO_CONTEXT_HANDLE* exactContextHandle);
 
     CORINFO_CLASS_HANDLE impGetSpecialIntrinsicExactReturnType(CORINFO_METHOD_HANDLE specialIntrinsicHandle);
 
@@ -3871,6 +3871,11 @@ private:
                                 bool                   exactContextNeedsRuntimeLookup,
                                 CORINFO_CALL_INFO*     callInfo);
 
+    void impMarkInlineCandidateHelper(GenTreeCall*           call,
+                                      CORINFO_CONTEXT_HANDLE exactContextHnd,
+                                      bool                   exactContextNeedsRuntimeLookup,
+                                      CORINFO_CALL_INFO*     callInfo);
+
     bool impTailCallRetTypeCompatible(var_types            callerRetType,
                                       CORINFO_CLASS_HANDLE callerRetTypeClass,
                                       var_types            calleeRetType,
@@ -4110,7 +4115,7 @@ public:
 
     void fgImport();
 
-    void fgTransformFatCalli();
+    void fgTransformIndirectCalls();
 
     void fgInline();
 
@@ -5331,8 +5336,8 @@ private:
 #ifdef DEBUG
     static fgWalkPreFn fgDebugCheckInlineCandidates;
 
-    void               CheckNoFatPointerCandidatesLeft();
-    static fgWalkPreFn fgDebugCheckFatPointerCandidates;
+    void               CheckNoTransformableIndirectCallsRemain();
+    static fgWalkPreFn fgDebugCheckForTransformableIndirectCalls;
 #endif
 
     void fgPromoteStructs();
@@ -6107,12 +6112,13 @@ public:
         }
     };
 
-#define OMF_HAS_NEWARRAY 0x00000001   // Method contains 'new' of an array
-#define OMF_HAS_NEWOBJ 0x00000002     // Method contains 'new' of an object type.
-#define OMF_HAS_ARRAYREF 0x00000004   // Method contains array element loads or stores.
-#define OMF_HAS_VTABLEREF 0x00000008  // Method contains method table reference.
-#define OMF_HAS_NULLCHECK 0x00000010  // Method contains null check.
-#define OMF_HAS_FATPOINTER 0x00000020 // Method contains call, that needs fat pointer transformation.
+#define OMF_HAS_NEWARRAY 0x00000001      // Method contains 'new' of an array
+#define OMF_HAS_NEWOBJ 0x00000002        // Method contains 'new' of an object type.
+#define OMF_HAS_ARRAYREF 0x00000004      // Method contains array element loads or stores.
+#define OMF_HAS_VTABLEREF 0x00000008     // Method contains method table reference.
+#define OMF_HAS_NULLCHECK 0x00000010     // Method contains null check.
+#define OMF_HAS_FATPOINTER 0x00000020    // Method contains call that needs fat pointer transformation.
+#define OMF_HAS_GUARDEDDEVIRT 0x00000040 // Method contains guarded devirtualization candidate
 
     bool doesMethodHaveFatPointer()
     {
@@ -6130,6 +6136,27 @@ public:
     }
 
     void addFatPointerCandidate(GenTreeCall* call);
+
+    bool doesMethodHaveGuardedDevirtualization()
+    {
+        return (optMethodFlags & OMF_HAS_GUARDEDDEVIRT) != 0;
+    }
+
+    void setMethodHasGuardedDevirtualization()
+    {
+        optMethodFlags |= OMF_HAS_GUARDEDDEVIRT;
+    }
+
+    void clearMethodHasGuardedDevirtualization()
+    {
+        optMethodFlags &= ~OMF_HAS_GUARDEDDEVIRT;
+    }
+
+    void addGuardedDevirtualizationCandidate(GenTreeCall*          call,
+                                             CORINFO_METHOD_HANDLE methodHandle,
+                                             CORINFO_CLASS_HANDLE  classHandle,
+                                             unsigned              methodAttr,
+                                             unsigned              classAttr);
 
     unsigned optMethodFlags;
 

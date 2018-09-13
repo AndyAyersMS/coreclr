@@ -6681,6 +6681,13 @@ void Compiler::fgMorphCallInlineHelper(GenTreeCall* call, InlineResult* result)
         return;
     }
 
+    // Re-check this because guareded devirtualization may allow these through.
+    if (gtIsRecursiveCall(call) && call->IsImplicitTailCall())
+    {
+        result->NoteFatal(InlineObservation::CALLSITE_IMPLICIT_REC_TAIL_CALL);
+        return;
+    }
+
     // impMarkInlineCandidate() is expected not to mark tail prefixed calls
     // and recursive tail calls as inline candidates.
     noway_assert(!call->IsTailPrefixedCall());

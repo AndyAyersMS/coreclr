@@ -494,6 +494,18 @@ private:
     bool                  m_Reported;
 };
 
+// GuardedDevirtualizationCandidateInfo provides information about
+// a potential target of a virtual call.
+
+struct GuardedDevirtualizationCandidateInfo
+{
+    CORINFO_CLASS_HANDLE  classHandle;
+    CORINFO_METHOD_HANDLE methodHandle;
+    unsigned              methodAttr;
+    unsigned              classAttr;
+    void*                 stubAddr; // hack
+};
+
 // InlineCandidateInfo provides basic information about a particular
 // inline candidate.
 
@@ -510,6 +522,8 @@ struct InlineCandidateInfo
     bool                   exactContextNeedsRuntimeLookup;
     CorInfoInitClassResult initClassResult;
     unsigned               preexistingSpillTemp;
+    GenTree*               retExpr;
+    void*                  stubAddr; // hack
 };
 
 // InlArgInfo describes inline candidate argument properties.

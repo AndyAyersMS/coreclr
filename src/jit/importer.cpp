@@ -7281,7 +7281,7 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
                 }
                 else
                 {
-                    // ok, the stub is available at compile type.
+                    // The stub address is known available at compile time
 
                     call = gtNewCallNode(CT_USER_FUNC, callInfo->hMethod, callRetTyp, nullptr, ilOffset);
                     call->gtCall.gtStubCallStubAddr = callInfo->stubLookup.constLookup.addr;
@@ -8273,7 +8273,13 @@ DONE_CALL:
                 impAppendTree(call, (unsigned)CHECK_SPILL_ALL, impCurStmtOffs);
 
                 // TODO: Still using the widened type.
-                call = gtNewInlineCandidateReturnExpr(call, genActualType(callRetTyp));
+                GenTree* retExpr = gtNewInlineCandidateReturnExpr(call, genActualType(callRetTyp));
+
+                // Link the retExpr to the call so if necessary we can manipulate it later.
+                call->AsCall()->gtInlineCandidateInfo->retExpr = retExpr;
+
+                // Propagate retExpr as the placeholder for the call.
+                call = retExpr;
             }
             else
             {
@@ -18067,6 +18073,8 @@ void Compiler::impCheckCanInline(GenTree*               call,
             pInfo->ilCallerHandle       = pParam->pThis->info.compMethodHnd;
             pInfo->initClassResult      = initClassResult;
             pInfo->preexistingSpillTemp = BAD_VAR_NUM;
+            pInfo->retExpr              = nullptr;
+            pInfo->stubAddr             = nullptr;
 
             *(pParam->ppInlineCandidateInfo) = pInfo;
 
@@ -19005,6 +19013,66 @@ BOOL Compiler::impInlineIsGuaranteedThisDerefBeforeAnySideEffects(GenTree*    ad
 //    callInfo -- call info from VM
 //
 // Notes:
+//    Mostly a wrapper for impMarkInlineCandidateHelper that also undoes
+//    guarded devirtualization for virtual calls where the method we'd
+//    devirtualize to cannot be inlined.
+
+void Compiler::impMarkInlineCandidate(GenTree*               callNode,
+                                      CORINFO_CONTEXT_HANDLE exactContextHnd,
+                                      bool                   exactContextNeedsRuntimeLookup,
+                                      CORINFO_CALL_INFO*     callInfo)
+{
+    GenTreeCall* call = callNode->AsCall();
+
+    // Do the actual evaluation
+    impMarkInlineCandidateHelper(call, exactContextHnd, exactContextNeedsRuntimeLookup, callInfo);
+
+    // If this call is an inline candidate or is not a guarded devirtualization
+    // candidate, we're done.
+    if (call->IsInlineCandidate() || !call->IsGuardedDevirtualizationCandidate())
+    {
+        return;
+    }
+
+    // The default policy is that if we can't inline the call we'd
+    // guardedly devirtualize to, we undo the guarded devirtualization,
+    // as the benefit from just guarded devirtualization alone is
+    // likely not worth the extra jit time and code size.
+    CLANG_FORMAT_COMMENT_ANCHOR;
+
+#if DEBUG
+    // Allow this policy to be overridden...
+    if (JitConfig.JitEnableGuardedDevirtualizationEvenIfNoInline() > 0)
+    {
+        return;
+    }
+#endif // DEBUG
+
+    JITDUMP("Revoking guarded devirtualization candidacy for call [%06u]: target method can't be inlined\n",
+            dspTreeID(call));
+
+    call->ClearGuardedDevirtualizationCandidate();
+
+    // Undo the ugly hack we use to save of the stub address.
+    if (call->IsVirtualStub())
+    {
+        JITDUMP("Restoring stub addr %p from guarded devirt candidate info\n",
+                call->gtGuardedDevirtualizationCandidateInfo->stubAddr);
+        call->gtStubCallStubAddr = call->gtGuardedDevirtualizationCandidateInfo->stubAddr;
+    }
+}
+
+//------------------------------------------------------------------------
+// impMarkInlineCandidateHelper: determine if this call can be subsequently
+//     inlined
+//
+// Arguments:
+//    callNode -- call under scrutiny
+//    exactContextHnd -- context handle for inlining
+//    exactContextNeedsRuntimeLookup -- true if context required runtime lookup
+//    callInfo -- call info from VM
+//
+// Notes:
 //    If callNode is an inline candidate, this method sets the flag
 //    GTF_CALL_INLINE_CANDIDATE, and ensures that helper methods have
 //    filled in the associated InlineCandidateInfo.
@@ -19014,10 +19082,10 @@ BOOL Compiler::impInlineIsGuaranteedThisDerefBeforeAnySideEffects(GenTree*    ad
 //    method may be marked as "noinline" to short-circuit any
 //    future assessments of calls to this method.
 
-void Compiler::impMarkInlineCandidate(GenTree*               callNode,
-                                      CORINFO_CONTEXT_HANDLE exactContextHnd,
-                                      bool                   exactContextNeedsRuntimeLookup,
-                                      CORINFO_CALL_INFO*     callInfo)
+void Compiler::impMarkInlineCandidateHelper(GenTreeCall*           call,
+                                            CORINFO_CONTEXT_HANDLE exactContextHnd,
+                                            bool                   exactContextNeedsRuntimeLookup,
+                                            CORINFO_CALL_INFO*     callInfo)
 {
     // Let the strategy know there's another call
     impInlineRoot()->m_inlineStrategy->NoteCall();
@@ -19042,7 +19110,6 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
         return;
     }
 
-    GenTreeCall* call = callNode->AsCall();
     InlineResult inlineResult(this, call, nullptr, "impMarkInlineCandidate");
 
     // Don't inline if not optimizing root method
@@ -19079,14 +19146,22 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
 
     if (call->IsVirtual())
     {
-        inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_NOT_DIRECT);
-        return;
+        if (call->IsGuardedDevirtualizationCandidate())
+        {
+            // Allow guarded devirt calls to be treated as inline candidates.
+        }
+        else
+        {
+            inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_NOT_DIRECT);
+            return;
+        }
     }
 
     /* Ignore helper calls */
 
     if (call->gtCallType == CT_HELPER)
     {
+        assert(!call->IsGuardedDevirtualizationCandidate());
         inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_CALL_TO_HELPER);
         return;
     }
@@ -19102,17 +19177,27 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
      * restricts the inliner to non-expanding inlines.  I removed the check to allow for non-expanding
      * inlining in throw blocks.  I should consider the same thing for catch and filter regions. */
 
-    CORINFO_METHOD_HANDLE fncHandle = call->gtCallMethHnd;
+    CORINFO_METHOD_HANDLE fncHandle;
     unsigned              methAttr;
 
-    // Reuse method flags from the original callInfo if possible
-    if (fncHandle == callInfo->hMethod)
+    if (call->IsGuardedDevirtualizationCandidate())
     {
-        methAttr = callInfo->methodFlags;
+        fncHandle = call->gtGuardedDevirtualizationCandidateInfo->methodHandle;
+        methAttr  = call->gtGuardedDevirtualizationCandidateInfo->methodAttr;
     }
     else
     {
-        methAttr = info.compCompHnd->getMethodAttribs(fncHandle);
+        fncHandle = call->gtCallMethHnd;
+
+        // Reuse method flags from the original callInfo if possible
+        if (fncHandle == callInfo->hMethod)
+        {
+            methAttr = callInfo->methodFlags;
+        }
+        else
+        {
+            methAttr = info.compCompHnd->getMethodAttribs(fncHandle);
+        }
     }
 
 #ifdef DEBUG
@@ -19212,12 +19297,21 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
         return;
     }
 
-    // The old value should be NULL
-    assert(call->gtInlineCandidateInfo == nullptr);
+    // The old value should be null OR this call should be a guarded devirtualization candidate.
+    assert((call->gtInlineCandidateInfo == nullptr) || call->IsGuardedDevirtualizationCandidate());
 
-    // The new value should not be NULL.
+    // The new value should not be null.
     assert(inlineCandidateInfo != nullptr);
     inlineCandidateInfo->exactContextNeedsRuntimeLookup = exactContextNeedsRuntimeLookup;
+
+    // If we're making a virtual stub call into an inline candidate, squirrel away the
+    // stub address we already squrreled away.
+    if (call->IsVirtualStub())
+    {
+        JITDUMP("Saving stub addr %p in inline candidate info\n",
+                call->gtGuardedDevirtualizationCandidateInfo->stubAddr);
+        inlineCandidateInfo->stubAddr = call->gtGuardedDevirtualizationCandidateInfo->stubAddr;
+    }
 
     call->gtInlineCandidateInfo = inlineCandidateInfo;
 
@@ -19378,6 +19472,10 @@ bool Compiler::IsMathIntrinsic(GenTree* tree)
 //     to instead make a local copy. If that is doable, the call is
 //     updated to invoke the unboxed entry on the local copy.
 //
+//     When guarded devirtualization is enabled, the jit may
+//     transform the call even if the type of the `this` is not exactly
+//     known.
+
 void Compiler::impDevirtualizeCall(GenTreeCall*            call,
                                    CORINFO_METHOD_HANDLE*  method,
                                    unsigned*               methodFlags,
@@ -19585,7 +19683,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     const char* derivedClassName  = "?derivedClass";
     const char* derivedMethodName = "?derivedMethod";
 
-    const char* note = "speculative";
+    const char* note = "inexact or not final";
     if (isExact)
     {
         note = "exact";
@@ -19622,14 +19720,32 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // the time of jitting, objClass has no subclasses that
         // override this method), then perhaps we'd be willing to
         // make a bet...?
-        JITDUMP("    Class not final or exact, method not final, no devirtualization\n");
+        JITDUMP("    Class not final or exact, method not final\n");
+
+        // Todo: profitbility assessment ... ?
+        // Verify here we can safely do method table compares?
+        // if (!info.compCompHnd->canInlineTypeCheckWithObjectVTable(clsHnd))
+
+        // Don't do this for late devirts
+        if (exactContextHandle != nullptr)
+        {
+            addGuardedDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+        }
         return;
     }
 
     // For interface calls we must have an exact type or final class.
     if (isInterface && !isExact && !objClassIsFinal)
     {
-        JITDUMP("    Class not final or exact for interface, no devirtualization\n");
+        JITDUMP("    Class not final or exact for interface\n");
+
+        // Todo: profitbility assessment ... ?
+        // Don't do this for late devirts
+        if (exactContextHandle != nullptr)
+        {
+            addGuardedDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+        }
+
         return;
     }
 
@@ -19965,8 +20081,96 @@ private:
 //
 void Compiler::addFatPointerCandidate(GenTreeCall* call)
 {
+    JITDUMP("Marking call [%06u] as fat pointer candidate\n", dspTreeID(call));
     setMethodHasFatPointer();
     call->SetFatPointerCandidate();
     SpillRetExprHelper helper(this);
     helper.StoreRetExprResultsInArgs(call);
+}
+
+//------------------------------------------------------------------------
+// addGuardedDevirtualizationCandidate: mark the call and the method
+//    as a guarded devirtualization candidate.
+//
+// Spill ret_expr in any child tree, because they can't be
+//   cloned, and we need to clone all the trees when we duplicate the
+//   call as part of speculative devirtualization.
+//
+// Arguments:
+//    call - speculative devirtialization candidate
+//    methodHandle - method that we want to speculate for
+//    classHandle - class that would invoke that method
+//    methodAttr - attributes of the method
+//    classAttr - attributes of the class
+//
+void Compiler::addGuardedDevirtualizationCandidate(GenTreeCall*          call,
+                                                   CORINFO_METHOD_HANDLE methodHandle,
+                                                   CORINFO_CLASS_HANDLE  classHandle,
+                                                   unsigned              methodAttr,
+                                                   unsigned              classAttr)
+{
+    // This transformation only makes sense for virtual calls
+    assert(call->IsVirtual());
+
+    // Bail when prejitting. We only do this for jitted code.
+    if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
+    {
+        JITDUMP("NOT Marking call [%06u] as guarded devirtualization candidate -- prejitting", dspTreeID(call));
+        return;
+    }
+
+    // Bail if not optimizing or the call site is very likely cold
+    if (compCurBB->isRunRarely() || opts.compDbgCode || opts.MinOpts())
+    {
+        JITDUMP("NOT Marking call [%06u] as guarded devirtualization candidate -- rare / dbg / minopts\n",
+                dspTreeID(call));
+        return;
+    }
+
+    // CT_INDRECT calls may use the cookie, bail if so...
+    if ((call->gtCallType == CT_INDIRECT) && (call->gtCall.gtCallCookie != nullptr))
+    {
+        assert(false);
+        return;
+    }
+
+#if DEBUG
+    if (JitConfig.JitEnableGuardedDevirtualization() == 0)
+    {
+        JITDUMP("NOT Marking call [%06u] as guarded devirtualization candidate -- disabled by jit config\n",
+                dspTreeID(call));
+        return;
+    }
+#endif
+
+    // TODO: make sure we're not otherwise clobbering the fragile union in GenTreeCall
+
+    JITDUMP("Marking call [%06u] as guarded devirtualization candidate\n", dspTreeID(call));
+    setMethodHasGuardedDevirtualization();
+    call->SetGuardedDevirtualizationCandidate();
+    SpillRetExprHelper helper(this);
+    helper.StoreRetExprResultsInArgs(call);
+
+    // Pass some extra information through...
+    //
+    // If we were clever we'd allocate enough storage here for an InlineCandidateInfo
+    // and reuse it subsequently (or just union the latter).
+    GuardedDevirtualizationCandidateInfo* pInfo = new (this, CMK_Inlining) GuardedDevirtualizationCandidateInfo;
+
+    pInfo->methodHandle = methodHandle;
+    pInfo->methodAttr   = methodAttr;
+    pInfo->classHandle  = classHandle;
+    pInfo->classAttr    = classAttr;
+
+    if (call->IsVirtualStub())
+    {
+        JITDUMP("Saving stub addr %p in speculative candidate info\n", call->gtStubCallStubAddr);
+        pInfo->stubAddr = call->gtStubCallStubAddr;
+    }
+    else
+    {
+        pInfo->stubAddr = nullptr;
+    }
+
+    call->gtGuardedDevirtualizationCandidateInfo = pInfo;
 }
