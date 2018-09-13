@@ -19635,19 +19635,23 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // the time of jitting, objClass has no subclasses that
         // override this method), then perhaps we'd be willing to
         // make a bet...?
+        JITDUMP("    Class not final or exact, method not final\n");
 
+        // Todo: profitbility assessment ... ?
         // Verify here we can safely do method table compares?
         // if (!info.compCompHnd->canInlineTypeCheckWithObjectVTable(clsHnd))
-        call->SetSpeculativeDevirtualizationCandidate();
-        JITDUMP("    Class not final or exact, method not final, will try speculative devirtualization\n");
+
+        addSpeculativeDevirtualizationCandidate(call);
         return;
     }
 
     // For interface calls we must have an exact type or final class.
     if (isInterface && !isExact && !objClassIsFinal)
     {
-        call->SetSpeculativeDevirtualizationCandidate();
-        JITDUMP("    Class not final or exact for interface, will try speculative devirtualization\n");
+        JITDUMP("    Class not final or exact for interface\n");
+
+        // Todo: profitbility assessment ... ?
+        addSpeculativeDevirtualizationCandidate(call);
         return;
     }
 
@@ -19983,8 +19987,34 @@ private:
 //
 void Compiler::addFatPointerCandidate(GenTreeCall* call)
 {
+    JITDUMP("Marking call [%06u] as fat pointer candidate\n", dspTreeID(call));
     setMethodHasFatPointer();
     call->SetFatPointerCandidate();
+    SpillRetExprHelper helper(this);
+    helper.StoreRetExprResultsInArgs(call);
+}
+
+//------------------------------------------------------------------------
+// addSpeculativeDevirtualizationCandidate: mark the call and the method
+//    as a having a speculative devirtualization candidate.
+//
+// Spill ret_expr in any input tree for the call node, because they can't be
+//   cloned.
+//
+// Arguments:
+//    call - speculative devirt candidate
+//
+void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall* call)
+{
+    // Bail when prejitting for now....
+    if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
+    {
+        return;
+    }
+
+    JITDUMP("Marking call [%06u] as speculative devirtualization candidate\n", dspTreeID(call));
+    setMethodHasSpeculativeDevirtualization();
+    call->SetSpeculativeDevirtualizationCandidate();
     SpillRetExprHelper helper(this);
     helper.StoreRetExprResultsInArgs(call);
 }

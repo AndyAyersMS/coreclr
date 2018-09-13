@@ -25897,16 +25897,7 @@ private:
 
             if (origCall->IsInlineCandidate())
             {
-                // Simplify bringup for now
-                if (compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
-                {
-                    JITDUMP("*** %s Bailing on [%06u] -- prejitting\n", Name(), compiler->dspTreeID(origCall));
-                    ClearFlag();
-                }
-                else
-                {
-                    Transform();
-                }
+                Transform();
             }
             else
             {
@@ -26057,26 +26048,35 @@ void Compiler::CheckNoTransformableIndirectCallsRemain()
 void Compiler::fgTransformIndirectCalls()
 {
     JITDUMP("\n*************** in fgTransformIndirectCalls()\n");
-    IndirectCallTransformer indirectCallTransformer(this);
-    int                     count = indirectCallTransformer.Run();
-    // Generalize....
-    clearMethodHasFatPointer();
-#ifdef DEBUG
-    CheckNoTransformableIndirectCallsRemain();
-#endif
 
-    if (count > 0)
+    if (doesMethodHaveFatPointer() || doesMethodHaveSpeculativeDevirtualization())
     {
-        JITDUMP("\n*************** After fgTransformIndirectCalls() [%d calls transformed]\n", count);
-        if (verbose)
+        IndirectCallTransformer indirectCallTransformer(this);
+        int                     count = indirectCallTransformer.Run();
+
+        if (count > 0)
         {
-            fgDispBasicBlocks(true);
+            JITDUMP("\n*************** After fgTransformIndirectCalls() [%d calls transformed]\n", count);
+            if (verbose)
+            {
+                fgDispBasicBlocks(true);
+            }
+        }
+        else
+        {
+            JITDUMP(" -- no transforms done (?)\n");
         }
     }
     else
     {
-        JITDUMP(" -- no transforms done\n");
+        JITDUMP(" -- no candidates to transform\n");
     }
+
+    clearMethodHasFatPointer();
+    clearMethodHasSpeculativeDevirtualization();
+#ifdef DEBUG
+    CheckNoTransformableIndirectCallsRemain();
+#endif
 }
 
 //------------------------------------------------------------------------

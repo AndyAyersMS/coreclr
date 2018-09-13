@@ -6132,6 +6132,23 @@ public:
 
     void addFatPointerCandidate(GenTreeCall* call);
 
+    bool doesMethodHaveSpeculativeDevirtualization()
+    {
+        return (optMethodFlags & OMF_HAS_FATPOINTER) != 0;
+    }
+
+    void setMethodHasSpeculativeDevirtualization()
+    {
+        optMethodFlags |= OMF_HAS_FATPOINTER;
+    }
+
+    void clearMethodHasSpeculativeDevirtualization()
+    {
+        optMethodFlags &= ~OMF_HAS_FATPOINTER;
+    }
+
+    void addSpeculativeDevirtualizationCandidate(GenTreeCall* call);
+
     unsigned optMethodFlags;
 
     // Recursion bound controls how far we can go backwards tracking for a SSA value.
