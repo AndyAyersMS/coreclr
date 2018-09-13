@@ -25514,8 +25514,8 @@ private:
 
             if (ContainsSpeculativeDevirtualizationCandidate(stmt))
             {
-                // SpeculativeDevirtualizationTransformer transformer(compiler, block, stmt);
-                // transformer.Run();
+                SpeculativeDevirtualizationTransformer transformer(compiler, block, stmt);
+                transformer.Run();
             }
         }
     }
@@ -25569,10 +25569,15 @@ private:
         //------------------------------------------------------------------------
         // Run: transform the statement as described above.
         //
-        void Run()
+        virtual void Run()
         {
-            origCall = GetCall(stmt);
+            Transform();
+        }
 
+        void Transform()
+        {
+            JITDUMP("*** %s Transforming [%06u]\n", Name(), compiler->dspTreeID(stmt));
+            origCall = GetCall(stmt);
             ClearFlag();
             CreateRemainder();
             CreateCheck();
@@ -25584,12 +25589,12 @@ private:
         }
 
     protected:
+        virtual const char*  Name()                         = 0;
+        virtual void         ClearFlag()                    = 0;
         virtual GenTreeCall* GetCall(GenTreeStmt* callStmt) = 0;
 
-        virtual void ClearFlag() = 0;
-
         //------------------------------------------------------------------------
-        // CreateRemainder: split current block at the fat call stmt and
+        // CreateRemainder: split current block at the call stmt and
         // insert statements after the call into remainderBlock.
         //
         void CreateRemainder()
@@ -25602,13 +25607,14 @@ private:
         virtual void CreateCheck() = 0;
 
         //------------------------------------------------------------------------
-        // CreateThen: create then block, that is executed if the check succeeds
+        // CreateThen: create then block, that is executed if the check succeeds.
+        // This simply executes the original call.
         //
         void CreateThen()
         {
-            thenBlock               = CreateAndInsertBasicBlock(BBJ_ALWAYS, checkBlock);
-            GenTree* nonFatCallStmt = compiler->gtCloneExpr(stmt)->AsStmt();
-            compiler->fgInsertStmtAtEnd(thenBlock, nonFatCallStmt);
+            thenBlock                   = CreateAndInsertBasicBlock(BBJ_ALWAYS, checkBlock);
+            GenTree* copyOfOriginalStmt = compiler->gtCloneExpr(stmt)->AsStmt();
+            compiler->fgInsertStmtAtEnd(thenBlock, copyOfOriginalStmt);
         }
 
         //------------------------------------------------------------------------
@@ -25672,7 +25678,6 @@ private:
         GenTreeStmt* stmt;
         GenTreeCall* origCall;
 
-        const int FAT_POINTER_MASK = 0x2;
         const int HIGH_PROBABILITY = 80;
     };
 
@@ -25688,6 +25693,11 @@ private:
         }
 
     protected:
+        virtual const char* Name()
+        {
+            return "FatPointerCall";
+        }
+
         //------------------------------------------------------------------------
         // GetCall: find a call in a statement.
         //
@@ -25847,9 +25857,129 @@ private:
             iterator->Rest() = compiler->gtNewArgList(hiddenArgument);
         }
 
+        const int FAT_POINTER_MASK = 0x2;
+
         GenTree*  fptrAddress;
         var_types pointerType;
         bool      doesReturnValue;
+    };
+
+    class SpeculativeDevirtualizationTransformer : public Transformer
+    {
+    public:
+        SpeculativeDevirtualizationTransformer(Compiler* compiler, BasicBlock* block, GenTreeStmt* stmt)
+            : Transformer(compiler, block, stmt)
+        {
+        }
+
+        //------------------------------------------------------------------------
+        // Run: transform the statement as described above.
+        //
+        virtual void Run()
+        {
+            GenTreeCall* call = GetCall(stmt);
+
+            if (call->IsInlineCandidate())
+            {
+                Transform();
+            }
+            else
+            {
+                JITDUMP("*** %s Bailing on [%06u] -- not an inline candidate\n", Name(), compiler->dspTreeID(stmt));
+                ClearFlag();
+            }
+        }
+
+    protected:
+        virtual const char* Name()
+        {
+            return "SpeculativeDevirtualization";
+        }
+
+        //------------------------------------------------------------------------
+        // GetCall: find a call in a statement.
+        //
+        // Arguments:
+        //    callStmt - the statement with the call inside.
+        //
+        // Return Value:
+        //    call tree node pointer.
+        virtual GenTreeCall* GetCall(GenTreeStmt* callStmt)
+        {
+            GenTree* tree = callStmt->gtStmtExpr;
+            assert(tree->IsCall());
+            GenTreeCall* call = tree->AsCall();
+            return call;
+        }
+
+        //------------------------------------------------------------------------
+        // ClearFlag: clear speculative devirtualization candidate flag from the original call.
+        //
+        virtual void ClearFlag()
+        {
+            origCall->ClearSpeculativeDevirtualizationCandidate();
+            // Currently all speculative devirt cases are also inline candidates
+            // as that's how we smuggle in extra state
+            origCall->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
+        }
+
+        //------------------------------------------------------------------------
+        // CreateCheck: create check block and check method table
+        //
+        virtual void CreateCheck()
+        {
+            checkBlock = CreateAndInsertBasicBlock(BBJ_COND, currBlock);
+
+            // Fetch method table from object arg to call.
+            GenTree* callThisObj = compiler->gtCloneExpr(origCall->gtCallObjp);
+            GenTree* methodTable = compiler->gtNewIndir(TYP_I_IMPL, callThisObj);
+
+            // Find target method table from the inline call info
+            InlineCandidateInfo* inlineInfo        = origCall->gtInlineCandidateInfo;
+            CORINFO_CLASS_HANDLE clsHnd            = inlineInfo->clsHandle;
+            GenTree*             targetMethodTable = compiler->gtNewIconEmbClsHndNode(clsHnd);
+
+            // Compare and jump to then (which does the general indirect call) if NOT equal
+            GenTree* methodTableCompare = compiler->gtNewOperNode(GT_NE, TYP_INT, targetMethodTable, methodTable);
+            GenTree* jmpTree            = compiler->gtNewOperNode(GT_JTRUE, TYP_VOID, methodTableCompare);
+            GenTree* jmpStmt            = compiler->fgNewStmtFromTree(jmpTree, stmt->gtStmt.gtStmtILoffsx);
+            compiler->fgInsertStmtAtEnd(checkBlock, jmpStmt);
+        }
+
+        //------------------------------------------------------------------------
+        // CreateElse: create else block with direct call to method
+        //
+        virtual void CreateElse()
+        {
+            elseBlock = CreateAndInsertBasicBlock(BBJ_NONE, thenBlock);
+
+            InlineCandidateInfo* inlineInfo = origCall->gtInlineCandidateInfo;
+            CORINFO_CLASS_HANDLE clsHnd     = inlineInfo->clsHandle;
+
+            // copy 'this' to temp with exact type.
+            const unsigned tmp       = compiler->lvaGrabTemp(false DEBUGARG("speculative devirt"));
+            GenTree*       clonedObj = compiler->gtCloneExpr(origCall->gtCallObjp);
+            GenTree*       assign    = compiler->gtNewTempAssign(tmp, clonedObj);
+            compiler->lvaSetClass(tmp, clsHnd, true);
+            GenTreeStmt* assignStmt = compiler->gtNewStmt(assign);
+            compiler->fgInsertStmtAtEnd(elseBlock, assignStmt);
+
+            // Clone call and spice in new this
+            GenTreeStmt* callStmt = compiler->gtCloneExpr(stmt)->AsStmt();
+            GenTreeCall* call     = GetCall(callStmt);
+            call->gtCallObjp      = compiler->gtNewLclvNode(tmp, TYP_REF);
+            compiler->fgInsertStmtAtEnd(elseBlock, callStmt);
+
+            // then invoke impDevirtualizeCall do actually
+            // transform the call for us.
+            CORINFO_METHOD_HANDLE  methodHnd   = inlineInfo->methInfo.ftn;
+            unsigned               methodFlags = inlineInfo->methAttr;
+            CORINFO_CONTEXT_HANDLE context     = nullptr;
+            compiler->impDevirtualizeCall(call, &methodHnd, &methodFlags, &context, nullptr);
+
+            // Restore candidacy.... ??? may not be the same target we started with
+            // if we've changed to unboxed EP, etc. Hmm.
+        }
     };
 
     Compiler* compiler;
@@ -25898,6 +26028,7 @@ void Compiler::CheckNoTransformableIndirectCallsRemain()
 //
 void Compiler::fgTransformIndirectCalls()
 {
+    JITDUMP("\n*************** in fgTransformIndirectCalls()\n");
     IndirectCallTransformer indirectCallTransformer(this);
     indirectCallTransformer.Run();
     // Generalize....

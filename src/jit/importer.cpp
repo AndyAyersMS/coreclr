@@ -19635,6 +19635,9 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // the time of jitting, objClass has no subclasses that
         // override this method), then perhaps we'd be willing to
         // make a bet...?
+
+        // Verify here we can safely do method table compares?
+        // if (!info.compCompHnd->canInlineTypeCheckWithObjectVTable(clsHnd))
         call->SetSpeculativeDevirtualizationCandidate();
         JITDUMP("    Class not final or exact, method not final, will try speculative devirtualization\n");
         return;
