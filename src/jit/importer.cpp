@@ -8276,7 +8276,7 @@ DONE_CALL:
                 GenTree* retExpr = gtNewInlineCandidateReturnExpr(call, genActualType(callRetTyp));
 
                 // Link the retExpr to the call so if necessary we can manipulate it later.
-                call->AsCall()->gtInlineCandidateInfo->retExpr = retExpr;
+                call->AsCall()->gtInlineCandidateInfo->retExprPlaceholder = retExpr;
 
                 // Propagate retExpr as the placeholder for the call.
                 call = retExpr;
@@ -18073,6 +18073,7 @@ void Compiler::impCheckCanInline(GenTree*               call,
             pInfo->ilCallerHandle       = pParam->pThis->info.compMethodHnd;
             pInfo->initClassResult      = initClassResult;
             pInfo->preexistingSpillTemp = BAD_VAR_NUM;
+            pInfo->retExpr              = nullptr;
 
             *(pParam->ppInlineCandidateInfo) = pInfo;
 

@@ -25980,7 +25980,16 @@ private:
             //
             // Todo: make sure we understand how this interacts with return type
             // munging....
-            if (origCall->gtReturnType != TYP_VOID)
+            InlineCandidateInfo* inlineInfo = origCall->gtInlineCandidateInfo;
+            GenTree*             retExpr    = inlineInfo->retExprPlaceholder;
+
+            // Sanity check the ret expr if non-null: it should refer to the original call.
+            if (retExpr != nullptr)
+            {
+                assert(retExpr->gtRetExpr.gtInlineCandidate == origCall);
+            }
+
+            if (origCall->TypeGet() != TYP_VOID)
             {
                 returnTemp = compiler->lvaGrabTemp(false DEBUGARG("speculative devirtualization return temp"));
                 JITDUMP("Reworking call(s) to return value via a new temp V%02u\n", returnTemp);
@@ -25996,11 +26005,27 @@ private:
                 newStmt->gtStmtExpr = assign;
                 GenTree* tempTree   = compiler->gtNewLclvNode(returnTemp, call->TypeGet());
 
-                InlineCandidateInfo* inlineInfo = origCall->gtInlineCandidateInfo;
-                GenTree*             retExpr    = inlineInfo->retExpr;
                 JITDUMP("Updating GT_RET_EXPR [%06u] to refer to temp V%02u\n", compiler->dspTreeID(retExpr),
                         returnTemp);
                 retExpr->gtRetExpr.gtInlineCandidate = tempTree;
+            }
+            else if (retExpr != nullptr)
+            {
+                // We still oddly produce GT_RET_EXPRs for some void
+                // returning calls. Just patch the ret expr to a NOP.
+                //
+                // Todo: consider bagging creation of these RET_EXPRs. The only possible
+                // benefit they provide is stitching back larger trees for failed inlines
+                // of void-returning methods. But then the calls likely sit in commas and
+                // the benefit of a larger tree is unclear.
+                JITDUMP("Updating GT_RET_EXPR [%06u] for VOID return to refer to a NOP\n",
+                        compiler->dspTreeID(retExpr));
+                GenTree* nopTree                     = compiler->gtNewNothingNode();
+                retExpr->gtRetExpr.gtInlineCandidate = nopTree;
+            }
+            else
+            {
+                // We do not produce GT_RET_EXPRs for CTOR calls, so there is nothing to patch.
             }
 
             compiler->fgInsertStmtAtEnd(thenBlock, newStmt);
@@ -26046,10 +26071,10 @@ private:
             //
             // Much of this info probably surfaces in impDevirtualizeCall so perhaps
             // we can pass the inline info in there and get it updated?
-            inlineInfo->clsHandle       = clsHnd;
-            inlineInfo->exactContextHnd = context;
-            inlineInfo->retExpr         = nullptr;
-            call->gtInlineCandidateInfo = inlineInfo;
+            inlineInfo->clsHandle          = clsHnd;
+            inlineInfo->exactContextHnd    = context;
+            inlineInfo->retExprPlaceholder = nullptr; // ...
+            call->gtInlineCandidateInfo    = inlineInfo;
 
             // If necessary, assign result to temp. Because this call is an inline
             // candidate the call return value needs to be a new GT_RET_EXPR.
