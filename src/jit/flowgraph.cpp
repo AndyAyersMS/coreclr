@@ -26028,28 +26028,44 @@ private:
             GenTreeCall* call = compiler->gtCloneExpr(origCall)->AsCall();
             call->gtCallObjp  = compiler->gtNewLclvNode(thisTemp, TYP_REF);
 
-            // then invoke impDevirtualizeCall do actually
-            // transform the call for us.
+            // Then invoke impDevirtualizeCall do actually
+            // transform the call for us. It should succeed.... as we have
+            // now provided an exact typed this.
             CORINFO_METHOD_HANDLE  methodHnd   = inlineInfo->methInfo.ftn;
             unsigned               methodFlags = inlineInfo->methAttr;
-            CORINFO_CONTEXT_HANDLE context     = nullptr;
+            CORINFO_CONTEXT_HANDLE context     = inlineInfo->exactContextHnd;
             compiler->impDevirtualizeCall(call, &methodHnd, &methodFlags, &context, nullptr);
 
-            // If necessary assign result to temp
+            // Presumably devirt might fail? If so we should try and avoid
+            // making this a speculative devirt candidate instead of ending
+            // up here.
+            assert(!call->IsVirtual());
+
+            // Need to think more about how to make sure these are right.
+            // (eg is class the class we checked for, the introducing class, etc)
+            //
+            // Much of this info probably surfaces in impDevirtualizeCall so perhaps
+            // we can pass the inline info in there and get it updated?
+            inlineInfo->clsHandle       = clsHnd;
+            inlineInfo->exactContextHnd = context;
+            inlineInfo->retExpr         = nullptr;
+            call->gtInlineCandidateInfo = inlineInfo;
+
+            // If necessary, assign result to temp. Because this call is an inline
+            // candidate the call return value needs to be a new GT_RET_EXPR.
             GenTree* result = call;
 
             if (returnTemp != BAD_VAR_NUM)
             {
-                result = compiler->gtNewTempAssign(returnTemp, result);
+                GenTreeStmt* callStmt = compiler->gtNewStmt(call);
+                compiler->fgInsertStmtAtEnd(elseBlock, callStmt);
+
+                GenTree* retExpr = compiler->gtNewInlineCandidateReturnExpr(call, call->TypeGet());
+                result           = compiler->gtNewTempAssign(returnTemp, retExpr);
             }
 
             GenTreeStmt* resultStmt = compiler->gtNewStmt(result);
             compiler->fgInsertStmtAtEnd(elseBlock, resultStmt);
-
-            // TODO: Restore inline candidacy.... ??? may not be the same target we started with
-            // if we've changed to unboxed EP, etc. Should be able to repair the inlineInfo
-            // to make it viable.
-            call->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
         }
 
     private:
