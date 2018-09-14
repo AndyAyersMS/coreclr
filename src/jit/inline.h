@@ -510,6 +510,7 @@ struct InlineCandidateInfo
     bool                   exactContextNeedsRuntimeLookup;
     CorInfoInitClassResult initClassResult;
     unsigned               preexistingSpillTemp;
+    GenTree*               retExpr;
 };
 
 // InlArgInfo describes inline candidate argument properties.

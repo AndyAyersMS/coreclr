@@ -25593,7 +25593,7 @@ private:
 
         void Transform()
         {
-            JITDUMP("*** %s Transforming [%06u]\n", Name(), compiler->dspTreeID(stmt));
+            JITDUMP("*** %s: transforming [%06u]\n", Name(), compiler->dspTreeID(stmt));
             ClearFlag();
             CreateRemainder();
             CreateCheck();
@@ -25623,17 +25623,6 @@ private:
         virtual void CreateCheck() = 0;
 
         //------------------------------------------------------------------------
-        // CreateThen: create then block, that is executed if the check succeeds.
-        // This simply executes the original call.
-        //
-        void CreateThen()
-        {
-            thenBlock                   = CreateAndInsertBasicBlock(BBJ_ALWAYS, checkBlock);
-            GenTree* copyOfOriginalStmt = compiler->gtCloneExpr(stmt)->AsStmt();
-            compiler->fgInsertStmtAtEnd(thenBlock, copyOfOriginalStmt);
-        }
-
-        //------------------------------------------------------------------------
         // CreateAndInsertBasicBlock: ask compiler to create new basic block.
         // and insert in into the basic block list.
         //
@@ -25654,6 +25643,7 @@ private:
             return block;
         }
 
+        virtual void CreateThen() = 0;
         virtual void CreateElse() = 0;
 
         //------------------------------------------------------------------------
@@ -25760,6 +25750,17 @@ private:
             GenTree* jmpTree         = compiler->gtNewOperNode(GT_JTRUE, TYP_VOID, fatPointerCmp);
             GenTree* jmpStmt         = compiler->fgNewStmtFromTree(jmpTree, stmt->gtStmt.gtStmtILoffsx);
             compiler->fgInsertStmtAtEnd(checkBlock, jmpStmt);
+        }
+
+        //------------------------------------------------------------------------
+        // CreateThen: create then block, that is executed if the check succeeds.
+        // This simply executes the original call.
+        //
+        virtual void CreateThen()
+        {
+            thenBlock                   = CreateAndInsertBasicBlock(BBJ_ALWAYS, checkBlock);
+            GenTree* copyOfOriginalStmt = compiler->gtCloneExpr(stmt)->AsStmt();
+            compiler->fgInsertStmtAtEnd(thenBlock, copyOfOriginalStmt);
         }
 
         //------------------------------------------------------------------------
@@ -25873,6 +25874,7 @@ private:
             iterator->Rest() = compiler->gtNewArgList(hiddenArgument);
         }
 
+    private:
         const int FAT_POINTER_MASK = 0x2;
 
         GenTree*  fptrAddress;
@@ -25884,7 +25886,7 @@ private:
     {
     public:
         SpeculativeDevirtualizationTransformer(Compiler* compiler, BasicBlock* block, GenTreeStmt* stmt)
-            : Transformer(compiler, block, stmt)
+            : Transformer(compiler, block, stmt), returnTemp(BAD_VAR_NUM)
         {
         }
 
@@ -25935,9 +25937,6 @@ private:
         virtual void ClearFlag()
         {
             origCall->ClearSpeculativeDevirtualizationCandidate();
-            // Currently all speculative devirt cases are also inline candidates
-            // as that's how we smuggle in extra state
-            // origCall->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
         }
 
         //------------------------------------------------------------------------
@@ -25956,11 +25955,55 @@ private:
             CORINFO_CLASS_HANDLE clsHnd            = inlineInfo->clsHandle;
             GenTree*             targetMethodTable = compiler->gtNewIconEmbClsHndNode(clsHnd);
 
-            // Compare and jump to then (which does the general indirect call) if NOT equal
-            GenTree* methodTableCompare = compiler->gtNewOperNode(GT_NE, TYP_INT, targetMethodTable, methodTable);
+            // Compare and jump to else (which does the devirtualized call) if equal
+            GenTree* methodTableCompare = compiler->gtNewOperNode(GT_EQ, TYP_INT, targetMethodTable, methodTable);
             GenTree* jmpTree            = compiler->gtNewOperNode(GT_JTRUE, TYP_VOID, methodTableCompare);
             GenTree* jmpStmt            = compiler->fgNewStmtFromTree(jmpTree, stmt->gtStmt.gtStmtILoffsx);
             compiler->fgInsertStmtAtEnd(checkBlock, jmpStmt);
+        }
+
+        //------------------------------------------------------------------------
+        // CreateThen: create then block, that is executed if the check succeeds.
+        // This executes the unaltered indirectl call.
+        //
+        virtual void CreateThen()
+        {
+            thenBlock            = CreateAndInsertBasicBlock(BBJ_ALWAYS, checkBlock);
+            GenTreeStmt* newStmt = compiler->gtCloneExpr(stmt)->AsStmt();
+
+            // If call returns a value, we need to copy it to a temp, and
+            // update the associated GT_RET_EXPR to refer to the temp instead
+            // of the call.
+            //
+            // Note implicit by-ref returns should have already been converted
+            // so any struct copy we induce here should be cheap.
+            //
+            // Todo: make sure we understand how this interacts with return type
+            // munging....
+            if (origCall->gtReturnType != TYP_VOID)
+            {
+                returnTemp = compiler->lvaGrabTemp(false DEBUGARG("speculative devirtualization return temp"));
+                JITDUMP("Reworking call(s) to return value via a new temp V%02u\n", returnTemp);
+
+                if (varTypeIsStruct(origCall))
+                {
+                    compiler->lvaSetStruct(returnTemp, origCall->gtRetClsHnd, false);
+                }
+
+                GenTreeCall* call = newStmt->gtStmtExpr->AsCall();
+                call->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
+                GenTree* assign     = compiler->gtNewTempAssign(returnTemp, call);
+                newStmt->gtStmtExpr = assign;
+                GenTree* tempTree   = compiler->gtNewLclvNode(returnTemp, call->TypeGet());
+
+                InlineCandidateInfo* inlineInfo = origCall->gtInlineCandidateInfo;
+                GenTree*             retExpr    = inlineInfo->retExpr;
+                JITDUMP("Updating GT_RET_EXPR [%06u] to refer to temp V%02u\n", compiler->dspTreeID(retExpr),
+                        returnTemp);
+                retExpr->gtRetExpr.gtInlineCandidate = tempTree;
+            }
+
+            compiler->fgInsertStmtAtEnd(thenBlock, newStmt);
         }
 
         //------------------------------------------------------------------------
@@ -25974,18 +26017,16 @@ private:
             CORINFO_CLASS_HANDLE clsHnd     = inlineInfo->clsHandle;
 
             // copy 'this' to temp with exact type.
-            const unsigned tmp       = compiler->lvaGrabTemp(false DEBUGARG("speculative devirt"));
+            const unsigned thisTemp  = compiler->lvaGrabTemp(false DEBUGARG("speculative devirt this temp"));
             GenTree*       clonedObj = compiler->gtCloneExpr(origCall->gtCallObjp);
-            GenTree*       assign    = compiler->gtNewTempAssign(tmp, clonedObj);
-            compiler->lvaSetClass(tmp, clsHnd, true);
+            GenTree*       assign    = compiler->gtNewTempAssign(thisTemp, clonedObj);
+            compiler->lvaSetClass(thisTemp, clsHnd, true);
             GenTreeStmt* assignStmt = compiler->gtNewStmt(assign);
             compiler->fgInsertStmtAtEnd(elseBlock, assignStmt);
 
-            // Clone call and spice in new this
-            GenTreeStmt* callStmt = compiler->gtCloneExpr(stmt)->AsStmt();
-            GenTreeCall* call     = GetCall(callStmt);
-            call->gtCallObjp      = compiler->gtNewLclvNode(tmp, TYP_REF);
-            compiler->fgInsertStmtAtEnd(elseBlock, callStmt);
+            // Clone call
+            GenTreeCall* call = compiler->gtCloneExpr(origCall)->AsCall();
+            call->gtCallObjp  = compiler->gtNewLclvNode(thisTemp, TYP_REF);
 
             // then invoke impDevirtualizeCall do actually
             // transform the call for us.
@@ -25994,11 +26035,25 @@ private:
             CORINFO_CONTEXT_HANDLE context     = nullptr;
             compiler->impDevirtualizeCall(call, &methodHnd, &methodFlags, &context, nullptr);
 
-            // TODO: Restore candidacy.... ??? may not be the same target we started with
+            // If necessary assign result to temp
+            GenTree* result = call;
+
+            if (returnTemp != BAD_VAR_NUM)
+            {
+                result = compiler->gtNewTempAssign(returnTemp, result);
+            }
+
+            GenTreeStmt* resultStmt = compiler->gtNewStmt(result);
+            compiler->fgInsertStmtAtEnd(elseBlock, resultStmt);
+
+            // TODO: Restore inline candidacy.... ??? may not be the same target we started with
             // if we've changed to unboxed EP, etc. Should be able to repair the inlineInfo
             // to make it viable.
             call->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
         }
+
+    private:
+        unsigned returnTemp;
     };
 
     Compiler* compiler;
