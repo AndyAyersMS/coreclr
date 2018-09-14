@@ -19996,17 +19996,21 @@ void Compiler::addFatPointerCandidate(GenTreeCall* call)
 
 //------------------------------------------------------------------------
 // addSpeculativeDevirtualizationCandidate: mark the call and the method
-//    as a having a speculative devirtualization candidate.
+//    as a speculative devirtualization candidate.
 //
-// Spill ret_expr in any input tree for the call node, because they can't be
-//   cloned.
+// Spill ret_expr in any child tree, because they can't be
+//   cloned, and we need to clone all the trees when we duplicate the
+//   call as part of speculative devirtualization.
 //
 // Arguments:
-//    call - speculative devirt candidate
+//    call - speculative devirtialization candidate
 //
 void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall* call)
 {
-    // Bail when prejitting for now....
+    // This transformation only makes sense for virtual calls
+    assert(call->IsVirtual());
+
+    // Bail when prejitting for now, just to make bring-up easier.
     if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
     {
         return;
