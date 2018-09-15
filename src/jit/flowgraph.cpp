@@ -25970,6 +25970,8 @@ private:
         {
             thenBlock            = CreateAndInsertBasicBlock(BBJ_ALWAYS, checkBlock);
             GenTreeStmt* newStmt = compiler->gtCloneExpr(stmt)->AsStmt();
+            GenTreeCall* call    = newStmt->gtStmtExpr->AsCall();
+            call->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
 
             // If call returns a value, we need to copy it to a temp, and
             // update the associated GT_RET_EXPR to refer to the temp instead
@@ -25999,8 +26001,6 @@ private:
                     compiler->lvaSetStruct(returnTemp, origCall->gtRetClsHnd, false);
                 }
 
-                GenTreeCall* call = newStmt->gtStmtExpr->AsCall();
-                call->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
                 GenTree* assign     = compiler->gtNewTempAssign(returnTemp, call);
                 newStmt->gtStmtExpr = assign;
                 GenTree* tempTree   = compiler->gtNewLclvNode(returnTemp, call->TypeGet());
@@ -26065,6 +26065,27 @@ private:
             // making this a speculative devirt candidate instead of ending
             // up here.
             assert(!call->IsVirtual());
+
+            // Now re-examine the call to re-establish if it is an inline
+            // candidate.
+            //
+            // Option (1) is to extract the token from the method handle,
+            // invoke resolve token, then eegetcallinfo, then call impMarkInlineCandidate.
+            //
+            // Option (2) is to fake up the resolved token, call eeGetCallInfo,
+            // then call impMarkInlineCandidate.
+            //
+            // Option (3) is to fake up the call info, then call impMarkInlineCandidate.
+            // (this is more or less what happens for normal devirt. But we've lost
+            // the call info by the time we get here....
+            //
+            // Option (4) is to patch the existing inline info.
+            //
+            // Option (5) is to create a custom sidecar for speculative devirt cases
+            // instead of piggybacking on the inline candidate info.
+            //
+            // While one could argue that speculative devirt without inlining is
+            // no super-interesting, it could be so for interface calls ...
 
             // Need to think more about how to make sure these are right.
             // (eg is class the class we checked for, the introducing class, etc)
