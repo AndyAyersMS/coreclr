@@ -25904,16 +25904,28 @@ private:
         {
             origCall = GetCall(stmt);
 
-            if (origCall->IsInlineCandidate())
+            // We currently need inline candidate info to speculative devirt.
+            if (!origCall->IsInlineCandidate())
             {
-                Transform();
-            }
-            else
-            {
-                // Currently we need inline candidate info to speculative devirt.
                 JITDUMP("*** %s Bailing on [%06u] -- not an inline candidate\n", Name(), compiler->dspTreeID(origCall));
                 ClearFlag();
+                return;
             }
+
+            // For now, bail on transforming calls that still appear
+            // to return structs by value as there is deferred work
+            // needed to fix up the return type.
+            //
+            // See for instance fgUpdateInlineReturnExpressionPlaceHolder.
+            if (origCall->TypeGet() == TYP_STRUCT)
+            {
+                JITDUMP("*** %s Bailing on [%06u] -- can't handle by-value struct returns yet\n", Name(),
+                        compiler->dspTreeID(origCall));
+                ClearFlag();
+                return;
+            }
+
+            Transform();
         }
 
     protected:
@@ -25999,6 +26011,7 @@ private:
 
                 if (varTypeIsStruct(origCall))
                 {
+                    JITDUMP("*** hey!\n");
                     compiler->lvaSetStruct(returnTemp, origCall->gtRetClsHnd, false);
                 }
 
@@ -26180,7 +26193,7 @@ void Compiler::CheckNoTransformableIndirectCallsRemain()
 //
 void Compiler::fgTransformIndirectCalls()
 {
-    JITDUMP("\n*************** in fgTransformIndirectCalls()\n");
+    JITDUMP("\n*************** in fgTransformIndirectCalls(%s)\n", compIsForInlining() ? "inlinee" : "root");
 
     if (doesMethodHaveFatPointer() || doesMethodHaveSpeculativeDevirtualization())
     {
@@ -26190,10 +26203,7 @@ void Compiler::fgTransformIndirectCalls()
         if (count > 0)
         {
             JITDUMP("\n*************** After fgTransformIndirectCalls() [%d calls transformed]\n", count);
-            if (verbose)
-            {
-                fgDispBasicBlocks(true);
-            }
+            INDEBUG(if (verbose) { fgDispBasicBlocks(true); });
         }
         else
         {
@@ -26207,9 +26217,7 @@ void Compiler::fgTransformIndirectCalls()
 
     clearMethodHasFatPointer();
     clearMethodHasSpeculativeDevirtualization();
-#ifdef DEBUG
-    CheckNoTransformableIndirectCallsRemain();
-#endif
+    INDEBUG(CheckNoTransformableIndirectCallsRemain(););
 }
 
 //------------------------------------------------------------------------
