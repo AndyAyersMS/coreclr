@@ -25594,6 +25594,7 @@ private:
         void Transform()
         {
             JITDUMP("*** %s: transforming [%06u]\n", Name(), compiler->dspTreeID(stmt));
+            FixupRetExpr();
             ClearFlag();
             CreateRemainder();
             CreateCheck();
@@ -25608,6 +25609,7 @@ private:
         virtual const char*  Name()                         = 0;
         virtual void         ClearFlag()                    = 0;
         virtual GenTreeCall* GetCall(GenTreeStmt* callStmt) = 0;
+        virtual void FixupRetExpr()                         = 0;
 
         //------------------------------------------------------------------------
         // CreateRemainder: split current block at the call stmt and
@@ -25736,6 +25738,11 @@ private:
             origCall->ClearFatPointerCandidate();
         }
 
+        // FixupRetExpr: no action needed as we handle this in the importer.
+        virtual void FixupRetExpr()
+        {
+        }
+
         //------------------------------------------------------------------------
         // CreateCheck: create check block, that checks fat pointer bit set.
         //
@@ -25764,7 +25771,7 @@ private:
         }
 
         //------------------------------------------------------------------------
-        // CreateCheck: create else block, that is executed if call address is fat pointer.
+        // CreateElse: create else block, that is executed if call address is fat pointer.
         //
         virtual void CreateElse()
         {
@@ -25955,24 +25962,18 @@ private:
             CORINFO_CLASS_HANDLE clsHnd            = inlineInfo->clsHandle;
             GenTree*             targetMethodTable = compiler->gtNewIconEmbClsHndNode(clsHnd);
 
-            // Compare and jump to else (which does the devirtualized call) if equal
-            GenTree* methodTableCompare = compiler->gtNewOperNode(GT_EQ, TYP_INT, targetMethodTable, methodTable);
+            // Compare and jump to else (which does the indirect call) if NOT equal
+            GenTree* methodTableCompare = compiler->gtNewOperNode(GT_NE, TYP_INT, targetMethodTable, methodTable);
             GenTree* jmpTree            = compiler->gtNewOperNode(GT_JTRUE, TYP_VOID, methodTableCompare);
             GenTree* jmpStmt            = compiler->fgNewStmtFromTree(jmpTree, stmt->gtStmt.gtStmtILoffsx);
             compiler->fgInsertStmtAtEnd(checkBlock, jmpStmt);
         }
 
         //------------------------------------------------------------------------
-        // CreateThen: create then block, that is executed if the check succeeds.
-        // This executes the unaltered indirectl call.
+        // FixupRetExpr: set up to repair return value placeholder from call
         //
-        virtual void CreateThen()
+        virtual void FixupRetExpr()
         {
-            thenBlock            = CreateAndInsertBasicBlock(BBJ_ALWAYS, checkBlock);
-            GenTreeStmt* newStmt = compiler->gtCloneExpr(stmt)->AsStmt();
-            GenTreeCall* call    = newStmt->gtStmtExpr->AsCall();
-            call->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
-
             // If call returns a value, we need to copy it to a temp, and
             // update the associated GT_RET_EXPR to refer to the temp instead
             // of the call.
@@ -25981,7 +25982,7 @@ private:
             // so any struct copy we induce here should be cheap.
             //
             // Todo: make sure we understand how this interacts with return type
-            // munging....
+            // munging for small structs.
             InlineCandidateInfo* inlineInfo = origCall->gtInlineCandidateInfo;
             GenTree*             retExpr    = inlineInfo->retExprPlaceholder;
 
@@ -26001,9 +26002,7 @@ private:
                     compiler->lvaSetStruct(returnTemp, origCall->gtRetClsHnd, false);
                 }
 
-                GenTree* assign     = compiler->gtNewTempAssign(returnTemp, call);
-                newStmt->gtStmtExpr = assign;
-                GenTree* tempTree   = compiler->gtNewLclvNode(returnTemp, call->TypeGet());
+                GenTree* tempTree = compiler->gtNewLclvNode(returnTemp, origCall->TypeGet());
 
                 JITDUMP("Updating GT_RET_EXPR [%06u] to refer to temp V%02u\n", compiler->dspTreeID(retExpr),
                         returnTemp);
@@ -26027,16 +26026,14 @@ private:
             {
                 // We do not produce GT_RET_EXPRs for CTOR calls, so there is nothing to patch.
             }
-
-            compiler->fgInsertStmtAtEnd(thenBlock, newStmt);
         }
 
         //------------------------------------------------------------------------
-        // CreateElse: create else block with direct call to method
+        // CreateThen: create else block with direct call to method
         //
-        virtual void CreateElse()
+        virtual void CreateThen()
         {
-            elseBlock = CreateAndInsertBasicBlock(BBJ_NONE, thenBlock);
+            thenBlock = CreateAndInsertBasicBlock(BBJ_ALWAYS, checkBlock);
 
             InlineCandidateInfo* inlineInfo = origCall->gtInlineCandidateInfo;
             CORINFO_CLASS_HANDLE clsHnd     = inlineInfo->clsHandle;
@@ -26047,7 +26044,7 @@ private:
             GenTree*       assign    = compiler->gtNewTempAssign(thisTemp, clonedObj);
             compiler->lvaSetClass(thisTemp, clsHnd, true);
             GenTreeStmt* assignStmt = compiler->gtNewStmt(assign);
-            compiler->fgInsertStmtAtEnd(elseBlock, assignStmt);
+            compiler->fgInsertStmtAtEnd(thenBlock, assignStmt);
 
             // Clone call
             GenTreeCall* call = compiler->gtCloneExpr(origCall)->AsCall();
@@ -26104,14 +26101,33 @@ private:
             if (returnTemp != BAD_VAR_NUM)
             {
                 GenTreeStmt* callStmt = compiler->gtNewStmt(call);
-                compiler->fgInsertStmtAtEnd(elseBlock, callStmt);
+                compiler->fgInsertStmtAtEnd(thenBlock, callStmt);
 
                 GenTree* retExpr = compiler->gtNewInlineCandidateReturnExpr(call, call->TypeGet());
                 result           = compiler->gtNewTempAssign(returnTemp, retExpr);
             }
 
             GenTreeStmt* resultStmt = compiler->gtNewStmt(result);
-            compiler->fgInsertStmtAtEnd(elseBlock, resultStmt);
+            compiler->fgInsertStmtAtEnd(thenBlock, resultStmt);
+        }
+
+        //------------------------------------------------------------------------
+        // CreateElse: create else block.This executes the unaltered indirect call.
+        //
+        virtual void CreateElse()
+        {
+            elseBlock            = CreateAndInsertBasicBlock(BBJ_NONE, thenBlock);
+            GenTreeStmt* newStmt = compiler->gtCloneExpr(stmt)->AsStmt();
+            GenTreeCall* call    = newStmt->gtStmtExpr->AsCall();
+            call->gtFlags &= ~GTF_CALL_INLINE_CANDIDATE;
+
+            if (returnTemp != BAD_VAR_NUM)
+            {
+                GenTree* assign     = compiler->gtNewTempAssign(returnTemp, call);
+                newStmt->gtStmtExpr = assign;
+            }
+
+            compiler->fgInsertStmtAtEnd(elseBlock, newStmt);
         }
 
     private:
