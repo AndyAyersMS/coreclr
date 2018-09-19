@@ -20023,6 +20023,12 @@ void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall* call)
         return;
     }
 
+    // Bail if not optimizing or the call site is very likely cold
+    if (compCurBB->isRunRarely() || opts.compDbgCode || opts.MinOpts())
+    {
+        return;
+    }
+
     JITDUMP("Marking call [%06u] as speculative devirtualization candidate\n", dspTreeID(call));
     setMethodHasSpeculativeDevirtualization();
     call->SetSpeculativeDevirtualizationCandidate();
