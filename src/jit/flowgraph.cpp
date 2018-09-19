@@ -25966,8 +25966,25 @@ private:
             checkBlock = CreateAndInsertBasicBlock(BBJ_COND, currBlock);
 
             // Fetch method table from object arg to call.
-            GenTree* callThisObj = compiler->gtCloneExpr(origCall->gtCallObjp);
-            GenTree* methodTable = compiler->gtNewIndir(TYP_I_IMPL, callThisObj);
+            GenTree* thisTree = compiler->gtCloneExpr(origCall->gtCallObjp);
+
+            // Create temp for this if the tree is costly.
+            if (!thisTree->IsLocal())
+            {
+                const unsigned thisTempNum = compiler->lvaGrabTemp(true DEBUGARG("speculative devirt this temp"));
+                // lvaSetClass(thisTempNum, ...);
+                GenTree* asgTree = compiler->gtNewTempAssign(thisTempNum, thisTree);
+                GenTree* asgStmt = compiler->fgNewStmtFromTree(asgTree, stmt->gtStmt.gtStmtILoffsx);
+                compiler->fgInsertStmtAtEnd(checkBlock, asgStmt);
+
+                thisTree = compiler->gtNewLclvNode(thisTempNum, TYP_REF);
+
+                // Something of a hack to propagate the new this to the calls
+                origCall->gtCallObjp = thisTree;
+            }
+
+            GenTree* methodTable = compiler->gtNewIndir(TYP_I_IMPL, thisTree);
+            methodTable->gtFlags |= GTF_IND_INVARIANT;
 
             // Find target method table from the inline call info
             InlineCandidateInfo* inlineInfo        = origCall->gtInlineCandidateInfo;
@@ -26006,7 +26023,7 @@ private:
 
             if (origCall->TypeGet() != TYP_VOID)
             {
-                returnTemp = compiler->lvaGrabTemp(false DEBUGARG("speculative devirtualization return temp"));
+                returnTemp = compiler->lvaGrabTemp(false DEBUGARG("speculative devirt return temp"));
                 JITDUMP("Reworking call(s) to return value via a new temp V%02u\n", returnTemp);
 
                 if (varTypeIsStruct(origCall))
@@ -26052,7 +26069,7 @@ private:
             CORINFO_CLASS_HANDLE clsHnd     = inlineInfo->clsHandle;
 
             // copy 'this' to temp with exact type.
-            const unsigned thisTemp  = compiler->lvaGrabTemp(false DEBUGARG("speculative devirt this temp"));
+            const unsigned thisTemp  = compiler->lvaGrabTemp(false DEBUGARG("speculative devirt this exact temp"));
             GenTree*       clonedObj = compiler->gtCloneExpr(origCall->gtCallObjp);
             GenTree*       assign    = compiler->gtNewTempAssign(thisTemp, clonedObj);
             compiler->lvaSetClass(thisTemp, clsHnd, true);
