@@ -18074,6 +18074,7 @@ void Compiler::impCheckCanInline(GenTree*               call,
             pInfo->initClassResult      = initClassResult;
             pInfo->preexistingSpillTemp = BAD_VAR_NUM;
             pInfo->retExpr              = nullptr;
+            pInfo->stubAddr             = nullptr;
 
             *(pParam->ppInlineCandidateInfo) = pInfo;
 
@@ -19243,6 +19244,14 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
     assert(inlineCandidateInfo != nullptr);
     inlineCandidateInfo->exactContextNeedsRuntimeLookup = exactContextNeedsRuntimeLookup;
 
+    // If we're making a virtual stub call into an inline candidate, squirrel away the
+    // stub address we already squrreled away.
+    if (call->IsVirtualStub())
+    {
+        JITDUMP("Saving stub addr %p in inline candidate info\n", call->gtSpeculativeCandidateInfo->stubAddr);
+        inlineCandidateInfo->stubAddr = call->gtSpeculativeCandidateInfo->stubAddr;
+    }
+
     call->gtInlineCandidateInfo = inlineCandidateInfo;
 
     // Mark the call node as inline candidate.
@@ -20061,6 +20070,16 @@ void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall*          cal
     pInfo->methodAttr   = methodAttr;
     pInfo->classHandle  = classHandle;
     pInfo->classAttr    = classAttr;
+
+    if (call->IsVirtualStub())
+    {
+        JITDUMP("Saving stub addr %p in speculative candidate info\n", call->gtStubCallStubAddr);
+        pInfo->stubAddr = call->gtStubCallStubAddr;
+    }
+    else
+    {
+        pInfo->stubAddr = nullptr;
+    }
 
     call->gtSpeculativeCandidateInfo = pInfo;
 }

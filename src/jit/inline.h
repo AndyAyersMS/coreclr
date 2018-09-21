@@ -503,6 +503,7 @@ struct SpeculativeCandidateInfo
     CORINFO_METHOD_HANDLE methodHandle;
     unsigned              methodAttr;
     unsigned              classAttr;
+    void*                 stubAddr; // hack
 };
 
 // InlineCandidateInfo provides basic information about a particular
@@ -521,7 +522,8 @@ struct InlineCandidateInfo
     bool                   exactContextNeedsRuntimeLookup;
     CorInfoInitClassResult initClassResult;
     unsigned               preexistingSpillTemp;
-    GenTree*               retExpr;
+    GenTree*               retExpr;    
+    void*                  stubAddr; // hack
 };
 
 // InlArgInfo describes inline candidate argument properties.

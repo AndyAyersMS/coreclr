@@ -25922,6 +25922,12 @@ private:
                 JITDUMP("*** %s Bailing on [%06u] -- can't handle by-value struct returns yet\n", Name(),
                         compiler->dspTreeID(origCall));
                 ClearFlag();
+
+                // For stub calls restore the stub address
+                if (origCall->IsVirtualStub())
+                {
+                    origCall->gtStubCallStubAddr = origCall->gtInlineCandidateInfo->stubAddr;
+                }
                 return;
             }
 
@@ -26155,6 +26161,14 @@ private:
             {
                 GenTree* assign     = compiler->gtNewTempAssign(returnTemp, call);
                 newStmt->gtStmtExpr = assign;
+            }
+
+            // For stub calls, restore the stub address
+            if (origCall->IsVirtualStub())
+            {
+                JITDUMP("Restoring stub addr %p from inline candidate info\n",
+                        origCall->gtInlineCandidateInfo->stubAddr);
+                call->gtStubCallStubAddr = origCall->gtInlineCandidateInfo->stubAddr;
             }
 
             compiler->fgInsertStmtAtEnd(elseBlock, newStmt);
