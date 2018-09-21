@@ -6147,7 +6147,11 @@ public:
         optMethodFlags &= ~OMF_HAS_FATPOINTER;
     }
 
-    void addSpeculativeDevirtualizationCandidate(GenTreeCall* call);
+    void addSpeculativeDevirtualizationCandidate(GenTreeCall*          call,
+                                                 CORINFO_METHOD_HANDLE methodHandle,
+                                                 CORINFO_CLASS_HANDLE  classHandle,
+                                                 unsigned              methodAttr,
+                                                 unsigned              classAttr);
 
     unsigned optMethodFlags;
 

@@ -19084,14 +19084,11 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
         return;
     }
 
-    CORINFO_METHOD_HANDLE fncHandle = call->gtCallMethHnd;
-
     if (call->IsVirtual())
     {
         if (call->IsSpeculativeDevirtualizationCandidate())
         {
-            // TODO: update fncHandle to reflect the expected target
-            // so we have inline info for it....
+            // Allow speculative devirt calls to be treated as inline candidates.
         }
         else
         {
@@ -19119,16 +19116,27 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
      * restricts the inliner to non-expanding inlines.  I removed the check to allow for non-expanding
      * inlining in throw blocks.  I should consider the same thing for catch and filter regions. */
 
-    unsigned methAttr;
+    CORINFO_METHOD_HANDLE fncHandle;
+    unsigned              methAttr;
 
-    // Reuse method flags from the original callInfo if possible
-    if (fncHandle == callInfo->hMethod)
+    if (call->IsSpeculativeDevirtualizationCandidate())
     {
-        methAttr = callInfo->methodFlags;
+        fncHandle = call->gtSpeculativeCandidateInfo->methodHandle;
+        methAttr  = call->gtSpeculativeCandidateInfo->methodAttr;
     }
     else
     {
-        methAttr = info.compCompHnd->getMethodAttribs(fncHandle);
+        fncHandle = call->gtCallMethHnd;
+
+        // Reuse method flags from the original callInfo if possible
+        if (fncHandle == callInfo->hMethod)
+        {
+            methAttr = callInfo->methodFlags;
+        }
+        else
+        {
+            methAttr = info.compCompHnd->getMethodAttribs(fncHandle);
+        }
     }
 
 #ifdef DEBUG
@@ -19228,10 +19236,10 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
         return;
     }
 
-    // The old value should be NULL
-    assert(call->gtInlineCandidateInfo == nullptr);
+    // The old value should be null OR this call should be a speculative candidate.
+    assert((call->gtInlineCandidateInfo == nullptr) || call->IsSpeculativeDevirtualizationCandidate());
 
-    // The new value should not be NULL.
+    // The new value should not be null.
     assert(inlineCandidateInfo != nullptr);
     inlineCandidateInfo->exactContextNeedsRuntimeLookup = exactContextNeedsRuntimeLookup;
 
@@ -19648,7 +19656,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // Verify here we can safely do method table compares?
         // if (!info.compCompHnd->canInlineTypeCheckWithObjectVTable(clsHnd))
 
-        addSpeculativeDevirtualizationCandidate(call);
+        addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
         return;
     }
 
@@ -19658,7 +19666,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         JITDUMP("    Class not final or exact for interface\n");
 
         // Todo: profitbility assessment ... ?
-        addSpeculativeDevirtualizationCandidate(call);
+        addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
         return;
     }
 
@@ -20011,8 +20019,16 @@ void Compiler::addFatPointerCandidate(GenTreeCall* call)
 //
 // Arguments:
 //    call - speculative devirtialization candidate
+//    methodHandle - method that we want to speculate for
+//    classHandle - class that would invoke that method
+//    methodAttr - attributes of the method
+//    classAttr - attributes of the class
 //
-void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall* call)
+void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall*          call,
+                                                       CORINFO_METHOD_HANDLE methodHandle,
+                                                       CORINFO_CLASS_HANDLE  classHandle,
+                                                       unsigned              methodAttr,
+                                                       unsigned              classAttr)
 {
     // This transformation only makes sense for virtual calls
     assert(call->IsVirtual());
@@ -20034,4 +20050,17 @@ void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall* call)
     call->SetSpeculativeDevirtualizationCandidate();
     SpillRetExprHelper helper(this);
     helper.StoreRetExprResultsInArgs(call);
+
+    // Pass some extra information through...
+    //
+    // If we were clever we'd allocate enough storage here for an InlineCandidateInfo
+    // and reuse it subsequently.
+    SpeculativeCandidateInfo* pInfo = new (this, CMK_Inlining) SpeculativeCandidateInfo;
+
+    pInfo->methodHandle = methodHandle;
+    pInfo->methodAttr   = methodAttr;
+    pInfo->classHandle  = classHandle;
+    pInfo->classAttr    = classAttr;
+
+    call->gtSpeculativeCandidateInfo = pInfo;
 }

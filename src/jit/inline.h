@@ -494,6 +494,17 @@ private:
     bool                  m_Reported;
 };
 
+// SpeculativeCandidateInfo provides information about
+// a potential target of a virtual call.
+
+struct SpeculativeCandidateInfo
+{
+    CORINFO_CLASS_HANDLE  classHandle;
+    CORINFO_METHOD_HANDLE methodHandle;
+    unsigned              methodAttr;
+    unsigned              classAttr;
+};
+
 // InlineCandidateInfo provides basic information about a particular
 // inline candidate.
 

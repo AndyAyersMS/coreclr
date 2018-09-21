@@ -144,8 +144,8 @@ enum gtCallTypes : BYTE
 /*****************************************************************************/
 
 struct BasicBlock;
-
 struct InlineCandidateInfo;
+struct SpeculativeCandidateInfo;
 
 typedef unsigned short AssertionIndex;
 
@@ -3790,8 +3790,9 @@ struct GenTreeCall final : public GenTree
         // only used for CALLI unmanaged calls (CT_INDIRECT)
         GenTree* gtCallCookie;
         // gtInlineCandidateInfo is only used when inlining methods
-        InlineCandidateInfo*   gtInlineCandidateInfo;
-        void*                  gtStubCallStubAddr;              // GTF_CALL_VIRT_STUB - these are never inlined
+        InlineCandidateInfo*      gtInlineCandidateInfo;
+        SpeculativeCandidateInfo* gtSpeculativeCandidateInfo;
+        void*                     gtStubCallStubAddr;           // GTF_CALL_VIRT_STUB - these are never inlined
         CORINFO_GENERIC_HANDLE compileTimeHelperArgumentHandle; // Used to track type handle argument of dynamic helpers
         void*                  gtDirectCallAddress; // Used to pass direct call address between lower and codegen
     };
