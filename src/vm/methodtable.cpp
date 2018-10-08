@@ -10246,3 +10246,145 @@ BOOL MethodTable::IsInheritanceChainLayoutFixedInCurrentVersionBubble()
     return TRUE;
 }
 #endif // FEATURE_READYTORUN_COMPILER
+
+void MethodTableWriteableData::DeclareDerivedType(MethodTable *thisType, MethodTable *otherType)
+{
+    STANDARD_VM_CONTRACT;
+
+    _ASSERTE(!otherType->IsInterface());
+
+    DWORD initialFlags = *(volatile DWORD *)&m_dwFlags;
+    bool repeat = true;
+
+    // The first type to derive from an interface, and all types deriving from concrete types are
+    // reported to the derivation tables. This check may race with other checks for interfaces
+    // so that there may be multiple copies of derived types in the interfaces table. 
+    if (!thisType->IsInterface() || !(initialFlags & enum_flag_DerivedType))
+    {
+        otherType->GetLoaderAllocator()->AddDerivedTypeInfo(thisType, otherType);
+    }
+
+    while(repeat)
+    {
+        DWORD newFlags = initialFlags;
+
+        newFlags |= enum_flag_DerivedType;
+
+        if (thisType->GetLoaderAllocator() != otherType->GetLoaderAllocator())
+        {
+            newFlags |= enum_flag_DerivedTypeInOtherLoaderAllocator;
+        }
+
+        // If there already was a derived type, there are now multiple derived types
+        if (initialFlags & enum_flag_DerivedType)
+        {
+            newFlags |= enum_flag_MultipleDerivedTypes;
+        }
+
+        if (newFlags != initialFlags)
+        {
+            DWORD actualInitialFlags = FastInterlockCompareExchange(EnsureWritablePages((ULONG*)&m_dwFlags), newFlags, initialFlags);
+            repeat = initialFlags != actualInitialFlags;
+            initialFlags = actualInitialFlags;
+        }
+        else
+        {
+            break;
+        }
+    }
+}
+
+CheckableConditionForOptimizationChange MethodTableWriteableData::GenerateCheckableConditionForMethodSlot(const MethodTable *pMT, UINT32 slotNum) const
+{
+    LIMITED_METHOD_CONTRACT;
+
+    _ASSERTE(!pMT->IsInterface());
+
+    CheckableConditionForOptimizationChange conditionCheck = ProduceCheckableCondition();
+
+#ifdef HAS_DERIVED_TYPE_SPECIFIC_SLOT_OVERRIDE_DETECTION_CAP
+    DWORD flagToCheckForSlotOverride = pMT->GetNumParentVirtuals() > slotNum ? 
+        enum_flag_DerivedTypeOverridesInheritedVirtualMembers :
+        enum_flag_DerivedTypeOverridesDefinedVirtualMembers;
+
+    if (!(conditionCheck.m_currentValueOfFlags & flagToCheckForSlotOverride))
+    {
+        // No derived type has overriden method. Check based on that flag
+        conditionCheck.m_maskOfFlagsWhichAffectOptimizationOpportunity = flagToCheckForSlotOverride;
+        return conditionCheck;
+    }
+
+    // If we reach here, flagToCheckForSlotOverride is set, which implies that 
+    // some type already derives from this type
+    _ASSERTE(conditionCheck.m_currentValueOfFlags & enum_flag_DerivedType);
+#else
+    if (!(conditionCheck.m_currentValueOfFlags & enum_flag_DerivedType))
+    {
+        // No derived type has overriden method. Check based on that flag
+        conditionCheck.m_maskOfFlagsWhichAffectOptimizationOpportunity = enum_flag_DerivedType;
+        return conditionCheck;
+    }
+#endif
+
+    if (!(conditionCheck.m_currentValueOfFlags & enum_flag_MultipleDerivedTypes))
+    {
+        // Only 1 type has derived from this type so far, the next type that derives may change
+        // the rules
+        conditionCheck.m_maskOfFlagsWhichAffectOptimizationOpportunity = enum_flag_MultipleDerivedTypes;
+        return conditionCheck;
+    }
+
+    return CheckableConditionForOptimizationChange();
+}
+
+
+CheckableConditionForOptimizationChange MethodTableWriteableData::GenerateCheckableConditionForTypeDerivationChange(const MethodTable *pMT) const
+{
+    LIMITED_METHOD_CONTRACT;
+
+    _ASSERTE(!pMT->IsInterface());
+
+    CheckableConditionForOptimizationChange conditionCheck = ProduceCheckableCondition();
+
+    if (!(conditionCheck.m_currentValueOfFlags & enum_flag_DerivedType))
+    {
+        // No derived type has overriden method. Check based on that flag
+        conditionCheck.m_maskOfFlagsWhichAffectOptimizationOpportunity = enum_flag_DerivedType;
+        return conditionCheck;
+    }
+
+    if (!(conditionCheck.m_currentValueOfFlags & enum_flag_MultipleDerivedTypes))
+    {
+        // Only 1 type has derived from this type so far, the next type that derives may change
+        // the rules
+        conditionCheck.m_maskOfFlagsWhichAffectOptimizationOpportunity = enum_flag_MultipleDerivedTypes;
+        return conditionCheck;
+    }
+
+    return CheckableConditionForOptimizationChange();
+}
+
+CheckableConditionForOptimizationChange MethodTableWriteableData::GenerateCheckableConditionForNewInterfaceImplementation(const MethodTable *pMT) const
+{
+    LIMITED_METHOD_CONTRACT;
+    _ASSERTE(pMT->IsInterface());
+
+    CheckableConditionForOptimizationChange conditionCheck = ProduceCheckableCondition();
+
+    if (!(conditionCheck.m_currentValueOfFlags & enum_flag_DerivedType))
+    {
+        // No derived type has overriden method. Check based on that flag
+        conditionCheck.m_maskOfFlagsWhichAffectOptimizationOpportunity = enum_flag_DerivedType;
+        return conditionCheck;
+    }
+
+    if (!(conditionCheck.m_currentValueOfFlags & enum_flag_MultipleDerivedTypes))
+    {
+        // Only 1 type has derived from this type so far, the next type that derives may change
+        // the rules
+        conditionCheck.m_maskOfFlagsWhichAffectOptimizationOpportunity = enum_flag_MultipleDerivedTypes;
+        return conditionCheck;
+    }
+
+    return CheckableConditionForOptimizationChange();
+}

@@ -294,6 +294,17 @@ typedef DPTR(CrossModuleGenericsStaticsInfo) PTR_CrossModuleGenericsStaticsInfo;
 struct RCWPerTypeData;
 #endif // FEATURE_COMINTEROP
 
+// Structure used to produce flags which indicate if an optimization remains valid.
+struct CheckableConditionForOptimizationChange
+{
+    // If m_pAddressOfFlagsToIndicateChange is NULL then the condition cannot be checked via flag
+    // If m_flagsAreOneByteBool is not set, this pointer is 4 byte aligned. If it is set, there is no such guarantee
+    DWORD *m_pAddressOfFlagsToIndicateChange = nullptr;
+
+    DWORD m_currentValueOfFlags = 0;
+    DWORD m_maskOfFlagsWhichAffectOptimizationOpportunity = 0;
+};
+
 //
 // This struct consolidates the writeable parts of the MethodTable
 // so that we can layout a read-only MethodTable with a pointer
@@ -343,8 +354,18 @@ struct MethodTableWriteableData
 #endif // FEATURE_PREJIT
 
 #ifdef _DEBUG
-        enum_flag_ParentMethodTablePointerValid =  0x40000000,
-        enum_flag_HasInjectedInterfaceDuplicates = 0x80000000,
+        enum_flag_ParentMethodTablePointerValid =  0x00400000,
+        enum_flag_HasInjectedInterfaceDuplicates = 0x00800000,
+#endif
+
+        enum_flag_DerivedType                       = 0x0100000, // Is there a derived(or implementing) type in any LoaderAllocator (a derived interface doesn't set this bit)
+        enum_flag_DerivedTypeInOtherLoaderAllocator = 0x0200000, // Is there a derived(or implementing) type in another LoaderAllocator (a derived interface doesn't set this bit)
+        enum_mask_DerivedTypeOptions                = 0x0300000, // Mask used to screen for derived types
+        enum_flag_MultipleDerivedTypes              = 0x0400000, // Are there multiple derived/implementing types (a derived interface doesn't set this bit)
+//#define HAS_DERIVED_TYPE_SPECIFIC_SLOT_OVERRIDE_DETECTION_CAP
+#ifdef HAS_DERIVED_TYPE_SPECIFIC_SLOT_OVERRIDE_DETECTION_CAP
+        enum_flag_DerivedTypeOverridesInheritedVirtualMembers= 0x0800000, // Does a derived type override any of the vtable slots inherited from the parent type of this type (Not meaningful for interfaces)
+        enum_flag_DerivedTypeOverridesDefinedVirtualMembers=   0x1000000, // Does a derived type override any of the vtable slots defined on this type (Not meaningful for interfaces)
 #endif
     };
     DWORD      m_dwFlags;                  // Lot of empty bits here.
@@ -538,6 +559,40 @@ public:
 
         SIZE_T size = sizeof(MethodTableWriteableData);
         return PTR_CrossModuleGenericsStaticsInfo(dac_cast<TADDR>(this) + size);
+    }
+
+    inline BOOL HasDerivedType() const
+    {
+        LIMITED_METHOD_CONTRACT;
+        return m_dwFlags & enum_flag_DerivedType;
+    }
+
+    inline BOOL HasDerivedTypeInOtherLoaderAllocator() const
+    {
+        LIMITED_METHOD_CONTRACT;
+        return m_dwFlags & enum_flag_DerivedTypeInOtherLoaderAllocator;
+    }
+
+    inline BOOL HasMultipleDerivedTypes() const
+    {
+        LIMITED_METHOD_CONTRACT;
+        return m_dwFlags & enum_flag_MultipleDerivedTypes;
+    }
+
+    void DeclareDerivedType(MethodTable *thisType, MethodTable *otherType);
+    CheckableConditionForOptimizationChange GenerateCheckableConditionForMethodSlot(const MethodTable *pMT, UINT32 slotNum) const;
+    CheckableConditionForOptimizationChange GenerateCheckableConditionForTypeDerivationChange(const MethodTable *pMT) const;
+    CheckableConditionForOptimizationChange GenerateCheckableConditionForNewInterfaceImplementation(const MethodTable *pMT) const;
+
+private:
+    CheckableConditionForOptimizationChange ProduceCheckableCondition() const
+    {
+        LIMITED_METHOD_CONTRACT;
+        CheckableConditionForOptimizationChange conditionCheck;
+
+        conditionCheck.m_currentValueOfFlags = *(volatile const DWORD *)&m_dwFlags;
+        conditionCheck.m_pAddressOfFlagsToIndicateChange = (DWORD *)&m_dwFlags;
+        return conditionCheck;
     }
 
 };  // struct MethodTableWriteableData
@@ -1265,7 +1320,7 @@ public:
     // instantiated type such as "List<String>".
     //
     
-    inline BOOL IsInterface()
+    inline BOOL IsInterface() const
     {
         LIMITED_METHOD_DAC_CONTRACT;
         return GetFlag(enum_flag_Category_Mask) == enum_flag_Category_Interface;
@@ -2620,6 +2675,55 @@ public:
 
         _ASSERTE(HasCriticalFinalizer());
         GetWriteableDataForWrite()->SetCriticalTypeHasBeenPrepared();
+    }
+
+    void DeclareDerivedType(MethodTable *pMTOtherType)
+    {
+        CONTRACTL
+        {
+            STANDARD_VM_CHECK;
+            PRECONDITION(CheckPointer(pMTOtherType));
+        }
+        CONTRACTL_END;
+
+        if (!pMTOtherType->IsInterface())
+            GetWriteableDataForWrite()->DeclareDerivedType(this, pMTOtherType);
+    }
+
+    inline BOOL HasDerivedType() const
+    {
+        LIMITED_METHOD_CONTRACT;
+        return GetWriteableData()->HasDerivedType();
+    }
+
+    inline BOOL HasDerivedTypeInOtherLoaderAllocator() const
+    {
+        LIMITED_METHOD_CONTRACT;
+        return GetWriteableData()->HasDerivedTypeInOtherLoaderAllocator();
+    }
+
+    inline BOOL HasMultipleDerivedTypes() const
+    {
+        LIMITED_METHOD_CONTRACT;
+        return GetWriteableData()->HasMultipleDerivedTypes();
+    }
+
+    CheckableConditionForOptimizationChange GenerateCheckableConditionForMethodSlot(UINT32 slotNum) const
+    {
+        STANDARD_VM_CONTRACT;
+        return GetWriteableData()->GenerateCheckableConditionForMethodSlot(this, slotNum);
+    }
+
+    CheckableConditionForOptimizationChange GenerateCheckableConditionForTypeDerivationChange() const
+    {
+        STANDARD_VM_CONTRACT;
+        return GetWriteableData()->GenerateCheckableConditionForTypeDerivationChange(this);
+    }
+
+    CheckableConditionForOptimizationChange GenerateCheckableConditionForNewInterfaceImplementation() const
+    {
+        STANDARD_VM_CONTRACT;
+        return GetWriteableData()->GenerateCheckableConditionForNewInterfaceImplementation(this);
     }
 
     //-------------------------------------------------------------------

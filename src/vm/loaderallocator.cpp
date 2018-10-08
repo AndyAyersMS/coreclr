@@ -26,6 +26,17 @@
 #endif
 
 UINT64 LoaderAllocator::cLoaderAllocatorsCreated = 1;
+SArray<LoaderAllocator*>* LoaderAllocator::s_activeLoaderAllocators = nullptr;
+CrstStatic LoaderAllocator::s_ActiveLoaderAllocatorsCrst;
+
+// Init statics
+void LoaderAllocator::Init()
+{
+#ifndef DACCESS_COMPILE
+    s_activeLoaderAllocators = new SArray<LoaderAllocator*>();
+    s_ActiveLoaderAllocatorsCrst.Init(CrstActiveLoaderAllocators);
+#endif // !DACCESS_COMPILE
+}
 
 LoaderAllocator::LoaderAllocator()  
 {
@@ -75,6 +86,12 @@ LoaderAllocator::LoaderAllocator()
     m_pUMEntryThunkCache = NULL;
 
     m_nLoaderAllocator = InterlockedIncrement64((LONGLONG *)&LoaderAllocator::cLoaderAllocatorsCreated);
+#if !defined(DACCESS_COMPILE) && !defined(CROSSGEN_COMPILE)
+    {
+        CrstHolder ch(&s_ActiveLoaderAllocatorsCrst);
+        s_activeLoaderAllocators->Append(this);
+    }
+#endif
 }
 
 LoaderAllocator::~LoaderAllocator()
@@ -92,6 +109,20 @@ LoaderAllocator::~LoaderAllocator()
 
      // Code manager is responsible for cleaning up.
     _ASSERTE(m_pJumpStubCache == NULL);
+
+    {
+        CrstHolder ch(&s_ActiveLoaderAllocatorsCrst);
+        auto iterActiveLoaderAllocators = s_activeLoaderAllocators->Begin();
+        auto iterActiveLoaderAllocatorsEnd = s_activeLoaderAllocators->End();
+        for (;iterActiveLoaderAllocators != iterActiveLoaderAllocatorsEnd; ++iterActiveLoaderAllocators)
+        {
+            if ((*iterActiveLoaderAllocators) == this)
+            {
+                s_activeLoaderAllocators->Delete(iterActiveLoaderAllocators);
+                break;
+            }
+        }
+    }
 #endif
 }
 
@@ -1904,5 +1935,232 @@ UMEntryThunkCache *LoaderAllocator::GetUMEntryThunkCache()
 }
 
 #endif // !CROSSGEN_COMPILE
+
+MethodTable *LoaderAllocator::DerivedMethodTableTraits::GetKey(MethodTable *mt) 
+{
+    LIMITED_METHOD_DAC_CONTRACT; 
+    return mt->GetParentMethodTable();
+}
+
+bool LoaderAllocator::DependsOnLoaderAllocator(LoaderAllocator* pLoaderAllocator)
+{
+    STANDARD_VM_CONTRACT;
+
+    if (pLoaderAllocator == this)
+        return true;
+
+    LoaderAllocatorSet laVisited;
+
+    CrstHolder ch(GetDomain()->GetLoaderAllocatorReferencesLock());
+    laVisited.Add(this);
+    return DependsOnLoaderAllocator_Worker(this, pLoaderAllocator, laVisited);
+}
+
+/*static*/
+bool LoaderAllocator::DependsOnLoaderAllocator_Worker(LoaderAllocator* pLASearchOn, LoaderAllocator* pLASearchFor, LoaderAllocatorSet &laVisited)
+{
+    STANDARD_VM_CONTRACT;
+
+    LoaderAllocatorSet::Iterator iter = pLASearchOn->m_LoaderAllocatorReferences.Begin();
+    while (iter != pLASearchOn->m_LoaderAllocatorReferences.End())
+    {
+        LoaderAllocator *pAllocator = *iter;
+
+        if (pLASearchFor == pAllocator)
+            return true;
+
+        if (laVisited.Lookup(pAllocator) != NULL)
+        {
+            // Already visited this allocator
+            continue;
+        }
+
+        laVisited.Add(pAllocator);
+        if (DependsOnLoaderAllocator_Worker(pAllocator, pLASearchFor, laVisited))
+            return true;
+
+        iter++;
+    }
+
+    return false;
+}
+
+
+bool LoaderAllocator::MTHasDerivedType(MethodTable *pMT)
+{
+    WRAPPER_NO_CONTRACT;
+    return pMT->HasDerivedType();
+}
+
+bool LoaderAllocator::MTHasDerivedTypeInOtherLoaderAllocator(MethodTable *pMT)
+{
+    WRAPPER_NO_CONTRACT;
+    return pMT->HasDerivedTypeInOtherLoaderAllocator();
+}
+
+LoaderAllocator* LoaderAllocator::MTGetLoaderAllocator(MethodTable *pMT)
+{
+    WRAPPER_NO_CONTRACT;
+    return pMT->GetLoaderAllocator();
+}
+#endif // !DACCESS_COMPILE
+
+void LoaderAllocator::AddDerivedTypeInfo(MethodTable *pBaseType, MethodTable *pDerivedOrImplementingType)
+{
+    STANDARD_VM_CONTRACT;
+
+#ifndef DACCESS_COMPILE
+    CrstHolder ch(&m_crstLoaderAllocator);
+    _ASSERTE(!pDerivedOrImplementingType->IsInterface());
+    _ASSERTE(pDerivedOrImplementingType->GetLoaderAllocator() == this);
+
+    if (!pBaseType->IsInterface())
+    {
+        _ASSERTE(pDerivedOrImplementingType->GetParentMethodTable() == pBaseType);
+        m_derivedTypes.Add(pDerivedOrImplementingType);
+    }
+    else
+    {
+        InterfaceTypeToImplementingTypeEntry entry;
+        entry.m_pInterfaceType = pBaseType;
+        entry.m_pImplementingType = pDerivedOrImplementingType;
+        m_interfaceImplementations.Add(entry);
+    }
+#endif // DACCESS_COMPILE
+}
+
+#ifndef DACCESS_COMPILE
+
+bool LoaderAllocator::MayInsertReferenceToTypeHandleInCode(TypeHandle th)
+{
+    STANDARD_VM_CONTRACT;
+
+    LoaderAllocator *laTargetType = th.GetLoaderAllocator();
+    return DependsOnLoaderAllocator(laTargetType);
+}
+
+// This function is designed to return false if there are any derived types which implement a specific vtable slot
+// There may be multiple derived types which use the same slot implementation
+// pCheckableCondition will be changed to report a flag to indicate when this property changes.
+bool LoaderAllocator::DoesAnyTypeOverrideVTableSlot(MethodTable *pMT, DWORD slot, CheckableConditionForOptimizationChange* pCheckableCondition)
+{
+    STANDARD_VM_CONTRACT;
+    _ASSERTE(pMT->GetLoaderAllocator() == this);
+
+    if (pCheckableCondition != nullptr)
+        *pCheckableCondition = pMT->GenerateCheckableConditionForMethodSlot(slot);
+
+    if (!pMT->HasDerivedType())
+        return false;
+
+    MethodDesc *pMDForSlot = pMT->GetMethodDescForSlot(slot);
+    bool reportValue = false;
+
+    reportValue = !WalkDerivingAndImplementingMethodTables(pMT, [slot, pMDForSlot](MethodTable *pDerivedMethodTable)
+    {
+        if (pDerivedMethodTable->GetMethodDescForSlot(slot) != pMDForSlot)
+        {
+            return false;
+        }
+        return true;
+    });
+
+    return reportValue;
+}
+
+// This function will report a unique methodtable which is type or derives from type. 
+// If the type is non-abstract, it will report null if there are any derived types.
+// If the type is abstract, it will return null if there are more than one derived types which are concrete types, or if
+// there is one derived concrete type, it will return that one.
+// This function may return null in cases where only one type would actually satisfy the condition in the case of collectible types
+// pCheckableCondition will be changed to report a flag to indicate when this property changes.
+MethodTable* LoaderAllocator::FindUniqueConcreteTypeWhichWithTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition)
+{
+    STANDARD_VM_CONTRACT;
+
+    _ASSERTE(pMT->GetLoaderAllocator() == this);
+
+    if (pCheckableCondition != nullptr)
+        *pCheckableCondition = pMT->GenerateCheckableConditionForTypeDerivationChange();
+
+    if (!pMT->IsAbstract())
+    {
+        if (pMT->HasDerivedType())
+        {
+            // Technically not quite right. There could exist derived abstract types, but that is an unlikely scenario.
+            return nullptr;
+        }
+        else
+        {
+            return pMT;
+        }
+    }
+    else
+    {
+        // Walk derived types, and stop walking and report null if multiple concrete derived types are found.
+        MethodTable *pUniqueType = nullptr;
+        if (!WalkDerivingAndImplementingMethodTables(pMT, [&pUniqueType](MethodTable *pDerivedMethodTable)
+        {
+            if (!pDerivedMethodTable->IsAbstract())
+            {
+                if (pUniqueType != nullptr)
+                {
+                    pUniqueType = nullptr;
+                    return false;
+                }
+                pUniqueType = pDerivedMethodTable;
+            }
+
+            return true;
+        }))
+        {
+            return nullptr;
+        }
+        return pUniqueType;
+    }
+}
+
+// This function will report a unique methodtable which implements the type. 
+// It will return null if there are more than one derived types which are concrete types, or if
+// there is one derived concrete type, it will return that one.
+// This function may return null in cases where only one type would actually satisfy the condition in the case of collectible types
+// pCheckableCondition will be changed to report a flag to indicate when this property changes.
+MethodTable* LoaderAllocator::FindUniqueConcreteTypeWhichImplementsThisInterface(MethodTable *pInterfaceType, CheckableConditionForOptimizationChange* pCheckableCondition)
+{
+    STANDARD_VM_CONTRACT;
+
+    _ASSERTE(pInterfaceType->GetLoaderAllocator() == this);
+
+    if (pCheckableCondition != nullptr)
+        *pCheckableCondition = pInterfaceType->GenerateCheckableConditionForNewInterfaceImplementation();
+
+    if (!pInterfaceType->HasDerivedType())
+        return nullptr;
+
+    if (pInterfaceType->HasMultipleDerivedTypes())
+        return nullptr;
+
+    // Walk derived types, and stop walking and report null if multiple concrete derived types are found.
+    MethodTable *pUniqueType = nullptr;
+    if (!WalkDerivingAndImplementingMethodTables(pInterfaceType, [&pUniqueType](MethodTable *pDerivedMethodTable)
+    {
+        if (!pDerivedMethodTable->IsAbstract())
+        {
+            if (pUniqueType != nullptr)
+            {
+                pUniqueType = nullptr;
+                return false;
+            }
+            pUniqueType = pDerivedMethodTable;
+        }
+
+        return true;
+    }))
+    {
+        return nullptr;
+    }
+    return pUniqueType;
+}
+
 
 #endif // !DACCESS_COMPILE
