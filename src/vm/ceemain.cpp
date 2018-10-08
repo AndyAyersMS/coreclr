@@ -699,6 +699,8 @@ void EEStartupHelper(COINITIEE fFlags)
 
         Frame::Init();
 
+        LoaderAllocator::Init();
+
 #ifdef FEATURE_TESTHOOKS
         IfFailGo(CLRTestHookManager::CheckConfig());
 #endif

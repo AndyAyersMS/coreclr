@@ -134,6 +134,41 @@ class UMEntryThunkCache;
 
 class LoaderAllocator
 {
+    class DerivedMethodTableTraits : public NoRemoveSHashTraits< DefaultSHashTraits<MethodTable *> >
+    {
+    public:
+        typedef MethodTable *key_t;
+        static MethodTable * GetKey(MethodTable *mt);
+        static count_t Hash(MethodTable *mt) { return (count_t) ((UINT_PTR) mt >> 3); }
+        static BOOL Equals(MethodTable *mt1, MethodTable *mt2)
+        {
+            return mt1 == mt2;
+        }
+    };
+
+    typedef SHash<DerivedMethodTableTraits> TypeToDerivedTypeTable;
+
+    struct InterfaceTypeToImplementingTypeEntry
+    {
+        MethodTable *m_pInterfaceType;
+        MethodTable *m_pImplementingType;
+    };
+
+    class InterfaceImplementingTypeTableTraits : public NoRemoveSHashTraits< DefaultSHashTraits<InterfaceTypeToImplementingTypeEntry> >
+    {
+    public:
+        typedef MethodTable *key_t;
+        static const InterfaceTypeToImplementingTypeEntry Null() { InterfaceTypeToImplementingTypeEntry e; e.m_pInterfaceType = NULL; e.m_pInterfaceType = nullptr; return e; }
+        static bool IsNull(const InterfaceTypeToImplementingTypeEntry &e) { return e.m_pInterfaceType == NULL; }
+        static MethodTable * GetKey(const InterfaceTypeToImplementingTypeEntry &value) { return value.m_pInterfaceType; }
+        static count_t Hash(MethodTable *mt) { return (count_t) ((UINT_PTR) mt >> 3); }
+        static BOOL Equals(MethodTable *mt1, MethodTable *mt2)
+        {
+            return mt1 == mt2;
+        }
+    };
+    typedef SHash<InterfaceImplementingTypeTableTraits> InterfaceToImplmentingTypeTable;
+
     VPTR_BASE_VTABLE_CLASS(LoaderAllocator)
     VPTR_UNIQUE(VPTRU_LoaderAllocator)
 protected:    
@@ -178,7 +213,13 @@ protected:
     // The cache is keyed by MethodDesc pointers.
     UMEntryThunkCache * m_pUMEntryThunkCache;
 
+    // Per LoaderAllocator stored type system structures
+    TypeToDerivedTypeTable m_derivedTypes;
+    InterfaceToImplmentingTypeTable m_interfaceImplementations;
+
 public:
+    static void Init();
+
     BYTE *GetVSDHeapInitialBlock(DWORD *pSize);
     BYTE *GetCodeHeapInitialBlock(const BYTE * loAddr, const BYTE * hiAddr, DWORD minimumSize, DWORD *pSize);
 
@@ -232,6 +273,9 @@ private:
     BOOL CheckAddReference_Unlocked(LoaderAllocator *pOtherLA);
     
     static UINT64 cLoaderAllocatorsCreated;
+    static SArray<LoaderAllocator*>* LoaderAllocator::s_activeLoaderAllocators;
+    static CrstStatic LoaderAllocator::s_ActiveLoaderAllocatorsCrst;
+
     UINT64 m_nLoaderAllocator;
     
     struct FailedTypeInitCleanupListItem
@@ -368,6 +412,12 @@ public:
     // value doesn't exist or a transient exception (OOM, stack overflow) is
     // encountered. To check if the token is valid, use DispatchToken::IsValid
     DispatchToken TryLookupDispatchToken(UINT32 typeId, UINT32 slotNumber);
+
+    bool DependsOnLoaderAllocator(LoaderAllocator* pLoaderAllocator);
+private:
+    static bool DependsOnLoaderAllocator_Worker(LoaderAllocator* pLASearchOn, LoaderAllocator* pLASearchFor, LoaderAllocatorSet &laVisited);
+public:
+
 
     virtual LoaderAllocatorID* Id() =0;
     BOOL IsCollectible() { WRAPPER_NO_CONTRACT; return m_IsCollectible; }
@@ -519,6 +569,85 @@ public:
     UMEntryThunkCache *GetUMEntryThunkCache();
 
 #endif
+
+    //****************************************************************************************
+    // Methods to support understanding the relationships between types
+    void AddDerivedTypeInfo(MethodTable *pBaseType, MethodTable *pDerivedType);
+    bool MayInsertReferenceToTypeHandleInCode(TypeHandle th);
+
+    // Algorithms to identify optimization opportunities. These functions may return inaccurate results
+    // and the results are subject to change over time. Also, these functions are conservative, and may
+    // return true if the condition may hold, or it is difficult to tell if it does not hold
+
+#ifndef DACCESS_COMPILE
+    template<class TLambda>
+    bool WalkDerivingAndImplementingMethodTables(MethodTable *pMT, TLambda &lambda)
+    {
+        STANDARD_VM_CONTRACT;
+        _ASSERTE(MTGetLoaderAllocator(pMT) == this);
+
+        if (!WalkDerivingAndImplementingMethodTables_Worker(pMT, lambda))
+        {
+            return false;
+        }
+
+        if (MTHasDerivedTypeInOtherLoaderAllocator(pMT))
+        {
+            CrstHolder ch(&s_ActiveLoaderAllocatorsCrst);
+            auto iterActiveLoaderAllocators = s_activeLoaderAllocators->Begin();
+            auto iterActiveLoaderAllocatorsEnd = s_activeLoaderAllocators->End();
+            for (;iterActiveLoaderAllocators != iterActiveLoaderAllocatorsEnd; ++iterActiveLoaderAllocators)
+            {
+                if ((*iterActiveLoaderAllocators) == this)
+                    continue;
+
+                LoaderAllocator *pOtherAllocator = *iterActiveLoaderAllocators;
+                if (!pOtherAllocator->WalkDerivingAndImplementingMethodTables_Worker(pMT, lambda))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+private:
+    template<class TLambda>
+    bool WalkDerivingAndImplementingMethodTables_Worker(MethodTable *pMT, TLambda &lambda)
+    {
+        STANDARD_VM_CONTRACT;
+
+        if (MTHasDerivedType(pMT))
+        {
+            CrstHolder ch(&m_crstLoaderAllocator);
+            auto iterSearchDerivedTypesOfpMT = m_derivedTypes.Begin(pMT);
+            auto endSearchDerivedTypesOfpMT = m_derivedTypes.End(pMT);
+            for (;iterSearchDerivedTypesOfpMT != endSearchDerivedTypesOfpMT; ++iterSearchDerivedTypesOfpMT)
+            {
+                MethodTable* derivedType = *iterSearchDerivedTypesOfpMT;
+                if (!lambda(derivedType))
+                    return false;
+                
+                if (!WalkDerivingAndImplementingMethodTables(derivedType, lambda))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool MTHasDerivedType(MethodTable *pMT);
+    bool MTHasDerivedTypeInOtherLoaderAllocator(MethodTable *pMT);
+    LoaderAllocator* MTGetLoaderAllocator(MethodTable *pMT);
+
+public:
+
+    // return true if a type overrides the VTable slot
+    bool DoesAnyTypeOverrideVTableSlot(MethodTable *pMT, DWORD slot, CheckableConditionForOptimizationChange* pCheckableCondition);
+    MethodTable* FindUniqueConcreteTypeWhichWithTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition);
+    MethodTable* FindUniqueConcreteTypeWhichImplementsThisInterface(MethodTable *pInterfaceType, CheckableConditionForOptimizationChange* pCheckableCondition);
+#endif // !DACCESS_COMPILE
 };  // class LoaderAllocator
 
 typedef VPTR(LoaderAllocator) PTR_LoaderAllocator;
