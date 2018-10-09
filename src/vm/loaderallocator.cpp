@@ -2074,7 +2074,7 @@ bool LoaderAllocator::DoesAnyTypeOverrideVTableSlot(MethodTable *pMT, DWORD slot
 // there is one derived concrete type, it will return that one.
 // This function may return null in cases where only one type would actually satisfy the condition in the case of collectible types
 // pCheckableCondition will be changed to report a flag to indicate when this property changes.
-MethodTable* LoaderAllocator::FindUniqueConcreteTypeWhichWithTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition)
+MethodTable* LoaderAllocator::FindUniqueConcreteTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition)
 {
     STANDARD_VM_CONTRACT;
 

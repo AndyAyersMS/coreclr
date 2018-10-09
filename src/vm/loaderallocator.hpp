@@ -645,7 +645,7 @@ public:
 
     // return true if a type overrides the VTable slot
     bool DoesAnyTypeOverrideVTableSlot(MethodTable *pMT, DWORD slot, CheckableConditionForOptimizationChange* pCheckableCondition);
-    MethodTable* FindUniqueConcreteTypeWhichWithTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition);
+    MethodTable* FindUniqueConcreteTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition);
     MethodTable* FindUniqueConcreteTypeWhichImplementsThisInterface(MethodTable *pInterfaceType, CheckableConditionForOptimizationChange* pCheckableCondition);
 #endif // !DACCESS_COMPILE
 };  // class LoaderAllocator
