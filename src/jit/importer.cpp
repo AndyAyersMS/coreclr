@@ -19652,6 +19652,20 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     //   IL_021e:  callvirt   instance int32 System.Object::GetHashCode()
     if ((objClassAttribs & CORINFO_FLG_INTERFACE) != 0)
     {
+        // See if there's just one class that implements this interface (at least
+        // at the time the method is jitted). If so we can guess for it...!
+        CORINFO_CLASS_HANDLE uniqueImplementingClass = info.compCompHnd->getUniqueImplementingClass(objClass);
+
+        if (uniqueImplementingClass != NO_CLASS_HANDLE)
+        {
+            JITDUMP("Only known implementor of %p (%s) is %p (%s), we could guess!\n",
+                objClass, eeGetClassName(objClass), uniqueImplementingClass, eeGetClassName(uniqueImplementingClass));
+        }
+        else
+        {
+            JITDUMP("VM says no or multiple implementors of  %p (%s)\n", objClass, eeGetClassName(objClass));
+        }
+
         JITDUMP("--- obj class is interface, sorry\n");
         return;
     }

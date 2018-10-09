@@ -583,7 +583,14 @@ public:
     template<class TLambda>
     bool WalkDerivingAndImplementingMethodTables(MethodTable *pMT, TLambda &lambda)
     {
-        STANDARD_VM_CONTRACT;
+        CONTRACTL
+        {
+            THROWS;
+            MODE_COOPERATIVE;
+            GC_NOTRIGGER;
+        }
+        CONTRACTL_END;
+
         _ASSERTE(MTGetLoaderAllocator(pMT) == this);
 
         if (!WalkDerivingAndImplementingMethodTables_Worker(pMT, lambda))
@@ -616,21 +623,46 @@ private:
     template<class TLambda>
     bool WalkDerivingAndImplementingMethodTables_Worker(MethodTable *pMT, TLambda &lambda)
     {
-        STANDARD_VM_CONTRACT;
+        CONTRACTL
+        {
+            THROWS;
+            MODE_COOPERATIVE;
+            GC_NOTRIGGER;
+        }
+        CONTRACTL_END;
 
         if (MTHasDerivedType(pMT))
         {
             CrstHolder ch(&m_crstLoaderAllocator);
-            auto iterSearchDerivedTypesOfpMT = m_derivedTypes.Begin(pMT);
-            auto endSearchDerivedTypesOfpMT = m_derivedTypes.End(pMT);
-            for (;iterSearchDerivedTypesOfpMT != endSearchDerivedTypesOfpMT; ++iterSearchDerivedTypesOfpMT)
+
+            // does not compile yet
+            if (pMT->IsInterface())
             {
-                MethodTable* derivedType = *iterSearchDerivedTypesOfpMT;
-                if (!lambda(derivedType))
-                    return false;
-                
-                if (!WalkDerivingAndImplementingMethodTables(derivedType, lambda))
-                    return false;
+                auto iterSearchImplementingTypesOfpMT = m_interfaceImplementations.Begin(pMT);
+                auto endSearchImplementingTypesOfpMT = m_interfaceImplementations.End(pMT);
+                for (;iterSearchImplementingTypesOfpMT != endSearchImplementingTypesOfpMT; ++iterSearchImplementingTypesOfpMT)
+                {
+                    MethodTable* implementingType = iterSearchImplementingTypesOfpMT->m_pImplementingType;
+                    if (!lambda(implementingType))
+                        return false;
+
+                    if (!WalkDerivingAndImplementingMethodTables(implementingType, lambda))
+                        return false;
+                }
+            }
+            else
+            {
+                auto iterSearchDerivedTypesOfpMT = m_derivedTypes.Begin(pMT);
+                auto endSearchDerivedTypesOfpMT = m_derivedTypes.End(pMT);
+                for (;iterSearchDerivedTypesOfpMT != endSearchDerivedTypesOfpMT; ++iterSearchDerivedTypesOfpMT)
+                {
+                    MethodTable* derivedType = *iterSearchDerivedTypesOfpMT;
+                    if (!lambda(derivedType))
+                        return false;
+
+                    if (!WalkDerivingAndImplementingMethodTables(derivedType, lambda))
+                        return false;
+                }
             }
         }
 
@@ -645,7 +677,7 @@ public:
 
     // return true if a type overrides the VTable slot
     bool DoesAnyTypeOverrideVTableSlot(MethodTable *pMT, DWORD slot, CheckableConditionForOptimizationChange* pCheckableCondition);
-    MethodTable* FindUniqueConcreteTypeWhichWithTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition);
+    MethodTable* FindUniqueConcreteTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition);
     MethodTable* FindUniqueConcreteTypeWhichImplementsThisInterface(MethodTable *pInterfaceType, CheckableConditionForOptimizationChange* pCheckableCondition);
 #endif // !DACCESS_COMPILE
 };  // class LoaderAllocator

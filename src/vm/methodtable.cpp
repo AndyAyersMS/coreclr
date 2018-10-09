@@ -10254,6 +10254,7 @@ void MethodTableWriteableData::DeclareDerivedType(MethodTable *thisType, MethodT
     _ASSERTE(!otherType->IsInterface());
 
     DWORD initialFlags = *(volatile DWORD *)&m_dwFlags;
+
     bool repeat = true;
 
     // The first type to derive from an interface, and all types deriving from concrete types are

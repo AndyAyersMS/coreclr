@@ -2009,6 +2009,8 @@ void LoaderAllocator::AddDerivedTypeInfo(MethodTable *pBaseType, MethodTable *pD
 {
     STANDARD_VM_CONTRACT;
 
+    GCX_COOP();
+
 #ifndef DACCESS_COMPILE
     CrstHolder ch(&m_crstLoaderAllocator);
     _ASSERTE(!pDerivedOrImplementingType->IsInterface());
@@ -2074,7 +2076,7 @@ bool LoaderAllocator::DoesAnyTypeOverrideVTableSlot(MethodTable *pMT, DWORD slot
 // there is one derived concrete type, it will return that one.
 // This function may return null in cases where only one type would actually satisfy the condition in the case of collectible types
 // pCheckableCondition will be changed to report a flag to indicate when this property changes.
-MethodTable* LoaderAllocator::FindUniqueConcreteTypeWhichWithTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition)
+MethodTable* LoaderAllocator::FindUniqueConcreteTypeInTypeHierarchy(MethodTable *pMT, CheckableConditionForOptimizationChange* pCheckableCondition)
 {
     STANDARD_VM_CONTRACT;
 
@@ -2135,15 +2137,22 @@ MethodTable* LoaderAllocator::FindUniqueConcreteTypeWhichImplementsThisInterface
         *pCheckableCondition = pInterfaceType->GenerateCheckableConditionForNewInterfaceImplementation();
 
     if (!pInterfaceType->HasDerivedType())
+    {
         return nullptr;
+    }
 
     if (pInterfaceType->HasMultipleDerivedTypes())
+    {
         return nullptr;
+    }
 
     // Walk derived types, and stop walking and report null if multiple concrete derived types are found.
     MethodTable *pUniqueType = nullptr;
+
+    GCX_COOP();
+
     if (!WalkDerivingAndImplementingMethodTables(pInterfaceType, [&pUniqueType](MethodTable *pDerivedMethodTable)
-    {
+    {                
         if (!pDerivedMethodTable->IsAbstract())
         {
             if (pUniqueType != nullptr)

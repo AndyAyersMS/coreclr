@@ -354,18 +354,18 @@ struct MethodTableWriteableData
 #endif // FEATURE_PREJIT
 
 #ifdef _DEBUG
-        enum_flag_ParentMethodTablePointerValid =  0x00400000,
-        enum_flag_HasInjectedInterfaceDuplicates = 0x00800000,
+        enum_flag_ParentMethodTablePointerValid =  0x02000000,
+        enum_flag_HasInjectedInterfaceDuplicates = 0x04000000,
 #endif
 
-        enum_flag_DerivedType                       = 0x0100000, // Is there a derived(or implementing) type in any LoaderAllocator (a derived interface doesn't set this bit)
-        enum_flag_DerivedTypeInOtherLoaderAllocator = 0x0200000, // Is there a derived(or implementing) type in another LoaderAllocator (a derived interface doesn't set this bit)
-        enum_mask_DerivedTypeOptions                = 0x0300000, // Mask used to screen for derived types
-        enum_flag_MultipleDerivedTypes              = 0x0400000, // Are there multiple derived/implementing types (a derived interface doesn't set this bit)
+        enum_flag_DerivedType                       = 0x00100000, // Is there a derived(or implementing) type in any LoaderAllocator (a derived interface doesn't set this bit)
+        enum_flag_DerivedTypeInOtherLoaderAllocator = 0x00200000, // Is there a derived(or implementing) type in another LoaderAllocator (a derived interface doesn't set this bit)
+        enum_mask_DerivedTypeOptions                = 0x00300000, // Mask used to screen for derived types
+        enum_flag_MultipleDerivedTypes              = 0x00400000, // Are there multiple derived/implementing types (a derived interface doesn't set this bit)
 //#define HAS_DERIVED_TYPE_SPECIFIC_SLOT_OVERRIDE_DETECTION_CAP
 #ifdef HAS_DERIVED_TYPE_SPECIFIC_SLOT_OVERRIDE_DETECTION_CAP
-        enum_flag_DerivedTypeOverridesInheritedVirtualMembers= 0x0800000, // Does a derived type override any of the vtable slots inherited from the parent type of this type (Not meaningful for interfaces)
-        enum_flag_DerivedTypeOverridesDefinedVirtualMembers=   0x1000000, // Does a derived type override any of the vtable slots defined on this type (Not meaningful for interfaces)
+        enum_flag_DerivedTypeOverridesInheritedVirtualMembers= 0x00800000, // Does a derived type override any of the vtable slots inherited from the parent type of this type (Not meaningful for interfaces)
+        enum_flag_DerivedTypeOverridesDefinedVirtualMembers=   0x01000000, // Does a derived type override any of the vtable slots defined on this type (Not meaningful for interfaces)
 #endif
     };
     DWORD      m_dwFlags;                  // Lot of empty bits here.
