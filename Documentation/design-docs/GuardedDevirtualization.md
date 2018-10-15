@@ -56,7 +56,7 @@ One might imagine that the jit's guess about the type of the reference has to be
 pretty good for devirtualization to pay off. Somewhat surprisingly, at least based
 on our initial results, that is not the case.
 
-### The Two-Class Case
+### Virtual Calls: The Two-Class Case
 
 Given these class declarations:
 ```C#
@@ -166,7 +166,7 @@ could be eliminated with a bit more work on the prototype. So guarded
 devirtualization perf could potentially be even better than is shown above,
 especially for smaller values of `p`.
 
-### The Three-Class Case
+### Virtual Calls: The Three-Class Case
 
 Now to return to the question we asked above: is there something about the two
 class case that made guarded devirtualization especially attractive? Read on.
@@ -230,7 +230,7 @@ devirtualization for virtual calls.
 We'll need to verify this with more scenarios, but these initial results are
 certainly encouraging.
 
-### Testing for Multiple Cases
+### Virtual Calls: Testing for Multiple Cases
 
 One might deduce from the above that if there are two likely candidates the jit
 should test for each. This is certainly a possibility and in C++ compilers that
@@ -239,13 +239,69 @@ a good idea. But there's also additional code size and another branch.
 
 This is something we'll look into further.
 
-### Interface Calls
+### Interface Calls: The Two Class Case
 
-We have not yet measured the impact of guarded devirtualization on interface
-calls, but given that they have higher baseline costs than virtual calls, the
-expectation is that the benefit curves will be even more favorable. Our prototype
-has some limitations with respect to interfaces so it may be a little while
-before we can look at this more closely.
+Interface calls on the CLR are implemented via [Virtual Stub Dispatch](
+https://github.com/dotnet/coreclr/blob/master/Documentation/botr/virtual-stub-dispatch.md
+)  (aka VSD). Calls are made through an indirection cell that initially points
+at a lookup stub. On the first call, the interface target is identified from the
+object's method table and the lookup stub is replaced with a dispatch stub that
+checks for that specific method table in a manner quite similar to guarded
+devirtualization.
+
+If the method table check fails a counter is incremented, and once the counter
+reaches a threshold the dispatch stub is replaced with a resolve stub that looks
+up the right target in a process-wide hash table.
+
+For interface call sites that are monomorphic, the VSD mechanism (via the dispatch
+stub) executes the following code sequence (here for x64)
+```asm
+;; jit-produced code
+;;
+;; set up R11 with interface target info
+mov R11, ...    ;; additional VSD info for call
+mov RCX, ...    ;; dispatch target object
+cmp [rcx], rcx  ;; null check (unnecessary)
+call [addr]     ;; call indirect through indir cell
+
+;; dispatch stub
+cmp [RCX], targetMT  ;; check for right method table
+jne DISPATCH-FAIL  ;; bail to resolve stub if check fails (uses R11 info)
+jmp targetCode     ;; else "tail call" the right method
+```
+
+At first glance it might appear that adding guarded devirtualization on top of 
+VSD may not provide much benefit for monomorphic sites. However the guarded
+devirtualization test doesn't use an indirection cell and doesn't require R11
+setup, may be able to optimize away the null check, and opens the door for
+inlining. So it should be slightly cheaper on average and significantly cheaper
+in some cases.
+
+(Note [CoreCLR#1422](https://github.com/dotnet/coreclr/issues/14222) indicates
+we should be able to optimize away the null check in any case).
+
+If the guarded tests fails we've filtered out one method table the dispatch cell
+now works well even if a call site alternates between two classes. So we'd expect
+the combination of guarded devirtualization and VSD to perform well on the two
+class test and only show limitations when faced with mixtures of three or more
+classes.
+
+If the guard test always fails we have the up-front cost for the vtable fetch
+(which should amortize pretty well with the subsequent fetch in the) stub plus
+the predicted not taken branch. So we'd expect the cost for the two-class cases
+where the jit's prediction is always wrong to be a bit higher).
+
+The graph below shows the measured results. To makes sure we're not overly impacted
+by residual VSD state we use a fresh call site for each value of p. The solid
+orange line is the current cost. The dashed orange line is the corresponding cost
+for a virtual call with the same value of p. The solid blue line is the cost with
+an up-front guarded test. As noted there is some slowdown when the jit always
+guesses the wrong class, but the break-even point (not shown) is at a relatively
+small probability of a correct guess.
+
+![two classes interface devirt](TwoClassesInterface.JPG)
+
+As with virtual calls you may strongly suspect the two class case is special.
 
 ### Delegate Speculation
 
