@@ -5195,7 +5195,6 @@ private:
     void fgMorphCallInlineHelper(GenTreeCall* call, InlineResult* result);
 #if DEBUG
     void fgNoteNonInlineCandidate(GenTreeStmt* stmt, GenTreeCall* call);
-    static fgWalkPreFn fgFindNonInlineCandidate;
 #endif
     GenTree* fgOptimizeDelegateConstructor(GenTreeCall*            call,
                                            CORINFO_CONTEXT_HANDLE* ExactContextHnd,

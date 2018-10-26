@@ -21806,20 +21806,16 @@ void Compiler::fgInline()
 
         compCurBB = block;
 
-        GenTreeStmt* stmt;
-        GenTree*     expr;
-
-        for (stmt = block->firstStmt(); stmt != nullptr; stmt = stmt->gtNextStmt)
+        for (GenTreeStmt* stmt = block->firstStmt(); stmt != nullptr; stmt = stmt->gtNextStmt)
         {
-            expr = stmt->gtStmtExpr;
+            fgMorphStmt   = stmt;
+            GenTree* expr = stmt->gtStmtExpr;
 
             // See if we can expand the inline candidate
             if ((expr->gtOper == GT_CALL) && ((expr->gtFlags & GTF_CALL_INLINE_CANDIDATE) != 0))
             {
                 GenTreeCall* call = expr->AsCall();
                 InlineResult inlineResult(this, call, stmt, "fgInline");
-
-                fgMorphStmt = stmt;
 
                 fgMorphCallInline(call, &inlineResult);
 
@@ -21828,13 +21824,6 @@ void Compiler::fgInline()
                     fgRemoveStmt(block, stmt);
                     continue;
                 }
-            }
-            else
-            {
-#ifdef DEBUG
-                // Look for non-candidates.
-                fgWalkTreePre(&stmt->gtStmtExpr, fgFindNonInlineCandidate, stmt);
-#endif
             }
 
             // See if we need to replace the return value place holder.
@@ -21908,34 +21897,6 @@ void Compiler::fgInline()
 }
 
 #ifdef DEBUG
-
-//------------------------------------------------------------------------
-// fgFindNonInlineCandidate: tree walk helper to ensure that a tree node
-// that is not an inline candidate is noted as a failed inline.
-//
-// Arguments:
-//    pTree - pointer to pointer tree node being walked
-//    data  - contextual data for the walk
-//
-// Return Value:
-//    walk result
-//
-// Note:
-//    Invokes fgNoteNonInlineCandidate on the nodes it finds.
-
-Compiler::fgWalkResult Compiler::fgFindNonInlineCandidate(GenTree** pTree, fgWalkData* data)
-{
-    GenTree* tree = *pTree;
-    if (tree->gtOper == GT_CALL)
-    {
-        Compiler*    compiler = data->compiler;
-        GenTreeStmt* stmt     = (GenTreeStmt*)data->pCallbackData;
-        GenTreeCall* call     = tree->AsCall();
-
-        compiler->fgNoteNonInlineCandidate(stmt, call);
-    }
-    return WALK_CONTINUE;
-}
 
 //------------------------------------------------------------------------
 // fgNoteNonInlineCandidate: account for inlining failures in calls
@@ -22407,6 +22368,11 @@ Compiler::fgWalkResult Compiler::fgLateDevirtualization(GenTree** pTree, fgWalkD
             CORINFO_CONTEXT_HANDLE context     = nullptr;
             comp->impDevirtualizeCall(call, &method, &methodFlags, &context, nullptr);
         }
+
+#ifdef DEBUG
+        // We failed to inline this method, so leave a record in the inline tree
+        comp->fgNoteNonInlineCandidate(comp->fgMorphStmt, call);
+#endif
     }
 
     return WALK_CONTINUE;

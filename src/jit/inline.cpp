@@ -491,11 +491,10 @@ void InlineContext::DumpXml(FILE* file, unsigned indent)
 
     if (!isRoot)
     {
-        Compiler* compiler = m_InlineStrategy->GetCompiler();
-
-        mdMethodDef calleeToken = compiler->info.compCompHnd->getMethodDefFromMethod(m_Callee);
-        unsigned    calleeHash  = compiler->info.compCompHnd->getMethodHash(m_Callee);
-
+        Compiler*   compiler     = m_InlineStrategy->GetCompiler();
+        mdMethodDef calleeToken  = compiler->info.compCompHnd->getMethodDefFromMethod(m_Callee);
+        unsigned    calleeHash   = compiler->info.compCompHnd->getMethodHash(m_Callee);
+        const char* calleeName   = compiler->info.compCompHnd->getMethodName(m_Callee, nullptr);
         const char* inlineReason = InlGetObservationString(m_Observation);
 
         int offset = -1;
@@ -504,11 +503,39 @@ void InlineContext::DumpXml(FILE* file, unsigned indent)
             offset = (int)jitGetILoffs(m_Offset);
         }
 
+        // Cheap xml quoting for callee name. Only < and & are troublemakers,
+        // but change > for symmetry.
+        //
+        // Ok to truncate name, just ensure it's null terminated.
+        char buf[64];
+        strncpy(buf, calleeName, sizeof(buf));
+        buf[sizeof(buf) - 1] = 0;
+
+        for (int i = 0; i < _countof(buf); i++)
+        {
+            switch (buf[i])
+            {
+                case '<':
+                    buf[i] = '[';
+                    break;
+                case '>':
+                    buf[i] = ']';
+                    break;
+                case '&':
+                    buf[i] = '#';
+                    break;
+                default:
+                    break;
+            }
+        }
+
         fprintf(file, "%*s<%s>\n", indent, "", inlineType);
+        fprintf(file, "%*s<Name>%s</Name>\n", indent + 2, "", calleeName);
         fprintf(file, "%*s<Token>%u</Token>\n", indent + 2, "", calleeToken);
         fprintf(file, "%*s<Hash>%u</Hash>\n", indent + 2, "", calleeHash);
         fprintf(file, "%*s<Offset>%u</Offset>\n", indent + 2, "", offset);
         fprintf(file, "%*s<Reason>%s</Reason>\n", indent + 2, "", inlineReason);
+        fprintf(file, "%*s<Devirt>%u</Devirt>\n", indent + 2, "", m_Devirtualized);
 
         // Optionally, dump data about the inline
         const int dumpDataSetting = JitConfig.JitInlineDumpData();
