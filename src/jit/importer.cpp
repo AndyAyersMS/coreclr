@@ -7281,7 +7281,7 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
                 }
                 else
                 {
-                    // ok, the stub is available at compile type.
+                    // The stub address is known available at compile time
 
                     call = gtNewCallNode(CT_USER_FUNC, callInfo->hMethod, callRetTyp, nullptr, ilOffset);
                     call->gtCall.gtStubCallStubAddr = callInfo->stubLookup.constLookup.addr;
@@ -19109,6 +19109,12 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
     /* Ignore indirect calls */
     if (call->gtCallType == CT_INDIRECT)
     {
+        // Restore stub address we hid away...
+        if (call->IsSpeculativeDevirtualizationCandidate())
+        {
+            call->gtStubCallStubAddr = call->gtSpeculativeCandidateInfo->stubAddr;
+        }
+
         inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_NOT_DIRECT_MANAGED);
         return;
     }
@@ -20053,6 +20059,14 @@ void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall*          cal
     {
         return;
     }
+
+    // CT_INDRECT calls may use the cookie, bail if so...
+    if ((call->gtCallType == CT_INDIRECT) && (call->gtCall.gtCallCookie != nullptr))
+    {
+        return;
+    }
+
+    // TODO: make sure we're not otherwise clobbering the fragile union in GenTreeCall
 
     JITDUMP("Marking call [%06u] as speculative devirtualization candidate\n", dspTreeID(call));
     setMethodHasSpeculativeDevirtualization();
