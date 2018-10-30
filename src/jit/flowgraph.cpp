@@ -26125,10 +26125,10 @@ private:
             //
             // Much of this info probably surfaces in impDevirtualizeCall so perhaps
             // we can pass the inline info in there and get it updated?
-            inlineInfo->clsHandle          = clsHnd;
-            inlineInfo->exactContextHnd    = context;
-            inlineInfo->retExpr            = nullptr;
-            call->gtInlineCandidateInfo    = inlineInfo;
+            inlineInfo->clsHandle       = clsHnd;
+            inlineInfo->exactContextHnd = context;
+            inlineInfo->retExpr         = nullptr;
+            call->gtInlineCandidateInfo = inlineInfo;
 
             // If necessary, assign result to temp. Because this call is an inline
             // candidate the call return value needs to be a new GT_RET_EXPR.
@@ -26139,8 +26139,8 @@ private:
                 GenTreeStmt* callStmt = compiler->gtNewStmt(call);
                 compiler->fgInsertStmtAtEnd(thenBlock, callStmt);
 
-                GenTree* retExpr = compiler->gtNewInlineCandidateReturnExpr(call, call->TypeGet());
-                result           = compiler->gtNewTempAssign(returnTemp, retExpr);
+                GenTree* retExpr    = compiler->gtNewInlineCandidateReturnExpr(call, call->TypeGet());
+                result              = compiler->gtNewTempAssign(returnTemp, retExpr);
                 inlineInfo->retExpr = retExpr;
             }
 

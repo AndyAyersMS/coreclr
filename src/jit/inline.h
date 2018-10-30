@@ -522,7 +522,7 @@ struct InlineCandidateInfo
     bool                   exactContextNeedsRuntimeLookup;
     CorInfoInitClassResult initClassResult;
     unsigned               preexistingSpillTemp;
-    GenTree*               retExpr;    
+    GenTree*               retExpr;
     void*                  stubAddr; // hack
 };
 

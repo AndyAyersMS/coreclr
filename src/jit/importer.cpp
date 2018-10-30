@@ -7979,6 +7979,15 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
 
                 // Is it an inline candidate?
                 impMarkInlineCandidate(call, exactContextHnd, exactContextNeedsRuntimeLookup, callInfo);
+
+                // If not, recover stuff we messed with
+                if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsVirtualStub() &&
+                    call->gtCall.IsSpeculativeDevirtualizationCandidate())
+                {
+                    JITDUMP("Restoring stub addr %p from speculative candidate info\n",
+                            call->gtCall.gtSpeculativeCandidateInfo->stubAddr);
+                    call->gtCall.gtStubCallStubAddr = call->gtCall.gtSpeculativeCandidateInfo->stubAddr;
+                }
             }
 
             // append the call node.
@@ -8199,6 +8208,15 @@ DONE:
 
         // Is it an inline candidate?
         impMarkInlineCandidate(call, exactContextHnd, exactContextNeedsRuntimeLookup, callInfo);
+
+        // If not, recover stuff we messed with
+        if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsVirtualStub() &&
+            call->gtCall.IsSpeculativeDevirtualizationCandidate())
+        {
+            JITDUMP("Restoring stub addr %p from speculative candidate info\n",
+                    call->gtCall.gtSpeculativeCandidateInfo->stubAddr);
+            call->gtCall.gtStubCallStubAddr = call->gtCall.gtSpeculativeCandidateInfo->stubAddr;
+        }
     }
 
 DONE_CALL:
@@ -19102,6 +19120,7 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
 
     if (call->gtCallType == CT_HELPER)
     {
+        assert(!call->IsSpeculativeDevirtualizationCandidate());
         inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_CALL_TO_HELPER);
         return;
     }
@@ -19109,12 +19128,6 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
     /* Ignore indirect calls */
     if (call->gtCallType == CT_INDIRECT)
     {
-        // Restore stub address we hid away...
-        if (call->IsSpeculativeDevirtualizationCandidate())
-        {
-            call->gtStubCallStubAddr = call->gtSpeculativeCandidateInfo->stubAddr;
-        }
-
         inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_NOT_DIRECT_MANAGED);
         return;
     }
@@ -19674,7 +19687,8 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // Don't do this for late devirts
         if (exactContextHandle != nullptr)
         {
-            addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+            addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs,
+                                                    objClassAttribs);
         }
         return;
     }
@@ -19688,7 +19702,8 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // Don't do this for late devirts
         if (exactContextHandle != nullptr)
         {
-            addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+            addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs,
+                                                    objClassAttribs);
         }
 
         return;

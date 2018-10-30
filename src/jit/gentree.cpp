@@ -7342,7 +7342,7 @@ GenTree* Compiler::gtCloneExpr(
 
 #if defined(DEBUG) || defined(INLINE_DATA)
             copy->gtCall.gtInlineObservation = tree->gtCall.gtInlineObservation;
-            copy->gtCall.gtRawILOffset = tree->gtCall.gtRawILOffset;
+            copy->gtCall.gtRawILOffset       = tree->gtCall.gtRawILOffset;
 #endif
 
             copy->AsCall()->CopyOtherRegFlags(tree->AsCall());
