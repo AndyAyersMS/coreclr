@@ -19671,7 +19671,11 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // Verify here we can safely do method table compares?
         // if (!info.compCompHnd->canInlineTypeCheckWithObjectVTable(clsHnd))
 
-        addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+        // Don't do this for late devirts
+        if (exactContextHandle != nullptr)
+        {
+            addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+        }
         return;
     }
 
@@ -19681,7 +19685,12 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         JITDUMP("    Class not final or exact for interface\n");
 
         // Todo: profitbility assessment ... ?
-        addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+        // Don't do this for late devirts
+        if (exactContextHandle != nullptr)
+        {
+            addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+        }
+
         return;
     }
 
