@@ -26019,7 +26019,7 @@ private:
             // Todo: make sure we understand how this interacts with return type
             // munging for small structs.
             InlineCandidateInfo* inlineInfo = origCall->gtInlineCandidateInfo;
-            GenTree*             retExpr    = inlineInfo->retExprPlaceholder;
+            GenTree*             retExpr    = inlineInfo->retExpr;
 
             // Sanity check the ret expr if non-null: it should refer to the original call.
             if (retExpr != nullptr)
@@ -26127,7 +26127,7 @@ private:
             // we can pass the inline info in there and get it updated?
             inlineInfo->clsHandle          = clsHnd;
             inlineInfo->exactContextHnd    = context;
-            inlineInfo->retExprPlaceholder = nullptr; // ...
+            inlineInfo->retExpr            = nullptr;
             call->gtInlineCandidateInfo    = inlineInfo;
 
             // If necessary, assign result to temp. Because this call is an inline
@@ -26141,6 +26141,7 @@ private:
 
                 GenTree* retExpr = compiler->gtNewInlineCandidateReturnExpr(call, call->TypeGet());
                 result           = compiler->gtNewTempAssign(returnTemp, retExpr);
+                inlineInfo->retExpr = retExpr;
             }
 
             GenTreeStmt* resultStmt = compiler->gtNewStmt(result);
