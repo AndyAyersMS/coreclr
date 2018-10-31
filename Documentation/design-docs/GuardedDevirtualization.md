@@ -16,9 +16,9 @@ declared type of the reference is a `final` class (aka `sealed`). For virtual
 calls the jit can also devirtualize if it can prove the method is marked as `final`.
 
 However, most of the time the jit is unable to determine exactness or finalness
-and so devirtualization fails. Statistics show that currently only around 10% of
+and so devirtualization fails. Statistics show that currently only around 15% of
 virtual call sites can be devirtualized.  Result are even more pessimistic for
-interface calls.
+interface calls, where success rates are around 5%.
 
 There are a variety of reasons for this. The jit analysis is somewhat weak.
 Historically all the jit cared about was whether some location held **a** reference
@@ -357,7 +357,8 @@ And perhaps I'll look at the size impact of loop cloning as a precedent.
 ## Implementation Considerations
 
 To get the data above and a better feel for the challenges involved we have
-implemented a prototype. It is currently located on this branch: [SimpleSpeculation](https://github.com/AndyAyersMS/coreclr/tree/SimpleSpeculation).
+implemented a prototype. It is currently located on this branch:
+[SimpleSpeculation](https://github.com/AndyAyersMS/coreclr/tree/SimpleSpeculation).
 
 The prototype can introduce guarded devirtualization for some virtual and
 interface calls. It supports inlining of the directly invoked method. It uses
@@ -444,7 +445,7 @@ handling.
 
 The prototype skips over such by-value-returning struct methods today. Some of
 the logic found in `fgUpdateInlineReturnExpressionPlaceHolder` needs to be pulled
-in to properly type the call return value so we cna properly type the temp. Or
+in to properly type the call return value so we can properly type the temp. Or
 perhaps we could leverage some of importer-time transformations that are done for
 the fat calli cases.
 
@@ -472,7 +473,9 @@ be invoked. So if there is a range of types `D1...DN` that all will invoke some
 particular method can we test for them all somehow?
 - or should we test the method after the method lookup (possibly worse tradeoff
 because of the chunked method table arrangement, also tricky as a method can
-have multiple addresses over time.
+have multiple addresses over time. Since many types can share a chunk this
+might allow devirtualization over a wider set of classes (good) but we'd lose
+knowledge of exact types (bad). Not clear how these tradeoffs play out.
 - interaction of guarded devirt with VSD? For interface calls we are sort of 
 inlining the first level of the VSD into the jitted code.
 - revocation or reworking of the guard if the jit's prediction turns out to bad?
@@ -480,13 +483,25 @@ inlining the first level of the VSD into the jitted code.
 devirtualization.
 - should we enable this for prejitted code? In prejitted code the target method
 table is not a jit-time constant and must be looked up.
+- in the prototype, guarded devirtualization and late devirtualization sometimes
+conflict. Say we fail to devirtualize a site, and so expand via guarded devirtualization
+guessing some class X. The residual virtual call then may be optimizable via late
+devirtualization, and this may discover the actual class. In that case the guarded
+devirtualization is not needed. But currently it can't be undone.
+- we probably don't want to bother with guarded devirtualization if we can't also
+inline. But it takes us several evaluation steps to determine if a call can
+be inlined, some of these happening *after* we've done the guarded expansion.
+Again this expansion can't be undone.
+- so perhaps we need to build an undo capability for the cases where guarded
+devirtualization doesn't lead to inlining and/or where late devirtualization also
+applies.
 
 ### Implementation
 
 - avoid re-fetching method table for latent virtual call (should reduce code
 size and improve overall perf win)
 - look at how effectively we are sharing argument setup (might reduce code size
-and jit time impact)
+and jit time impact) -- perhaps implement head merging?
 - handle return values in full generality
 - il offsets
 - flag residual calls as not needing null checks
@@ -500,3 +515,7 @@ importer to the indirect transform phase
 subsequent call is introduced via inlining of the directly called method, as we
 know the exact type along that path. But for back to back calls to virtual 
 methods off of the same object it would be nice to do just one test.
+- should we test for multiple types? Once we've peeled off the "most likely" case
+if the conditional probability of the next most likely case is high it is probably
+worth testing for it too. I believe the C++ compiler will test up to 3 candidates
+this way... but that's a lot of code expansion.
