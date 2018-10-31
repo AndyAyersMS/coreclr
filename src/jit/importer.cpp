@@ -7981,12 +7981,24 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
                 impMarkInlineCandidate(call, exactContextHnd, exactContextNeedsRuntimeLookup, callInfo);
 
                 // If not, recover stuff we messed with
-                if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsVirtualStub() &&
-                    call->gtCall.IsSpeculativeDevirtualizationCandidate())
+                //
+                // TODO: make this a wrapper around impMarkInlinePolicy with
+                // configurable policy.
+                if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsSpeculativeDevirtualizationCandidate())
                 {
-                    JITDUMP("Restoring stub addr %p from speculative candidate info\n",
-                            call->gtCall.gtSpeculativeCandidateInfo->stubAddr);
-                    call->gtCall.gtStubCallStubAddr = call->gtCall.gtSpeculativeCandidateInfo->stubAddr;
+                    // Current policy is not to speculate if we can't inline.
+                    JITDUMP(
+                        "Decided not to speculatively devirt call [%06u] since desired target method won't inline\n",
+                        dspTreeID(call));
+
+                    call->gtCall.ClearSpeculativeDevirtualizationCandidate();
+
+                    if (call->gtCall.IsVirtualStub())
+                    {
+                        JITDUMP("Restoring stub addr %p from speculative candidate info\n",
+                                call->gtCall.gtSpeculativeCandidateInfo->stubAddr);
+                        call->gtCall.gtStubCallStubAddr = call->gtCall.gtSpeculativeCandidateInfo->stubAddr;
+                    }
                 }
             }
 
@@ -8210,12 +8222,23 @@ DONE:
         impMarkInlineCandidate(call, exactContextHnd, exactContextNeedsRuntimeLookup, callInfo);
 
         // If not, recover stuff we messed with
-        if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsVirtualStub() &&
-            call->gtCall.IsSpeculativeDevirtualizationCandidate())
+        //
+        // TODO: make this a wrapper around impMarkInlinePolicy with
+        // configurable policy.
+        if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsSpeculativeDevirtualizationCandidate())
         {
-            JITDUMP("Restoring stub addr %p from speculative candidate info\n",
-                    call->gtCall.gtSpeculativeCandidateInfo->stubAddr);
-            call->gtCall.gtStubCallStubAddr = call->gtCall.gtSpeculativeCandidateInfo->stubAddr;
+            // Current policy is not to speculate if we can't inline.
+            JITDUMP("Decided not to speculatively devirt call [%06u] since desired target method won't inline\n",
+                    dspTreeID(call));
+
+            call->gtCall.ClearSpeculativeDevirtualizationCandidate();
+
+            if (call->gtCall.IsVirtualStub())
+            {
+                JITDUMP("Restoring stub addr %p from speculative candidate info\n",
+                        call->gtCall.gtSpeculativeCandidateInfo->stubAddr);
+                call->gtCall.gtStubCallStubAddr = call->gtCall.gtSpeculativeCandidateInfo->stubAddr;
+            }
         }
     }
 
