@@ -494,10 +494,10 @@ private:
     bool                  m_Reported;
 };
 
-// SpeculativeCandidateInfo provides information about
+// GuardedDevirtualizationCandidateInfo provides information about
 // a potential target of a virtual call.
 
-struct SpeculativeCandidateInfo
+struct GuardedDevirtualizationCandidateInfo
 {
     CORINFO_CLASS_HANDLE  classHandle;
     CORINFO_METHOD_HANDLE methodHandle;

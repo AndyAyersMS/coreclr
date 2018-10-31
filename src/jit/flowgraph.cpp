@@ -25429,7 +25429,7 @@ bool Compiler::fgRetargetBranchesToCanonicalCallFinally(BasicBlock*      block,
 }
 
 // IndirectCallTransformer transforms indirect calls that involve fat pointers
-// or speculative devirtualization.
+// or guarded devirtualization.
 //
 // A fat function pointer is pointer with the second least significant bit set,
 // if the bit is set, the pointer (after clearing the bit) actually points to
@@ -25525,9 +25525,9 @@ private:
                 count++;
             }
 
-            if (ContainsSpeculativeDevirtualizationCandidate(stmt))
+            if (ContainsGuardedDevirtualizationCandidate(stmt))
             {
-                SpeculativeDevirtualizationTransformer transformer(compiler, block, stmt);
+                GuardedDevirtualizationTransformer transformer(compiler, block, stmt);
                 transformer.Run();
                 count++;
             }
@@ -25555,18 +25555,18 @@ private:
     }
 
     //------------------------------------------------------------------------
-    // ContainsSpeculativeDevirtualizationCandidate: check does this statement contain a virtual
-    // call that we'd like to speculatively devirtualize?
+    // ContainsGuardedDevirtualizationCandidate: check does this statement contain a virtual
+    // call that we'd like to guardedly devirtualize?
     //
     // Return Value:
     //    true if contains, false otherwise.
     //
     // Notes:
     //    calls are hoisted to top level ... (we hope)
-    bool ContainsSpeculativeDevirtualizationCandidate(GenTreeStmt* stmt)
+    bool ContainsGuardedDevirtualizationCandidate(GenTreeStmt* stmt)
     {
         GenTree* candidate = stmt->gtStmtExpr;
-        return candidate->IsCall() && candidate->AsCall()->IsSpeculativeDevirtualizationCandidate();
+        return candidate->IsCall() && candidate->AsCall()->IsGuardedDevirtualizationCandidate();
     }
 
     class Transformer
@@ -25889,10 +25889,10 @@ private:
         bool      doesReturnValue;
     };
 
-    class SpeculativeDevirtualizationTransformer : public Transformer
+    class GuardedDevirtualizationTransformer : public Transformer
     {
     public:
-        SpeculativeDevirtualizationTransformer(Compiler* compiler, BasicBlock* block, GenTreeStmt* stmt)
+        GuardedDevirtualizationTransformer(Compiler* compiler, BasicBlock* block, GenTreeStmt* stmt)
             : Transformer(compiler, block, stmt), returnTemp(BAD_VAR_NUM)
         {
         }
@@ -25904,7 +25904,7 @@ private:
         {
             origCall = GetCall(stmt);
 
-            // We currently need inline candidate info to speculative devirt.
+            // We currently need inline candidate info to guarded devirt.
             if (!origCall->IsInlineCandidate())
             {
                 JITDUMP("*** %s Bailing on [%06u] -- not an inline candidate\n", Name(), compiler->dspTreeID(origCall));
@@ -25937,7 +25937,7 @@ private:
     protected:
         virtual const char* Name()
         {
-            return "SpeculativeDevirtualization";
+            return "GuardedDevirtualization";
         }
 
         //------------------------------------------------------------------------
@@ -25957,11 +25957,11 @@ private:
         }
 
         //------------------------------------------------------------------------
-        // ClearFlag: clear speculative devirtualization candidate flag from the original call.
+        // ClearFlag: clear guarded devirtualization candidate flag from the original call.
         //
         virtual void ClearFlag()
         {
-            origCall->ClearSpeculativeDevirtualizationCandidate();
+            origCall->ClearGuardedDevirtualizationCandidate();
         }
 
         //------------------------------------------------------------------------
@@ -25977,7 +25977,7 @@ private:
             // Create temp for this if the tree is costly.
             if (!thisTree->IsLocal())
             {
-                const unsigned thisTempNum = compiler->lvaGrabTemp(true DEBUGARG("speculative devirt this temp"));
+                const unsigned thisTempNum = compiler->lvaGrabTemp(true DEBUGARG("guarded devirt this temp"));
                 // lvaSetClass(thisTempNum, ...);
                 GenTree* asgTree = compiler->gtNewTempAssign(thisTempNum, thisTree);
                 GenTree* asgStmt = compiler->fgNewStmtFromTree(asgTree, stmt->gtStmt.gtStmtILoffsx);
@@ -26029,7 +26029,7 @@ private:
 
             if (origCall->TypeGet() != TYP_VOID)
             {
-                returnTemp = compiler->lvaGrabTemp(false DEBUGARG("speculative devirt return temp"));
+                returnTemp = compiler->lvaGrabTemp(false DEBUGARG("guarded devirt return temp"));
                 JITDUMP("Reworking call(s) to return value via a new temp V%02u\n", returnTemp);
 
                 if (varTypeIsStruct(origCall))
@@ -26075,7 +26075,7 @@ private:
             CORINFO_CLASS_HANDLE clsHnd     = inlineInfo->clsHandle;
 
             // copy 'this' to temp with exact type.
-            const unsigned thisTemp  = compiler->lvaGrabTemp(false DEBUGARG("speculative devirt this exact temp"));
+            const unsigned thisTemp  = compiler->lvaGrabTemp(false DEBUGARG("guarded devirt this exact temp"));
             GenTree*       clonedObj = compiler->gtCloneExpr(origCall->gtCallObjp);
             GenTree*       assign    = compiler->gtNewTempAssign(thisTemp, clonedObj);
             compiler->lvaSetClass(thisTemp, clsHnd, true);
@@ -26095,7 +26095,7 @@ private:
             compiler->impDevirtualizeCall(call, &methodHnd, &methodFlags, &context, nullptr);
 
             // Presumably devirt might fail? If so we should try and avoid
-            // making this a speculative devirt candidate instead of ending
+            // making this a guarded devirt candidate instead of ending
             // up here.
             assert(!call->IsVirtual());
 
@@ -26114,10 +26114,10 @@ private:
             //
             // Option (4) is to patch the existing inline info.
             //
-            // Option (5) is to create a custom sidecar for speculative devirt cases
+            // Option (5) is to create a custom sidecar for guarded devirt cases
             // instead of piggybacking on the inline candidate info.
             //
-            // While one could argue that speculative devirt without inlining is
+            // While one could argue that guarded devirt without inlining is
             // no super-interesting, it could be so for interface calls ...
 
             // Need to think more about how to make sure these are right.
@@ -26186,7 +26186,7 @@ private:
 
 //------------------------------------------------------------------------
 // fgDebugCheckForTransformableIndirectCalls: callback to make sure there
-//  are no more GTF_CALL_M_FAT_POINTER_CHECK or GTF_CALL_M_SPECULATIVE_DEVIRT
+//  are no more GTF_CALL_M_FAT_POINTER_CHECK or GTF_CALL_M_GUARDED_DEVIRT
 //  calls remaining
 //
 Compiler::fgWalkResult Compiler::fgDebugCheckForTransformableIndirectCalls(GenTree** pTree, fgWalkData* data)
@@ -26195,7 +26195,7 @@ Compiler::fgWalkResult Compiler::fgDebugCheckForTransformableIndirectCalls(GenTr
     if (tree->IsCall())
     {
         assert(!tree->AsCall()->IsFatPointerCandidate());
-        // assert(!tree->AsCall()->IsSpeculativeDevirtualizationCandidate());
+        assert(!tree->AsCall()->IsGuardedDevirtualizationCandidate());
     }
     return WALK_CONTINUE;
 }
@@ -26206,7 +26206,9 @@ Compiler::fgWalkResult Compiler::fgDebugCheckForTransformableIndirectCalls(GenTr
 //
 void Compiler::CheckNoTransformableIndirectCallsRemain()
 {
-    // assert(!doesMethodHaveFatPointer());
+    assert(!doesMethodHaveFatPointer());
+    assert(!doesMethodHaveGuardedDevirtualization());
+
     for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
     {
         for (GenTreeStmt* stmt = fgFirstBB->firstStmt(); stmt != nullptr; stmt = stmt->gtNextStmt)
@@ -26227,7 +26229,7 @@ void Compiler::fgTransformIndirectCalls()
 {
     JITDUMP("\n*************** in fgTransformIndirectCalls(%s)\n", compIsForInlining() ? "inlinee" : "root");
 
-    if (doesMethodHaveFatPointer() || doesMethodHaveSpeculativeDevirtualization())
+    if (doesMethodHaveFatPointer() || doesMethodHaveGuardedDevirtualization())
     {
         IndirectCallTransformer indirectCallTransformer(this);
         int                     count = indirectCallTransformer.Run();
@@ -26241,14 +26243,15 @@ void Compiler::fgTransformIndirectCalls()
         {
             JITDUMP(" -- no transforms done (?)\n");
         }
+
+        clearMethodHasFatPointer();
+        clearMethodHasGuardedDevirtualization();
     }
     else
     {
         JITDUMP(" -- no candidates to transform\n");
     }
 
-    clearMethodHasFatPointer();
-    clearMethodHasSpeculativeDevirtualization();
     INDEBUG(CheckNoTransformableIndirectCallsRemain(););
 }
 

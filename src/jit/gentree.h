@@ -145,7 +145,7 @@ enum gtCallTypes : BYTE
 
 struct BasicBlock;
 struct InlineCandidateInfo;
-struct SpeculativeCandidateInfo;
+struct GuardedDevirtualizationCandidateInfo;
 
 typedef unsigned short AssertionIndex;
 
@@ -3547,7 +3547,7 @@ struct GenTreeCall final : public GenTree
                                                     // the comma result is unused.
 #define GTF_CALL_M_DEVIRTUALIZED         0x00040000 // GT_CALL -- this call was devirtualized
 #define GTF_CALL_M_UNBOXED               0x00080000 // GT_CALL -- this call was optimized to use the unboxed entry point
-#define GTF_CALL_M_SPECULATIVE_DEVIRT    0x00100000 // GT_CALL -- this call is a candidate for speculative devirtualization
+#define GTF_CALL_M_GUARDED_DEVIRT        0x00100000 // GT_CALL -- this call is a candidate for guarded devirtualization
 
     // clang-format on
 
@@ -3740,9 +3740,9 @@ struct GenTreeCall final : public GenTree
         return (gtCallMoreFlags & GTF_CALL_M_FAT_POINTER_CHECK) != 0;
     }
 
-    bool IsSpeculativeDevirtualizationCandidate() const
+    bool IsGuardedDevirtualizationCandidate() const
     {
-        return (gtCallMoreFlags & GTF_CALL_M_SPECULATIVE_DEVIRT) != 0;
+        return (gtCallMoreFlags & GTF_CALL_M_GUARDED_DEVIRT) != 0;
     }
 
     bool IsPure(Compiler* compiler) const;
@@ -3769,14 +3769,14 @@ struct GenTreeCall final : public GenTree
         return (gtCallMoreFlags & GTF_CALL_M_UNBOXED) != 0;
     }
 
-    void ClearSpeculativeDevirtualizationCandidate()
+    void ClearGuardedDevirtualizationCandidate()
     {
-        gtCallMoreFlags &= ~GTF_CALL_M_SPECULATIVE_DEVIRT;
+        gtCallMoreFlags &= ~GTF_CALL_M_GUARDED_DEVIRT;
     }
 
-    void SetSpeculativeDevirtualizationCandidate()
+    void SetGuardedDevirtualizationCandidate()
     {
-        gtCallMoreFlags |= GTF_CALL_M_SPECULATIVE_DEVIRT;
+        gtCallMoreFlags |= GTF_CALL_M_GUARDED_DEVIRT;
     }
 
     unsigned gtCallMoreFlags; // in addition to gtFlags
@@ -3790,9 +3790,9 @@ struct GenTreeCall final : public GenTree
         // only used for CALLI unmanaged calls (CT_INDIRECT)
         GenTree* gtCallCookie;
         // gtInlineCandidateInfo is only used when inlining methods
-        InlineCandidateInfo*      gtInlineCandidateInfo;
-        SpeculativeCandidateInfo* gtSpeculativeCandidateInfo;
-        void*                     gtStubCallStubAddr;           // GTF_CALL_VIRT_STUB - these are never inlined
+        InlineCandidateInfo*                  gtInlineCandidateInfo;
+        GuardedDevirtualizationCandidateInfo* gtGuardedDevirtualizationCandidateInfo;
+        void*                                 gtStubCallStubAddr; // GTF_CALL_VIRT_STUB - these are never inlined
         CORINFO_GENERIC_HANDLE compileTimeHelperArgumentHandle; // Used to track type handle argument of dynamic helpers
         void*                  gtDirectCallAddress; // Used to pass direct call address between lower and codegen
     };

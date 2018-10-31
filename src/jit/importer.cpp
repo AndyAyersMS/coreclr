@@ -7984,20 +7984,20 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
                 //
                 // TODO: make this a wrapper around impMarkInlinePolicy with
                 // configurable policy.
-                if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsSpeculativeDevirtualizationCandidate())
+                if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsGuardedDevirtualizationCandidate())
                 {
-                    // Current policy is not to speculate if we can't inline.
+                    // Current policy is not to try guarded devirtualization if we can't inline.
                     JITDUMP(
-                        "Decided not to speculatively devirt call [%06u] since desired target method won't inline\n",
+                        "Decided not use guarded devirt for call [%06u] since desired target method can't be inlined\n",
                         dspTreeID(call));
 
-                    call->gtCall.ClearSpeculativeDevirtualizationCandidate();
+                    call->gtCall.ClearGuardedDevirtualizationCandidate();
 
                     if (call->gtCall.IsVirtualStub())
                     {
-                        JITDUMP("Restoring stub addr %p from speculative candidate info\n",
-                                call->gtCall.gtSpeculativeCandidateInfo->stubAddr);
-                        call->gtCall.gtStubCallStubAddr = call->gtCall.gtSpeculativeCandidateInfo->stubAddr;
+                        JITDUMP("Restoring stub addr %p from guarded devirt candidate info\n",
+                                call->gtCall.gtGuardedDevirtualizationCandidateInfo->stubAddr);
+                        call->gtCall.gtStubCallStubAddr = call->gtCall.gtGuardedDevirtualizationCandidateInfo->stubAddr;
                     }
                 }
             }
@@ -8225,19 +8225,19 @@ DONE:
         //
         // TODO: make this a wrapper around impMarkInlinePolicy with
         // configurable policy.
-        if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsSpeculativeDevirtualizationCandidate())
+        if (!call->gtCall.IsInlineCandidate() && call->gtCall.IsGuardedDevirtualizationCandidate())
         {
-            // Current policy is not to speculate if we can't inline.
-            JITDUMP("Decided not to speculatively devirt call [%06u] since desired target method won't inline\n",
+            // Current policy is not to try guarded devirtualization if we can't inline.
+            JITDUMP("Decided not use guarded devirt for call [%06u] since desired target method can't be inlined\n",
                     dspTreeID(call));
 
-            call->gtCall.ClearSpeculativeDevirtualizationCandidate();
+            call->gtCall.ClearGuardedDevirtualizationCandidate();
 
             if (call->gtCall.IsVirtualStub())
             {
-                JITDUMP("Restoring stub addr %p from speculative candidate info\n",
-                        call->gtCall.gtSpeculativeCandidateInfo->stubAddr);
-                call->gtCall.gtStubCallStubAddr = call->gtCall.gtSpeculativeCandidateInfo->stubAddr;
+                JITDUMP("Restoring stub addr %p from guarded devirt candidate info\n",
+                        call->gtCall.gtGuardedDevirtualizationCandidateInfo->stubAddr);
+                call->gtCall.gtStubCallStubAddr = call->gtCall.gtGuardedDevirtualizationCandidateInfo->stubAddr;
             }
         }
     }
@@ -19128,9 +19128,9 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
 
     if (call->IsVirtual())
     {
-        if (call->IsSpeculativeDevirtualizationCandidate())
+        if (call->IsGuardedDevirtualizationCandidate())
         {
-            // Allow speculative devirt calls to be treated as inline candidates.
+            // Allow guarded devirt calls to be treated as inline candidates.
         }
         else
         {
@@ -19143,7 +19143,7 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
 
     if (call->gtCallType == CT_HELPER)
     {
-        assert(!call->IsSpeculativeDevirtualizationCandidate());
+        assert(!call->IsGuardedDevirtualizationCandidate());
         inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_CALL_TO_HELPER);
         return;
     }
@@ -19162,10 +19162,10 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
     CORINFO_METHOD_HANDLE fncHandle;
     unsigned              methAttr;
 
-    if (call->IsSpeculativeDevirtualizationCandidate())
+    if (call->IsGuardedDevirtualizationCandidate())
     {
-        fncHandle = call->gtSpeculativeCandidateInfo->methodHandle;
-        methAttr  = call->gtSpeculativeCandidateInfo->methodAttr;
+        fncHandle = call->gtGuardedDevirtualizationCandidateInfo->methodHandle;
+        methAttr  = call->gtGuardedDevirtualizationCandidateInfo->methodAttr;
     }
     else
     {
@@ -19279,8 +19279,8 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
         return;
     }
 
-    // The old value should be null OR this call should be a speculative candidate.
-    assert((call->gtInlineCandidateInfo == nullptr) || call->IsSpeculativeDevirtualizationCandidate());
+    // The old value should be null OR this call should be a guarded devirtualization candidate.
+    assert((call->gtInlineCandidateInfo == nullptr) || call->IsGuardedDevirtualizationCandidate());
 
     // The new value should not be null.
     assert(inlineCandidateInfo != nullptr);
@@ -19290,8 +19290,9 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
     // stub address we already squrreled away.
     if (call->IsVirtualStub())
     {
-        JITDUMP("Saving stub addr %p in inline candidate info\n", call->gtSpeculativeCandidateInfo->stubAddr);
-        inlineCandidateInfo->stubAddr = call->gtSpeculativeCandidateInfo->stubAddr;
+        JITDUMP("Saving stub addr %p in inline candidate info\n",
+                call->gtGuardedDevirtualizationCandidateInfo->stubAddr);
+        inlineCandidateInfo->stubAddr = call->gtGuardedDevirtualizationCandidateInfo->stubAddr;
     }
 
     call->gtInlineCandidateInfo = inlineCandidateInfo;
@@ -19453,7 +19454,7 @@ bool Compiler::IsMathIntrinsic(GenTree* tree)
 //     to instead make a local copy. If that is doable, the call is
 //     updated to invoke the unboxed entry on the local copy.
 //
-//     When speculative devirtualization is enabled, the jit may
+//     When guarded devirtualization is enabled, the jit may
 //     transform the call even if the type of the `this` is not exactly
 //     known.
 
@@ -19664,7 +19665,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     const char* derivedClassName  = "?derivedClass";
     const char* derivedMethodName = "?derivedMethod";
 
-    const char* note = "speculative";
+    const char* note = "inexact or not final";
     if (isExact)
     {
         note = "exact";
@@ -19710,8 +19711,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // Don't do this for late devirts
         if (exactContextHandle != nullptr)
         {
-            addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs,
-                                                    objClassAttribs);
+            addGuardedDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
         }
         return;
     }
@@ -19725,8 +19725,7 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
         // Don't do this for late devirts
         if (exactContextHandle != nullptr)
         {
-            addSpeculativeDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs,
-                                                    objClassAttribs);
+            addGuardedDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
         }
 
         return;
@@ -20072,8 +20071,8 @@ void Compiler::addFatPointerCandidate(GenTreeCall* call)
 }
 
 //------------------------------------------------------------------------
-// addSpeculativeDevirtualizationCandidate: mark the call and the method
-//    as a speculative devirtualization candidate.
+// addGuardedDevirtualizationCandidate: mark the call and the method
+//    as a guarded devirtualization candidate.
 //
 // Spill ret_expr in any child tree, because they can't be
 //   cloned, and we need to clone all the trees when we duplicate the
@@ -20086,11 +20085,11 @@ void Compiler::addFatPointerCandidate(GenTreeCall* call)
 //    methodAttr - attributes of the method
 //    classAttr - attributes of the class
 //
-void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall*          call,
-                                                       CORINFO_METHOD_HANDLE methodHandle,
-                                                       CORINFO_CLASS_HANDLE  classHandle,
-                                                       unsigned              methodAttr,
-                                                       unsigned              classAttr)
+void Compiler::addGuardedDevirtualizationCandidate(GenTreeCall*          call,
+                                                   CORINFO_METHOD_HANDLE methodHandle,
+                                                   CORINFO_CLASS_HANDLE  classHandle,
+                                                   unsigned              methodAttr,
+                                                   unsigned              classAttr)
 {
     // This transformation only makes sense for virtual calls
     assert(call->IsVirtual());
@@ -20115,17 +20114,17 @@ void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall*          cal
 
     // TODO: make sure we're not otherwise clobbering the fragile union in GenTreeCall
 
-    JITDUMP("Marking call [%06u] as speculative devirtualization candidate\n", dspTreeID(call));
-    setMethodHasSpeculativeDevirtualization();
-    call->SetSpeculativeDevirtualizationCandidate();
+    JITDUMP("Marking call [%06u] as guarded devirtualization candidate\n", dspTreeID(call));
+    setMethodHasGuardedDevirtualization();
+    call->SetGuardedDevirtualizationCandidate();
     SpillRetExprHelper helper(this);
     helper.StoreRetExprResultsInArgs(call);
 
     // Pass some extra information through...
     //
     // If we were clever we'd allocate enough storage here for an InlineCandidateInfo
-    // and reuse it subsequently.
-    SpeculativeCandidateInfo* pInfo = new (this, CMK_Inlining) SpeculativeCandidateInfo;
+    // and reuse it subsequently (or just union the latter).
+    GuardedDevirtualizationCandidateInfo* pInfo = new (this, CMK_Inlining) GuardedDevirtualizationCandidateInfo;
 
     pInfo->methodHandle = methodHandle;
     pInfo->methodAttr   = methodAttr;
@@ -20142,5 +20141,5 @@ void Compiler::addSpeculativeDevirtualizationCandidate(GenTreeCall*          cal
         pInfo->stubAddr = nullptr;
     }
 
-    call->gtSpeculativeCandidateInfo = pInfo;
+    call->gtGuardedDevirtualizationCandidateInfo = pInfo;
 }

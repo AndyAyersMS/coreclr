@@ -6681,7 +6681,7 @@ void Compiler::fgMorphCallInlineHelper(GenTreeCall* call, InlineResult* result)
         return;
     }
 
-    // Tolerate this becaus speculative devirt can't....
+    // Re-check this because guareded devirtualization may allow these through.
     if (gtIsRecursiveCall(call) && call->IsImplicitTailCall())
     {
         result->NoteFatal(InlineObservation::CALLSITE_IMPLICIT_REC_TAIL_CALL);

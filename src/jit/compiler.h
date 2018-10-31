@@ -6107,13 +6107,13 @@ public:
         }
     };
 
-#define OMF_HAS_NEWARRAY 0x00000001   // Method contains 'new' of an array
-#define OMF_HAS_NEWOBJ 0x00000002     // Method contains 'new' of an object type.
-#define OMF_HAS_ARRAYREF 0x00000004   // Method contains array element loads or stores.
-#define OMF_HAS_VTABLEREF 0x00000008  // Method contains method table reference.
-#define OMF_HAS_NULLCHECK 0x00000010  // Method contains null check.
-#define OMF_HAS_FATPOINTER 0x00000020 // Method contains call, that needs fat pointer transformation.
-#define OMF_HAS_SPECDEVIRT 0x00000040 // Method contains call that may be speculatively devirtualized.
+#define OMF_HAS_NEWARRAY 0x00000001      // Method contains 'new' of an array
+#define OMF_HAS_NEWOBJ 0x00000002        // Method contains 'new' of an object type.
+#define OMF_HAS_ARRAYREF 0x00000004      // Method contains array element loads or stores.
+#define OMF_HAS_VTABLEREF 0x00000008     // Method contains method table reference.
+#define OMF_HAS_NULLCHECK 0x00000010     // Method contains null check.
+#define OMF_HAS_FATPOINTER 0x00000020    // Method contains call that needs fat pointer transformation.
+#define OMF_HAS_GUARDEDDEVIRT 0x00000040 // Method contains guarded devirtualization candidate
 
     bool doesMethodHaveFatPointer()
     {
@@ -6132,26 +6132,26 @@ public:
 
     void addFatPointerCandidate(GenTreeCall* call);
 
-    bool doesMethodHaveSpeculativeDevirtualization()
+    bool doesMethodHaveGuardedDevirtualization()
     {
-        return (optMethodFlags & OMF_HAS_FATPOINTER) != 0;
+        return (optMethodFlags & OMF_HAS_GUARDEDDEVIRT) != 0;
     }
 
-    void setMethodHasSpeculativeDevirtualization()
+    void setMethodHasGuardedDevirtualization()
     {
-        optMethodFlags |= OMF_HAS_FATPOINTER;
+        optMethodFlags |= OMF_HAS_GUARDEDDEVIRT;
     }
 
-    void clearMethodHasSpeculativeDevirtualization()
+    void clearMethodHasGuardedDevirtualization()
     {
-        optMethodFlags &= ~OMF_HAS_FATPOINTER;
+        optMethodFlags &= ~OMF_HAS_GUARDEDDEVIRT;
     }
 
-    void addSpeculativeDevirtualizationCandidate(GenTreeCall*          call,
-                                                 CORINFO_METHOD_HANDLE methodHandle,
-                                                 CORINFO_CLASS_HANDLE  classHandle,
-                                                 unsigned              methodAttr,
-                                                 unsigned              classAttr);
+    void addGuardedDevirtualizationCandidate(GenTreeCall*          call,
+                                             CORINFO_METHOD_HANDLE methodHandle,
+                                             CORINFO_CLASS_HANDLE  classHandle,
+                                             unsigned              methodAttr,
+                                             unsigned              classAttr);
 
     unsigned optMethodFlags;
 
