@@ -895,6 +895,10 @@ ClassLoader::LoadExactParentAndInterfacesTransitively(MethodTable *pMT)
         }
     }
 
+#ifndef CROSSGEN_COMPILE
+    printf("$$$ Load exact %p (%s) ... parent %p\n", pMT, pMT->GetDebugClassName(), pParentMT);
+#endif
+
     if (pParentMT != NULL)
     {
         EnsureLoaded(pParentMT, CLASS_LOAD_EXACTPARENTS);

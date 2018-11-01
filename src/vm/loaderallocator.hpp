@@ -593,6 +593,7 @@ public:
 
         if (MTHasDerivedTypeInOtherLoaderAllocator(pMT))
         {
+            GCX_COOP();
             CrstHolder ch(&s_ActiveLoaderAllocatorsCrst);
             auto iterActiveLoaderAllocators = s_activeLoaderAllocators->Begin();
             auto iterActiveLoaderAllocatorsEnd = s_activeLoaderAllocators->End();
@@ -620,17 +621,39 @@ private:
 
         if (MTHasDerivedType(pMT))
         {
+            GCX_COOP();
             CrstHolder ch(&m_crstLoaderAllocator);
-            auto iterSearchDerivedTypesOfpMT = m_derivedTypes.Begin(pMT);
-            auto endSearchDerivedTypesOfpMT = m_derivedTypes.End(pMT);
-            for (;iterSearchDerivedTypesOfpMT != endSearchDerivedTypesOfpMT; ++iterSearchDerivedTypesOfpMT)
+
+#if 0
+            // does not compile yet
+            if (pMT->IsInterface())
             {
-                MethodTable* derivedType = *iterSearchDerivedTypesOfpMT;
-                if (!lambda(derivedType))
-                    return false;
-                
-                if (!WalkDerivingAndImplementingMethodTables(derivedType, lambda))
-                    return false;
+                auto iterSearchImplementingTypesOfpMT = m_interfaceImplementations.Begin(pMT);
+                auto endSearchImplementingTypesOfpMT = m_interfaceImplementations.End(pMT);
+                for (;iterSearchImplementingTypesOfpMT != endSearchImplementingTypesOfpMT; ++iterSearchImplementingTypesOfpMT)
+                {
+                    MethodTable* implementingType = *iterSearchImplementingTypesOfpMT;
+                    if (!lambda(implementingType))
+                        return false;
+                    
+                    if (!WalkDerivingAndImplementingMethodTables(derivedType, lambda))
+                        return false;
+                }
+            }
+            else
+#endif
+            {
+                auto iterSearchDerivedTypesOfpMT = m_derivedTypes.Begin(pMT);
+                auto endSearchDerivedTypesOfpMT = m_derivedTypes.End(pMT);
+                for (;iterSearchDerivedTypesOfpMT != endSearchDerivedTypesOfpMT; ++iterSearchDerivedTypesOfpMT)
+                {
+                    MethodTable* derivedType = *iterSearchDerivedTypesOfpMT;
+                    if (!lambda(derivedType))
+                        return false;
+                    
+                    if (!WalkDerivingAndImplementingMethodTables(derivedType, lambda))
+                        return false;
+                }
             }
         }
 

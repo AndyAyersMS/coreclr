@@ -2152,24 +2152,38 @@ MethodTable* LoaderAllocator::FindUniqueConcreteTypeWhichImplementsThisInterface
         *pCheckableCondition = pInterfaceType->GenerateCheckableConditionForNewInterfaceImplementation();
 
     if (!pInterfaceType->HasDerivedType())
+    {
+        printf("VM says no derived types for interface %p (%s)\n", pInterfaceType, pInterfaceType->GetDebugClassName());
         return nullptr;
+    }
 
     if (pInterfaceType->HasMultipleDerivedTypes())
+    {
+        printf("VM says multiple types for interface %p (%s)\n", pInterfaceType, pInterfaceType->GetDebugClassName());
         return nullptr;
+    }
+
+    printf("VM is verifing single implementor for interface %p (%s)\n", pInterfaceType, pInterfaceType->GetDebugClassName());
 
     // Walk derived types, and stop walking and report null if multiple concrete derived types are found.
     MethodTable *pUniqueType = nullptr;
+
     if (!WalkDerivingAndImplementingMethodTables(pInterfaceType, [&pUniqueType](MethodTable *pDerivedMethodTable)
-    {
+    {                
+        printf("checking %p (%s) ...\n", pDerivedMethodTable, pDerivedMethodTable->GetDebugClassName());
+
         if (!pDerivedMethodTable->IsAbstract())
         {
             if (pUniqueType != nullptr)
             {
+                printf("Dang, %p (%s) ruins things ...\n", pDerivedMethodTable, pDerivedMethodTable->GetDebugClassName());
                 pUniqueType = nullptr;
                 return false;
             }
             pUniqueType = pDerivedMethodTable;
+            printf("Yeah! %p (%s) is unique (so far) ...\n", pUniqueType, pUniqueType->GetDebugClassName());
         }
+        printf("...still good...\n");
 
         return true;
     }))
