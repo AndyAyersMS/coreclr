@@ -19563,6 +19563,10 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
             JITDUMP("Only known implementor of %p (%s) is %p (%s), we could guess!\n",
                 objClass, eeGetClassName(objClass), uniqueImplementingClass, eeGetClassName(uniqueImplementingClass));
         }
+        else
+        {
+            JITDUMP("VM says no or multiple implementors of  %p (%s)\n", objClass, eeGetClassName(objClass));
+        }
 
         JITDUMP("--- obj class is interface, sorry\n");
         return;
