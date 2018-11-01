@@ -10263,6 +10263,13 @@ void MethodTableWriteableData::DeclareDerivedType(MethodTable *thisType, MethodT
     {
         otherType->GetLoaderAllocator()->AddDerivedTypeInfo(thisType, otherType);
     }
+#ifndef CROSSGEN_COMPILE
+    else
+    {
+        printf("---- not adding %p (%s) as derived from %p (%s): subsequent interface implementor\n",
+            otherType, otherType->GetDebugClassName(), thisType, thisType->GetDebugClassName());
+    }
+#endif
 
     while(repeat)
     {
