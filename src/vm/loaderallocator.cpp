@@ -2168,6 +2168,8 @@ MethodTable* LoaderAllocator::FindUniqueConcreteTypeWhichImplementsThisInterface
     // Walk derived types, and stop walking and report null if multiple concrete derived types are found.
     MethodTable *pUniqueType = nullptr;
 
+    GCX_COOP();
+
     if (!WalkDerivingAndImplementingMethodTables(pInterfaceType, [&pUniqueType](MethodTable *pDerivedMethodTable)
     {                
         printf("checking %p (%s) ...\n", pDerivedMethodTable, pDerivedMethodTable->GetDebugClassName());

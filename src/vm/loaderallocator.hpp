@@ -583,7 +583,14 @@ public:
     template<class TLambda>
     bool WalkDerivingAndImplementingMethodTables(MethodTable *pMT, TLambda &lambda)
     {
-        STANDARD_VM_CONTRACT;
+        CONTRACTL
+        {
+            THROWS;
+            MODE_COOPERATIVE;
+            GC_NOTRIGGER;
+        }
+        CONTRACTL_END;
+
         _ASSERTE(MTGetLoaderAllocator(pMT) == this);
 
         if (!WalkDerivingAndImplementingMethodTables_Worker(pMT, lambda))
@@ -593,7 +600,6 @@ public:
 
         if (MTHasDerivedTypeInOtherLoaderAllocator(pMT))
         {
-            GCX_COOP();
             CrstHolder ch(&s_ActiveLoaderAllocatorsCrst);
             auto iterActiveLoaderAllocators = s_activeLoaderAllocators->Begin();
             auto iterActiveLoaderAllocatorsEnd = s_activeLoaderAllocators->End();
@@ -617,14 +623,18 @@ private:
     template<class TLambda>
     bool WalkDerivingAndImplementingMethodTables_Worker(MethodTable *pMT, TLambda &lambda)
     {
-        STANDARD_VM_CONTRACT;
+        CONTRACTL
+        {
+            THROWS;
+            MODE_COOPERATIVE;
+            GC_NOTRIGGER;
+        }
+        CONTRACTL_END;
 
         if (MTHasDerivedType(pMT))
         {
-            GCX_COOP();
             CrstHolder ch(&m_crstLoaderAllocator);
 
-#if 0
             // does not compile yet
             if (pMT->IsInterface())
             {
@@ -632,16 +642,15 @@ private:
                 auto endSearchImplementingTypesOfpMT = m_interfaceImplementations.End(pMT);
                 for (;iterSearchImplementingTypesOfpMT != endSearchImplementingTypesOfpMT; ++iterSearchImplementingTypesOfpMT)
                 {
-                    MethodTable* implementingType = *iterSearchImplementingTypesOfpMT;
+                    MethodTable* implementingType = iterSearchImplementingTypesOfpMT->m_pImplementingType;
                     if (!lambda(implementingType))
                         return false;
-                    
-                    if (!WalkDerivingAndImplementingMethodTables(derivedType, lambda))
+
+                    if (!WalkDerivingAndImplementingMethodTables(implementingType, lambda))
                         return false;
                 }
             }
             else
-#endif
             {
                 auto iterSearchDerivedTypesOfpMT = m_derivedTypes.Begin(pMT);
                 auto endSearchDerivedTypesOfpMT = m_derivedTypes.End(pMT);
@@ -650,7 +659,7 @@ private:
                     MethodTable* derivedType = *iterSearchDerivedTypesOfpMT;
                     if (!lambda(derivedType))
                         return false;
-                    
+
                     if (!WalkDerivingAndImplementingMethodTables(derivedType, lambda))
                         return false;
                 }
