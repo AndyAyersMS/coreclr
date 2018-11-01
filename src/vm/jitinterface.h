@@ -962,6 +962,9 @@ public:
     bool convertPInvokeCalliToCall(CORINFO_RESOLVED_TOKEN * pResolvedToken,
                                    bool fMustConvert);
 
+    CORINFO_CLASS_HANDLE getUniqueImplementingClass(CORINFO_CLASS_HANDLE interfaceClsHnd);
+    bool isThereAnyOverride(CORINFO_CLASS_HANDLE classHnd, CORINFO_METHOD_HANDLE methHnd);
+
     void getFunctionEntryPoint(CORINFO_METHOD_HANDLE   ftn,                 /* IN  */
                                CORINFO_CONST_LOOKUP *  pResult,             /* OUT */
                                CORINFO_ACCESS_FLAGS    accessFlags = CORINFO_ACCESS_ANY);
