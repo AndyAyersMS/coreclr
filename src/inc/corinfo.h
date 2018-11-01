@@ -3184,6 +3184,23 @@ public:
                     CORINFO_RESOLVED_TOKEN * pResolvedToken,
                     bool fMustConvert
                     ) = 0;
+
+    // See if there is currently just one class that implements an interface,
+    // and if so, return it.
+    virtual CORINFO_CLASS_HANDLE getUniqueImplementingClass(
+        CORINFO_CLASS_HANDLE interfaceClsHnd
+    ) 
+        // temporary
+        { return NULL; }
+
+    // See if there is currently any class that overrides the indicated method
+    // for the method table of the indicated type.
+    virtual bool isThereAnyOverride(
+        CORINFO_CLASS_HANDLE classHnd, 
+        CORINFO_METHOD_HANDLE methHnd
+    ) 
+        // temporary
+        { return false; }
 };
 
 /**********************************************************************************/

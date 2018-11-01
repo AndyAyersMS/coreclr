@@ -25992,10 +25992,10 @@ private:
             GenTree* methodTable = compiler->gtNewIndir(TYP_I_IMPL, thisTree);
             methodTable->gtFlags |= GTF_IND_INVARIANT;
 
-            // Find target method table from the inline call info
-            InlineCandidateInfo* inlineInfo        = origCall->gtInlineCandidateInfo;
-            CORINFO_CLASS_HANDLE clsHnd            = inlineInfo->clsHandle;
-            GenTree*             targetMethodTable = compiler->gtNewIconEmbClsHndNode(clsHnd);
+            // Find target method table
+            GuardedDevirtualizationCandidateInfo* guardedInfo       = origCall->gtGuardedDevirtualizationCandidateInfo;
+            CORINFO_CLASS_HANDLE                  clsHnd            = guardedInfo->guardedClassHandle;
+            GenTree*                              targetMethodTable = compiler->gtNewIconEmbClsHndNode(clsHnd);
 
             // Compare and jump to else (which does the indirect call) if NOT equal
             GenTree* methodTableCompare = compiler->gtNewOperNode(GT_NE, TYP_INT, targetMethodTable, methodTable);
@@ -26167,8 +26167,7 @@ private:
             // For stub calls, restore the stub address
             if (origCall->IsVirtualStub())
             {
-                JITDUMP("Restoring stub addr %p from inline candidate info\n",
-                        origCall->gtInlineCandidateInfo->stubAddr);
+                JITDUMP("Restoring stub addr %p from candidate info\n", origCall->gtInlineCandidateInfo->stubAddr);
                 call->gtStubCallStubAddr = origCall->gtInlineCandidateInfo->stubAddr;
             }
 

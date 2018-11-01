@@ -17912,7 +17912,7 @@ void Compiler::impCanInlineIL(CORINFO_METHOD_HANDLE fncHandle,
 /*****************************************************************************
  */
 
-void Compiler::impCheckCanInline(GenTree*               call,
+void Compiler::impCheckCanInline(GenTreeCall*           call,
                                  CORINFO_METHOD_HANDLE  fncHandle,
                                  unsigned               methAttr,
                                  CORINFO_CONTEXT_HANDLE exactContextHnd,
@@ -17925,7 +17925,7 @@ void Compiler::impCheckCanInline(GenTree*               call,
     struct Param
     {
         Compiler*              pThis;
-        GenTree*               call;
+        GenTreeCall*           call;
         CORINFO_METHOD_HANDLE  fncHandle;
         unsigned               methAttr;
         CORINFO_CONTEXT_HANDLE exactContextHnd;
@@ -18057,24 +18057,42 @@ void Compiler::impCheckCanInline(GenTree*               call,
                    (varTypeIsStruct(fncRetType) && (fncRealRetType == TYP_STRUCT)));
 #endif
 
+            // Allocate an InlineCandidateInfo structure,
             //
-            // Allocate an InlineCandidateInfo structure
+            // Or, reuse the existing GuardedDevirtualizationCandidateInfo,
+            // which was pre-allocated to have extra room.
             //
             InlineCandidateInfo* pInfo;
-            pInfo = new (pParam->pThis, CMK_Inlining) InlineCandidateInfo;
 
-            pInfo->dwRestrictions       = dwRestrictions;
-            pInfo->methInfo             = methInfo;
-            pInfo->methAttr             = pParam->methAttr;
-            pInfo->clsHandle            = clsHandle;
-            pInfo->clsAttr              = clsAttr;
-            pInfo->fncRetType           = fncRetType;
-            pInfo->exactContextHnd      = pParam->exactContextHnd;
-            pInfo->ilCallerHandle       = pParam->pThis->info.compMethodHnd;
-            pInfo->initClassResult      = initClassResult;
-            pInfo->preexistingSpillTemp = BAD_VAR_NUM;
-            pInfo->retExpr              = nullptr;
-            pInfo->stubAddr             = nullptr;
+            if (pParam->call->IsGuardedDevirtualizationCandidate())
+            {
+                pInfo = pParam->call->gtInlineCandidateInfo;
+            }
+            else
+            {
+                pInfo = new (pParam->pThis, CMK_Inlining) InlineCandidateInfo;
+
+                // Null out bits we don't use when we're just inlining
+                pInfo->guardedClassHandle  = nullptr;
+                pInfo->guardedMethodHandle = nullptr;
+                pInfo->stubAddr            = nullptr;
+            }
+
+            pInfo->methInfo                       = methInfo;
+            pInfo->ilCallerHandle                 = pParam->pThis->info.compMethodHnd;
+            pInfo->clsHandle                      = clsHandle;
+            pInfo->exactContextHnd                = pParam->exactContextHnd;
+            pInfo->retExpr                        = nullptr;
+            pInfo->dwRestrictions                 = dwRestrictions;
+            pInfo->preexistingSpillTemp           = BAD_VAR_NUM;
+            pInfo->clsAttr                        = clsAttr;
+            pInfo->methAttr                       = pParam->methAttr;
+            pInfo->initClassResult                = initClassResult;
+            pInfo->fncRetType                     = fncRetType;
+            pInfo->exactContextNeedsRuntimeLookup = false;
+
+            // Note exactContextNeedsRuntimeLookup is reset later on,
+            // over in impMarkInlineCandidate.
 
             *(pParam->ppInlineCandidateInfo) = pInfo;
 
@@ -19042,7 +19060,7 @@ void Compiler::impMarkInlineCandidate(GenTree*               callNode,
 
 #if DEBUG
     // Allow this policy to be overridden...
-    if (JitConfig.JitEnableGuardedDevirtualizationEvenIfNoInline() > 0)
+    if (JitConfig.JitGuardedDevirtualizationEvenIfNoInline() > 0)
     {
         return;
     }
@@ -19182,8 +19200,8 @@ void Compiler::impMarkInlineCandidateHelper(GenTreeCall*           call,
 
     if (call->IsGuardedDevirtualizationCandidate())
     {
-        fncHandle = call->gtGuardedDevirtualizationCandidateInfo->methodHandle;
-        methAttr  = call->gtGuardedDevirtualizationCandidateInfo->methodAttr;
+        fncHandle = call->gtGuardedDevirtualizationCandidateInfo->guardedMethodHandle;
+        methAttr  = info.compCompHnd->getMethodAttribs(fncHandle);
     }
     else
     {
@@ -19303,17 +19321,7 @@ void Compiler::impMarkInlineCandidateHelper(GenTreeCall*           call,
     // The new value should not be null.
     assert(inlineCandidateInfo != nullptr);
     inlineCandidateInfo->exactContextNeedsRuntimeLookup = exactContextNeedsRuntimeLookup;
-
-    // If we're making a virtual stub call into an inline candidate, squirrel away the
-    // stub address we already squrreled away.
-    if (call->IsVirtualStub())
-    {
-        JITDUMP("Saving stub addr %p in inline candidate info\n",
-                call->gtGuardedDevirtualizationCandidateInfo->stubAddr);
-        inlineCandidateInfo->stubAddr = call->gtGuardedDevirtualizationCandidateInfo->stubAddr;
-    }
-
-    call->gtInlineCandidateInfo = inlineCandidateInfo;
+    call->gtInlineCandidateInfo                         = inlineCandidateInfo;
 
     // Mark the call node as inline candidate.
     call->gtFlags |= GTF_CALL_INLINE_CANDIDATE;
@@ -19646,30 +19654,65 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     }
 #endif // defined(DEBUG)
 
-    // Bail if obj class is an interface.
+    // See if the jit's best type for `obj` is an interface.
     // See for instance System.ValueTuple`8::GetHashCode, where lcl 0 is System.IValueTupleInternal
     //   IL_021d:  ldloc.0
     //   IL_021e:  callvirt   instance int32 System.Object::GetHashCode()
+    //
+    // If so, we can't devirtualize, but we may be able to do guarded devirtualization.
     if ((objClassAttribs & CORINFO_FLG_INTERFACE) != 0)
     {
-        // See if there's just one class that implements this interface (at least
-        // at the time the method is jitted). If so we can guess for it...!
+        // If we're called during early devirtualiztion, attempt guarded devirtualization
+        // if there's currently just one implementing class.
+        if (exactContextHandle == nullptr)
+        {
+            JITDUMP("--- obj class is interface...unable to dervirtualize, sorry\n");
+            return;
+        }
+
         CORINFO_CLASS_HANDLE uniqueImplementingClass = info.compCompHnd->getUniqueImplementingClass(objClass);
 
-        if (uniqueImplementingClass != NO_CLASS_HANDLE)
+        if (uniqueImplementingClass == NO_CLASS_HANDLE)
         {
-            JITDUMP("Only known implementor of %p (%s) is %p (%s), we could guess!\n",
-                objClass, eeGetClassName(objClass), uniqueImplementingClass, eeGetClassName(uniqueImplementingClass));
-        }
-        else
-        {
-            JITDUMP("VM says no or multiple implementors of  %p (%s)\n", objClass, eeGetClassName(objClass));
+            JITDUMP("No unique implementor of interface %p (%s), sorry\n", objClass, objClassName);
+            return;
         }
 
-        JITDUMP("--- obj class is interface, sorry\n");
+        JITDUMP("Only known implementor of interface %p (%s) is %p (%s)!\n", objClass, objClassName,
+                uniqueImplementingClass, eeGetClassName(uniqueImplementingClass));
+
+        bool guessUniqueInterface = true;
+
+        INDEBUG(guessUniqueInterface = (JitConfig.JitGuardedDevirtualizationGuessUniqueInterface() > 0););
+
+        if (!guessUniqueInterface)
+        {
+            JITDUMP("Guarded devirt for unique interface implementor is not enabled, sorry\n");
+            return;
+        }
+
+        // Ask the runtime to determine the method that would be called based on the guessed-for type.
+        CORINFO_CONTEXT_HANDLE ownerType = *contextHandle;
+        CORINFO_METHOD_HANDLE  uniqueImplementingMethod =
+            info.compCompHnd->resolveVirtualMethod(baseMethod, uniqueImplementingClass, ownerType);
+
+        if (uniqueImplementingMethod == nullptr)
+        {
+            JITDUMP("Can't figure out which method would be invoked, sorry\n");
+            return;
+        }
+
+        JITDUMP("Interface call would invoke method %s\n", eeGetMethodName(uniqueImplementingMethod, nullptr));
+        DWORD uniqueMethodAttribs = info.compCompHnd->getMethodAttribs(uniqueImplementingMethod);
+        DWORD uniqueClassAttribs  = info.compCompHnd->getClassAttribs(uniqueImplementingClass);
+
+        addGuardedDevirtualizationCandidate(call, uniqueImplementingMethod, uniqueImplementingClass,
+                                            uniqueMethodAttribs, uniqueClassAttribs);
         return;
     }
 
+    // If we get this far, the jit has a lower bound class type for the `this` object being used for dispatch.
+    // It may or may not know enough to devirtualize...
     if (isInterface)
     {
         assert(call->IsVirtualStub());
@@ -19683,6 +19726,9 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     // If we failed to get a handle, we can't devirtualize.  This can
     // happen when prejitting, if the devirtualization crosses
     // servicing bubble boundaries.
+    //
+    // Note if we have some way of guessing a better and more likely type we can do something similar to the code
+    // above for the case where the best jit type is an interface type.
     if (derivedMethod == nullptr)
     {
         JITDUMP("--- no derived method, sorry\n");
@@ -19722,46 +19768,45 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     }
 #endif // defined(DEBUG)
 
-    if (!isExact && !objClassIsFinal && !derivedMethodIsFinal)
+    bool canDevirtualize = true;
+
+    if (isInterface)
     {
-        // Type is not exact, and neither class or method is final.
-        //
-        // We could speculatively devirtualize, but there's no
-        // reason to believe the derived method is the one that
-        // is likely to be invoked.
-        //
-        // If there's currently no further overriding (that is, at
-        // the time of jitting, objClass has no subclasses that
-        // override this method), then perhaps we'd be willing to
-        // make a bet...?
-        JITDUMP("    Class not final or exact, method not final\n");
+        canDevirtualize = isExact || objClassIsFinal;
+    }
+    else
+    {
+        canDevirtualize = isExact || objClassIsFinal || derivedMethodIsFinal;
+    }
 
-        // Todo: profitbility assessment ... ?
-        // Verify here we can safely do method table compares?
-        // if (!info.compCompHnd->canInlineTypeCheckWithObjectVTable(clsHnd))
+    if (!canDevirtualize)
+    {
+        JITDUMP("    Class not final or exact%s\n", isInterface ? "" : ", and method not final");
 
-        // Don't do this for late devirts
-        if (exactContextHandle != nullptr)
+        // Have we enabled guarded devirtualization by guessing the jit's best class?
+        bool guessJitBestClass = true;
+        INDEBUG(guessJitBestClass = (JitConfig.JitGuardedDevirtualizationGuessBestClass() > 0););
+
+        if (!guessJitBestClass)
         {
-            addGuardedDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
+            JITDUMP("No guarded devirt: guessing for jit best class disabled\n");
+            return;
         }
+
+        // Don't try guarded devirtualiztion when we're doing late devirtualization.
+        if (exactContextHandle == nullptr)
+        {
+            JITDUMP("No guarded devirt during late devirtualization\n");
+            return;
+        }
+
+        // Try guarded devirtualization.
+        addGuardedDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
         return;
     }
 
-    // For interface calls we must have an exact type or final class.
-    if (isInterface && !isExact && !objClassIsFinal)
-    {
-        JITDUMP("    Class not final or exact for interface\n");
-
-        // Todo: profitbility assessment ... ?
-        // Don't do this for late devirts
-        if (exactContextHandle != nullptr)
-        {
-            addGuardedDevirtualizationCandidate(call, derivedMethod, objClass, derivedMethodAttribs, objClassAttribs);
-        }
-
-        return;
-    }
+    // All checks done. Time to transform the call.
+    assert(canDevirtualize);
 
     JITDUMP("    %s; can devirtualize\n", note);
 
@@ -20165,20 +20210,16 @@ void Compiler::addGuardedDevirtualizationCandidate(GenTreeCall*          call,
     SpillRetExprHelper helper(this);
     helper.StoreRetExprResultsInArgs(call);
 
-    // Pass some extra information through...
-    //
-    // If we were clever we'd allocate enough storage here for an InlineCandidateInfo
-    // and reuse it subsequently (or just union the latter).
-    GuardedDevirtualizationCandidateInfo* pInfo = new (this, CMK_Inlining) GuardedDevirtualizationCandidateInfo;
+    // Gather some information for later. Note we actually cons up an InlineCandidateInfo
+    // here. Later on the devirtualized half of this call may become an inline candidate.
+    GuardedDevirtualizationCandidateInfo* pInfo = new (this, CMK_Inlining) InlineCandidateInfo;
 
-    pInfo->methodHandle = methodHandle;
-    pInfo->methodAttr   = methodAttr;
-    pInfo->classHandle  = classHandle;
-    pInfo->classAttr    = classAttr;
+    pInfo->guardedMethodHandle = methodHandle;
+    pInfo->guardedClassHandle  = classHandle;
 
     if (call->IsVirtualStub())
     {
-        JITDUMP("Saving stub addr %p in speculative candidate info\n", call->gtStubCallStubAddr);
+        JITDUMP("Saving stub addr %p in candidate info\n", call->gtStubCallStubAddr);
         pInfo->stubAddr = call->gtStubCallStubAddr;
     }
     else
