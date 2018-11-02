@@ -8896,7 +8896,6 @@ MethodTableBuilder::LoadExactInterfaceMap(MethodTable *pMT)
         if (it.GetInterface()->HasInstantiation())
         {
             hasInstantiatedInterfaces = TRUE;
-            // break;
         }
         else
         {

@@ -9083,8 +9083,6 @@ CORINFO_CLASS_HANDLE CEEInfo::getUniqueImplementingClass(CORINFO_CLASS_HANDLE in
 
     CORINFO_CLASS_HANDLE result = nullptr;
 
-    printf("JI: Seeing if %p has a unique implementing class\n", interfaceClsHnd);
-
     JIT_TO_EE_TRANSITION();
 
     TypeHandle iHnd(interfaceClsHnd);
@@ -9094,11 +9092,6 @@ CORINFO_CLASS_HANDLE CEEInfo::getUniqueImplementingClass(CORINFO_CLASS_HANDLE in
         MethodTable* iMT = iHnd.GetMethodTable();
         MethodTable* uniqueMT = iMT->GetLoaderAllocator()->FindUniqueConcreteTypeWhichImplementsThisInterface(iMT, NULL);
         result = (CORINFO_CLASS_HANDLE) uniqueMT;
-        printf("FUCTWITI says %p\n", result);
-    }
-    else
-    {
-        printf("Hey bud, %p is not an interface!\n", interfaceClsHnd);
     }
 
     EE_TO_JIT_TRANSITION();

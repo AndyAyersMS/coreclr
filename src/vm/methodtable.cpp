@@ -10262,28 +10262,8 @@ void MethodTableWriteableData::DeclareDerivedType(MethodTable *thisType, MethodT
     // so that there may be multiple copies of derived types in the interfaces table. 
     if (!thisType->IsInterface() || !(initialFlags & enum_flag_DerivedType))
     {
-#ifndef CROSSGEN_COMPILE
-        if (thisType->IsInterface())
-        {
-            printf("---- adding %p (%s) as derived from %p (%s): first interface implementor -- initial flags %04x \n",
-                otherType, otherType->GetDebugClassName(), thisType, thisType->GetDebugClassName(), initialFlags);
-        }
-        else
-        {
-            printf("---- adding %p (%s) as derived from %p (%s): derived class -- initial flags %04x \n",
-                otherType, otherType->GetDebugClassName(), thisType, thisType->GetDebugClassName(), initialFlags);
-        }
-#endif
-
         otherType->GetLoaderAllocator()->AddDerivedTypeInfo(thisType, otherType);
     }
-#ifndef CROSSGEN_COMPILE
-    else
-    {
-        printf("---- not adding %p (%s) as derived from %p (%s): subsequent interface implementor\n",
-            otherType, otherType->GetDebugClassName(), thisType, thisType->GetDebugClassName());
-    }
-#endif
 
     while(repeat)
     {
@@ -10304,9 +10284,6 @@ void MethodTableWriteableData::DeclareDerivedType(MethodTable *thisType, MethodT
 
         if (newFlags != initialFlags)
         {
-#ifndef CROSSGEN_COMPILE
-            printf(" updating flags for %p from %04x to %04x\n", thisType, initialFlags, newFlags);
-#endif
             DWORD actualInitialFlags = FastInterlockCompareExchange(EnsureWritablePages((ULONG*)&m_dwFlags), newFlags, initialFlags);
             repeat = initialFlags != actualInitialFlags;
             initialFlags = actualInitialFlags;
