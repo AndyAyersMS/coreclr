@@ -11950,6 +11950,8 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
 
     // We must have a handle on one side or the other here to optimize,
     // otherwise we can't be sure that optimizing is sound.
+    //
+    // Todo -- handle case where both sides are GetType() intrisnsics.
     const bool op1IsFromHandle = (op1Kind == TPK_Handle);
     const bool op2IsFromHandle = (op2Kind == TPK_Handle);
 
@@ -11961,6 +11963,11 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
     // If both types are created via handles, we can simply compare
     // handles (or the indirection cells for handles) instead of the
     // types that they'd create.
+    //
+    // Also keep track of how many runtime lookups are involved.
+
+    unsigned runtimeLookupCount = 0;
+
     if (op1IsFromHandle && op2IsFromHandle)
     {
         JITDUMP("Optimizing compare of types-from-handles to instead compare handles\n");
@@ -11970,7 +11977,6 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
         GenTree*             op2TunneledHandle  = nullptr;
         CORINFO_CLASS_HANDLE cls1Hnd            = NO_CLASS_HANDLE;
         CORINFO_CLASS_HANDLE cls2Hnd            = NO_CLASS_HANDLE;
-        unsigned             runtimeLookupCount = 0;
 
         // Try and find class handles from op1 and op2
         cls1Hnd = gtGetHelperArgClassHandle(op1ClassFromHandle, &runtimeLookupCount, &op1TunneledHandle);
@@ -12067,7 +12073,7 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
 
     // Tunnel through the handle operand to get at the class handle involved.
     GenTree* const       opHandleArgument = opHandle->gtCall.gtCallArgs->gtOp.gtOp1;
-    CORINFO_CLASS_HANDLE clsHnd           = gtGetHelperArgClassHandle(opHandleArgument);
+    CORINFO_CLASS_HANDLE clsHnd           = gtGetHelperArgClassHandle(opHandleArgument, &runtimeLookupCount);
 
     // If we couldn't find the class handle, give up.
     if (clsHnd == NO_CLASS_HANDLE)
@@ -12085,13 +12091,12 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
     }
 
     // We're good to go.
-    JITDUMP("Optimizing compare of obj.GetType()"
-            " and type-from-handle to compare method table pointer\n");
+    JITDUMP("Optimizing compare of obj.GetType() and type-from-handle further...\n");
 
     // opHandleArgument is the method table we're looking for.
     GenTree* const knownMT = opHandleArgument;
 
-    // Fetch object method table from the object itself.
+    // Figure out which operand is the input to GetType()
     GenTree* objOp = nullptr;
 
     // Note we may see intrinsified or regular calls to GetType
@@ -12104,6 +12109,52 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
         assert(opOther->OperGet() == GT_CALL);
         objOp = opOther->gtCall.gtCallObjp;
     }
+
+    // We may know the type of this operand...
+    bool                 isExact     = false;
+    bool                 isNonNull   = false;
+    CORINFO_CLASS_HANDLE objClassHnd = gtGetClassHandle(objOp, &isExact, &isNonNull);
+
+    if ((objClassHnd != nullptr) && isExact)
+    {
+        JITDUMP("Type of input to GetType() is known exactly\n");
+
+        // We have both handles, compare them.
+        JITDUMP("Asking runtime to compare %p (%s) and %p (%s) for equality\n", dspPtr(objClassHnd),
+                info.compCompHnd->getClassName(objClassHnd), dspPtr(clsHnd), info.compCompHnd->getClassName(clsHnd));
+        TypeCompareState s = info.compCompHnd->compareTypesForEquality(objClassHnd, clsHnd);
+
+        if (s != TypeCompareState::May)
+        {
+            // Type comparison result is known.
+            const bool typesAreEqual = (s == TypeCompareState::Must);
+            const bool operatorIsEQ  = (oper == GT_EQ);
+            const int  compareResult = operatorIsEQ ^ typesAreEqual ? 0 : 1;
+            JITDUMP("Runtime reports comparison is known at jit time: %u\n", compareResult);
+            GenTree* result = gtNewIconNode(compareResult);
+
+            // Any runtime lookups that fed into this compare are
+            // now dead code, so they no longer require the runtime context.
+            assert(lvaGenericsContextUseCount >= runtimeLookupCount);
+            lvaGenericsContextUseCount -= runtimeLookupCount;
+
+            if (!isNonNull)
+            {
+                // Must also nullcheck
+                GenTree* const nullcheck = gtNewOperNode(GT_NULLCHECK, TYP_I_IMPL, objOp);
+                nullcheck->gtFlags |= GTF_EXCEPT | GTF_DONT_CSE;
+                compCurBB->bbFlags |= BBF_HAS_NULLCHECK;
+                optMethodFlags |= OMF_HAS_NULLCHECK;
+                GenTree* comma = gtNewOperNode(GT_COMMA, result->TypeGet(), nullcheck, result);
+                result         = comma;
+            }
+
+            // TODO: if !isNonNull we need to wrap this in a comma nullcheck.
+            return result;
+        }
+    }
+
+    JITDUMP("Jit will emit method table test\n");
 
     GenTree* const objMT = gtNewOperNode(GT_IND, TYP_I_IMPL, objOp);
 

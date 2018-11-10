@@ -12659,7 +12659,9 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 /* Try to fold the really simple cases like 'iconst *, ifne/ifeq'*/
                 /* Don't make any blocks unreachable in import only mode */
 
-                if ((op1->gtOper == GT_CNS_INT) && !compIsForImportOnly())
+                op2 = op1->gtEffectiveVal();
+
+                if ((op2->OperGet() == GT_CNS_INT) && !compIsForImportOnly())
                 {
                     /* gtFoldExpr() should prevent this as we don't want to make any blocks
                        unreachable under compDbgCode */
@@ -12674,7 +12676,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 #ifdef DEBUG
                     if (verbose)
                     {
-                        if (op1->gtIntCon.gtIconVal)
+                        if (op2->gtIntCon.gtIconVal)
                         {
                             printf("\nThe conditional jump becomes an unconditional jump to " FMT_BB "\n",
                                    block->bbJumpDest->bbNum);
