@@ -7810,6 +7810,8 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
 
     if (mflags & CORINFO_FLG_DELEGATE_INVOKE)
     {
+        setMethodHasDelegateInvoke();
+
         assert(!compIsForInlining());
         assert(!(mflags & CORINFO_FLG_STATIC)); // can't call a static method
         assert(mflags & CORINFO_FLG_FINAL);
@@ -18393,26 +18395,35 @@ void Compiler::impCheckCanInline(GenTreeCall*           call,
             }
 #endif
 
+            if (pParam->methAttr & CORINFO_FLG_DELEGATE_INVOKE)
+            {
+                // Really need to split out the "make toplevel" bit from the
+                // is inline candidate bit.
+                *(pParam->ppInlineCandidateInfo) = new (pParam->pThis, CMK_Inlining) InlineCandidateInfo;
+                goto _exit;
+            }
+
             /* Try to get the code address/size for the method */
 
             CORINFO_METHOD_INFO methInfo;
+
             if (!pParam->pThis->info.compCompHnd->getMethodInfo(pParam->fncHandle, &methInfo))
             {
                 pParam->result->NoteFatal(InlineObservation::CALLEE_NO_METHOD_INFO);
                 goto _exit;
             }
-
+            
             bool forceInline;
             forceInline = !!(pParam->methAttr & CORINFO_FLG_FORCEINLINE);
-
+            
             pParam->pThis->impCanInlineIL(pParam->fncHandle, &methInfo, forceInline, pParam->result);
-
+            
             if (pParam->result->IsFailure())
             {
                 assert(pParam->result->IsNever());
                 goto _exit;
             }
-
+                
             // Speculatively check if initClass() can be done.
             // If it can be done, we will try to inline the method. If inlining
             // succeeds, then we will do the non-speculative initClass() and commit it.
@@ -19727,8 +19738,12 @@ void Compiler::impMarkInlineCandidateHelper(GenTreeCall*           call,
 
     if (methAttr & CORINFO_FLG_DONT_INLINE)
     {
-        inlineResult.NoteFatal(InlineObservation::CALLEE_IS_NOINLINE);
-        return;
+        // Allow delegate invoke to pass through
+        if ((methAttr & CORINFO_FLG_DELEGATE_INVOKE) == 0)
+        {
+            inlineResult.NoteFatal(InlineObservation::CALLEE_IS_NOINLINE);
+            return;
+        }
     }
 
     /* Cannot inline synchronized methods */

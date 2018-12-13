@@ -4328,7 +4328,7 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
         fgRemovePreds();
     }
 
-    // Transform indirect calls that require control flow expansion.
+    // Transform indirect calls that may introduce control flow.
     fgTransformIndirectCalls();
 
     EndPhase(PHASE_IMPORTATION);

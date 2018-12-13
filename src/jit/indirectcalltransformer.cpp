@@ -7,6 +7,76 @@
 #pragma hdrstop
 #endif
 
+class DelegateInvokeTransformer
+{
+public:
+
+    DelegateInvokeTransformer(Compiler* compiler, BasicBlock* block, GenTreeStmt* stmt)
+        : compiler(compiler), block(block), stmt(stmt)
+        {
+            // empty
+        }
+
+    void Run()
+    {
+        GenTreeCall* call = stmt->gtStmtExpr->AsCall();
+        assert(call->IsDelegateInvoke());
+
+        JITDUMP("\nDelegateInvokeTransformer examining [%06u]: ", compiler->dspTreeID(call));
+        // Bail on secure case for now
+        if (call->gtCallMoreFlags & GTF_CALL_M_SECURE_DELEGATE_INV)
+        {
+            JITDUMP("sorry, secure delegate\n");
+            return;
+        }
+
+        // The "this" feeding into the Invoke is the delegate instance.
+        // We will need to fetch two fields from it, so may need a temp.
+        GenTree* thisTree      = call->gtCallObjp;
+        GenTree* thisTreeClone = nullptr;
+        if (thisTree->OperIsLocal())
+        {
+            thisTreeClone = compiler->gtClone(thisTree, true);
+        }
+        else
+        {
+            const unsigned thisTempNum = compiler->lvaGrabTemp(true DEBUGARG("delegate invoke this temp"));
+            // lvaSetClass(thisTempNum, ...);
+            GenTree* asgTree = compiler->gtNewTempAssign(thisTempNum, thisTree);
+            GenTree* asgStmt = compiler->fgNewStmtFromTree(asgTree, stmt->gtStmt.gtStmtILoffsx);
+            compiler->fgInsertStmtBefore(block, stmt, asgStmt);
+            thisTree = compiler->gtNewLclvNode(thisTempNum, TYP_REF);
+            thisTreeClone = compiler->gtNewLclvNode(thisTempNum, TYP_REF);
+        }
+
+        // Fetch the "this" going into the call from the delegate
+        CORINFO_EE_INFO* eeInfo = compiler->eeGetEEInfo();
+        GenTree* newThisAddr =
+            compiler->gtNewOperNode(GT_ADD, TYP_BYREF, thisTree, compiler->gtNewIconNode(eeInfo->offsetOfDelegateInstance, TYP_I_IMPL));
+        GenTree* newThis = compiler->gtNewOperNode(GT_IND, TYP_REF, newThisAddr);
+        // Fetch the method to invoke from the delegate
+        GenTree* methodAddr =
+            compiler->gtNewOperNode(GT_ADD, TYP_BYREF, thisTreeClone, compiler->gtNewIconNode(eeInfo->offsetOfDelegateFirstTarget, TYP_I_IMPL));
+        GenTree* method = compiler->gtNewOperNode(GT_IND, TYP_REF, methodAddr);
+        // Update operands
+        call->gtCallAddr = method;
+        call->gtCallObjp = newThis;
+        // Update flags, etc...
+        call->gtCallMoreFlags &= ~GTF_CALL_M_DELEGATE_INV;
+        call->gtCallType   = CT_INDIRECT;
+        call->gtCallCookie = nullptr; // sigh, there goes the inline candidate info
+
+        JITDUMP("transformed, result is...\n");
+        DISPTREE(call);
+    }
+
+private:
+
+    Compiler* compiler;
+    BasicBlock* block;
+    GenTreeStmt* stmt;
+};
+
 // The IndirectCallTransformer transforms indirect calls that involve fat function
 // pointers or guarded devirtualization candidates. These transformations introduce
 // control flow and so can't easily be done in the importer.
@@ -116,13 +186,20 @@ private:
                 transformer.Run();
                 count++;
             }
+
+            if (ContainsDelegateInvoke(stmt))
+            {
+                DelegateInvokeTransformer transformer(compiler, block, stmt);
+                transformer.Run();
+                count++;
+            }
         }
 
         return count;
     }
 
     //------------------------------------------------------------------------
-    // ContainsFatCalli: check does this statement contain fat pointer call.
+    // ContainsFatCalli: check if this statement contains a fat pointer call.
     //
     // Checks fatPointerCandidate in form of call() or lclVar = call().
     //
@@ -140,8 +217,8 @@ private:
     }
 
     //------------------------------------------------------------------------
-    // ContainsGuardedDevirtualizationCandidate: check does this statement contain a virtual
-    // call that we'd like to guardedly devirtualize?
+    // ContainsGuardedDevirtualizationCandidate: check if this statements contain a virtual
+    // call that we'd like to guardedly devirtualize.
     //
     // Return Value:
     //    true if contains, false otherwise.
@@ -152,6 +229,18 @@ private:
     {
         GenTree* candidate = stmt->gtStmtExpr;
         return candidate->IsCall() && candidate->AsCall()->IsGuardedDevirtualizationCandidate();
+    }
+
+    //------------------------------------------------------------------------
+    // ContainsDelegateInvoke: check if this statement contains a delegate 
+    // invocation that we'd like to expand.
+    //
+    // Return Value:
+    //    true if contains, false otherwise.
+    bool ContainsDelegateInvoke(GenTreeStmt* stmt)
+    {
+        GenTree* candidate = stmt->gtStmtExpr;
+        return candidate->IsCall() && candidate->AsCall()->IsDelegateInvoke();
     }
 
     class Transformer
@@ -810,7 +899,7 @@ void Compiler::fgTransformIndirectCalls()
 {
     JITDUMP("\n*************** in fgTransformIndirectCalls(%s)\n", compIsForInlining() ? "inlinee" : "root");
 
-    if (doesMethodHaveFatPointer() || doesMethodHaveGuardedDevirtualization())
+    if (doesMethodHaveFatPointer() || doesMethodHaveGuardedDevirtualization() || doesMethodHaveDelegateInvoke())
     {
         IndirectCallTransformer indirectCallTransformer(this);
         int                     count = indirectCallTransformer.Run();
@@ -827,6 +916,7 @@ void Compiler::fgTransformIndirectCalls()
 
         clearMethodHasFatPointer();
         clearMethodHasGuardedDevirtualization();
+        clearMethodHasDelegateInvoke();
     }
     else
     {
