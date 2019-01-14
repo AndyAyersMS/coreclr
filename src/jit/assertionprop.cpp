@@ -957,7 +957,7 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
                 }
             }
 
-            if (fgIsBigOffset(offset) || (vnStore->TypeOfVN(vn) != TYP_REF))
+            if (fgIsBigOffset(offset) || !varTypeIsGC(vnStore->TypeOfVN(vn)))
             {
                 goto DONE_ASSERTION; // Don't make an assertion
             }
