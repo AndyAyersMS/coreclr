@@ -2548,6 +2548,41 @@ bool Compiler::optIsCSEcandidate(GenTree* tree)
     }
 
     /* Don't bother if the potential savings are very low */
+
+    // Look for DNER locals that we might have under-costed, and recost them.
+    //
+    // A DNER local will (on x64 anyways) have cost 3, which is also MIN_CSE_COST.
+    // But if we recognized DNER after costing, tree costs might be too low.
+    bool isSanctionedVarCase = false;
+
+    if (tree->OperIs(GT_LCL_VAR))
+    {
+        LclVarDsc* varDsc = lvaGetDesc(tree->AsLclVarCommon());
+
+        // Not clear we really need the exposed check -- if the local
+        // is aliased then hopefully we're suitably cautious with
+        // value numbers already.
+        if (varDsc->lvDoNotEnregister && !varDsc->lvAddrExposed)
+        {
+            // We risk causing parent-child CSE ordering issues by
+            // just recosting a leaf like this. Should really rewalk
+            // the whole tree here.
+            //
+            // Or better yet, go upstream and recost the entire tree
+            // when DNER changes.
+            gtSetEvalOrder(tree);
+
+            if (tree->gtCostEx != cost)
+            {
+                JITDUMP("---- Revising cost of [%06u] from %u to %u\n", dspTreeID(tree), cost, tree->gtCostEx);
+                cost = tree->gtCostEx;
+            }
+
+            // Note that this a local var case we'll consider CSEing.
+            isSanctionedVarCase = true;
+        }
+    }
+
     if (cost < MIN_CSE_COST)
     {
         return false;
@@ -2622,7 +2657,9 @@ bool Compiler::optIsCSEcandidate(GenTree* tree)
             return true;
 
         case GT_LCL_VAR:
-            return false; // Can't CSE a volatile LCL_VAR
+        {
+            return isSanctionedVarCase;
+        }
 
         case GT_NEG:
         case GT_NOT:
