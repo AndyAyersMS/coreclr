@@ -12149,7 +12149,6 @@ GenTree* Compiler::gtFoldTypeCompare(GenTree* tree)
                 result         = comma;
             }
 
-            // TODO: if !isNonNull we need to wrap this in a comma nullcheck.
             return result;
         }
     }
