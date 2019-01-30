@@ -375,6 +375,19 @@ PCODE MethodDesc::PrepareILBasedCode(PrepareCodeConfig* pConfig)
             "    In PrepareILBasedCode, calling JitCompileCode\n"));
         pCode = JitCompileCode(pConfig);
     }
+    else
+    {
+        LOG((LF_ZAP, LL_INFO10,
+            "ZAP: Using precompiled code" FMT_ADDR "for %s.%s sig=\"%s\" (token %x).\n",
+            DBG_ADDR(pCode),
+            m_pszDebugClassName,
+            m_pszDebugMethodName,
+            m_pszDebugMethodSignature,
+            GetMemberDef()));
+
+	DACNotifyCompilationFinished(this, pCode);
+    }
+
 
     // Mark the code as hot in case the method ends up in the native image
     g_IBCLogger.LogMethodCodeAccess(this);
