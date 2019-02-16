@@ -6570,6 +6570,7 @@ GenTree* Compiler::fgMorphField(GenTree* tree, MorphAddrContext* mac)
                     noway_assert((tree->gtFlags & ~(GTF_FLD_VOLATILE | GTF_FLD_INITCLASS | GTF_COMMON_MASK)) == 0);
                     static_assert_no_msg(GTF_FLD_VOLATILE == GTF_CLS_VAR_VOLATILE);
                     static_assert_no_msg(GTF_FLD_INITCLASS == GTF_CLS_VAR_INITCLASS);
+                    static_assert_no_msg(GTF_FLD_INVARIANT == GTF_CLS_VAR_INVARIANT);
                     tree->SetOper(GT_CLS_VAR);
                     tree->gtClsVar.gtClsVarHnd = symHnd;
                     FieldSeqNode* fieldSeq =

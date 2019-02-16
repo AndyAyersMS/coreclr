@@ -9409,6 +9409,12 @@ void Compiler::gtDispNode(GenTree* tree, IndentStack* indentStack, __in __in_z _
 
             case GT_FIELD:
             case GT_CLS_VAR:
+                if (tree->gtFlags & GTF_IND_INVARIANT)
+                {
+                    printf("#");
+                    --msgLength;
+                    break;
+                }
                 if (tree->gtFlags & GTF_IND_VOLATILE)
                 {
                     printf("V");

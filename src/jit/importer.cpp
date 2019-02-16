@@ -7635,6 +7635,21 @@ GenTree* Compiler::impImportStaticFieldAccess(CORINFO_RESOLVED_TOKEN* pResolvedT
                     }
                 }
 
+                // If this is a readonly static, and the class is initialzed,
+                // then this indir is invariant.
+                if (pFieldInfo->fieldFlags & CORINFO_FLG_FIELD_FINAL)
+                {
+                    CorInfoInitClassResult initClassResult =
+                        info.compCompHnd->initClass(pResolvedToken->hField, info.compMethodHnd,
+                                                    impTokenLookupContextHandle);
+
+                    if (initClassResult & CORINFO_INITCLASS_INITIALIZED)
+                    {
+                        JITDUMP("\nRead of initialized readonly field: marking as invariant\n");
+                        op1->gtFlags |= GTF_FLD_INVARIANT;
+                    }
+                }
+
                 return op1;
             }
             else
@@ -14648,7 +14663,6 @@ void Compiler::impImportBlockCode(BasicBlock* block)
             case CEE_LDFLDA:
             case CEE_LDSFLDA:
             {
-
                 BOOL isLoadAddress = (opcode == CEE_LDFLDA || opcode == CEE_LDSFLDA);
                 BOOL isLoadStatic  = (opcode == CEE_LDSFLD || opcode == CEE_LDSFLDA);
 
@@ -14870,6 +14884,24 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                         }
                         else
                         {
+                            // If this is a readonly static, and the class is initialzed,
+                            // then this indir is invariant.
+                            if (fieldInfo.fieldFlags & CORINFO_FLG_FIELD_FINAL)
+                            {
+                                if (fieldInfo.fieldFlags & CORINFO_FLG_FIELD_STATIC)
+                                {
+                                    CorInfoInitClassResult initClassResult =
+                                        info.compCompHnd->initClass(resolvedToken.hField, info.compMethodHnd,
+                                                                    impTokenLookupContextHandle);
+
+                                    if (initClassResult & CORINFO_INITCLASS_INITIALIZED)
+                                    {
+                                        JITDUMP("\n... initialized readonly static field, marking as invariant\n");
+                                        op1->gtFlags |= GTF_IND_INVARIANT;
+                                    }
+                                }
+                            }
+
                             if (compIsForInlining() &&
                                 impInlineIsGuaranteedThisDerefBeforeAnySideEffects(nullptr, obj,
                                                                                    impInlineInfo->inlArgInfo))
@@ -14925,6 +14957,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                                 // We should always be able to access this static's address directly
                                 assert(pFldAddr == nullptr);
+
+                                JITDUMP("\nRead of initialized readonly static field: incorporating current value\n");
 
                                 op1 = impImportStaticReadOnlyField(fldAddr, lclTyp);
                                 goto FIELD_DONE;

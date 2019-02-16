@@ -793,7 +793,7 @@ public:
 
 #define GTF_FLD_VOLATILE            0x40000000 // GT_FIELD/GT_CLS_VAR -- same as GTF_IND_VOLATILE
 #define GTF_FLD_INITCLASS           0x20000000 // GT_FIELD/GT_CLS_VAR -- field access requires preceding class/static init helper
-
+#define GTF_FLD_INVARIANT           0x01000000 // GT_FIELD/GT_CLS_VAR -- same as GTF_IND_INVARIANT
 #define GTF_INX_RNGCHK              0x80000000 // GT_INDEX/GT_INDEX_ADDR -- the array reference should be range-checked.
 #define GTF_INX_REFARR_LAYOUT       0x20000000 // GT_INDEX
 #define GTF_INX_STRING_LAYOUT       0x40000000 // GT_INDEX -- this uses the special string array layout
@@ -825,6 +825,7 @@ public:
 #define GTF_CLS_VAR_INITCLASS       0x20000000 // GT_FIELD/GT_CLS_VAR -- same as GTF_FLD_INITCLASS
 #define GTF_CLS_VAR_ASG_LHS         0x04000000 // GT_CLS_VAR   -- this GT_CLS_VAR node is (the effective val) of the LHS
                                                //                 of an assignment; don't evaluate it independently.
+#define GTF_CLS_VAR_INVARIANT       0x01000000 // GT_FIELD/GT_CLS_VAR -- same as GTF_IND_INVARIANT
 
 #define GTF_ADDRMODE_NO_CSE         0x80000000 // GT_ADD/GT_MUL/GT_LSH -- Do not CSE this node only, forms complex
                                                //                         addressing mode
