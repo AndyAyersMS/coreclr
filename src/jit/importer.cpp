@@ -7637,7 +7637,9 @@ GenTree* Compiler::impImportStaticFieldAccess(CORINFO_RESOLVED_TOKEN* pResolvedT
 
                 // If this is a readonly static, and the class is initialzed,
                 // then this indir is invariant.
-                if (pFieldInfo->fieldFlags & CORINFO_FLG_FIELD_FINAL)
+                // 
+                // TODO: handle potentially interesting GT_OBJ cases.
+                if (op1->OperIs(GT_FIELD, GT_IND) && ((pFieldInfo->fieldFlags & CORINFO_FLG_FIELD_FINAL) != 0))
                 {
                     CorInfoInitClassResult initClassResult =
                         info.compCompHnd->initClass(pResolvedToken->hField, info.compMethodHnd,
