@@ -7060,6 +7060,10 @@ void Compiler::fgValueNumberTree(GenTree* tree)
                         // with overlapping fields that is hard to reason about; return a new unique VN.
                         tree->gtVNPair.SetBoth(vnStore->VNForExpr(compCurBB, indType));
                     }
+                    else if ((lclFld->gtFlags & GTF_VAR_USEASG) == 0)
+                    {
+                        tree->gtVNPair = varDsc->GetPerSsaData(ssaNum)->m_vnPair;
+                    }
                     else
                     {
                         ValueNumPair lclVNPair = varDsc->GetPerSsaData(ssaNum)->m_vnPair;
