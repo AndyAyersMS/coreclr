@@ -7335,16 +7335,29 @@ void Compiler::fgValueNumberTree(GenTree* tree)
                             // (since we may be writing to an unknown portion of it.)
                             newLhsVNPair.SetBoth(vnStore->VNForExpr(compCurBB, lvaGetActualType(lclFld->gtLclNum)));
                         }
+                        // We know the field sequence.
+                        //
+                        // See if this is a partial or entire access.
+                        else if ((lclFld->gtFlags & GTF_VAR_USEASG) == 0)
+                        {
+                            // Entire access
+                            ValueNumPair uniqueMap;
+                            uniqueMap.SetBoth(vnStore->VNForExpr(compCurBB, lclFld->TypeGet()));
+                            newLhsVNPair = vnStore->VNPairApplySelectorsAssign(uniqueMap, lclFld->gtFieldSeq,
+                                                                               rhsVNPair, // Pre-value.
+                                                                               lclFld->TypeGet(), compCurBB);
+                        }
                         else
                         {
-                            // We do know the field sequence.
+                            // Partial access
+                            //
                             // The "lclFld" node will be labeled with the SSA number of its "use" identity.
                             // Look up that value.
                             ValueNumPair oldLhsVNPair =
                                 lvaTable[lclFld->GetLclNum()].GetPerSsaData(lclFld->GetSsaNum())->m_vnPair;
                             newLhsVNPair = vnStore->VNPairApplySelectorsAssign(oldLhsVNPair, lclFld->gtFieldSeq,
-                                rhsVNPair, // Pre-value.
-                                lclFld->TypeGet(), compCurBB);
+                                                                               rhsVNPair, // Pre-value.
+                                                                               lclFld->TypeGet(), compCurBB);
                         }
                         lvaTable[lclFld->GetLclNum()].GetPerSsaData(lclDefSsaNum)->m_vnPair = newLhsVNPair;
                         lhs->gtVNPair                                                       = newLhsVNPair;
