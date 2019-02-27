@@ -7060,10 +7060,6 @@ void Compiler::fgValueNumberTree(GenTree* tree)
                         // with overlapping fields that is hard to reason about; return a new unique VN.
                         tree->gtVNPair.SetBoth(vnStore->VNForExpr(compCurBB, indType));
                     }
-                    else if ((lclFld->gtFlags & GTF_VAR_USEASG) == 0)
-                    {
-                        tree->gtVNPair = varDsc->GetPerSsaData(ssaNum)->m_vnPair;
-                    }
                     else
                     {
                         ValueNumPair lclVNPair = varDsc->GetPerSsaData(ssaNum)->m_vnPair;
@@ -7329,34 +7325,26 @@ void Compiler::fgValueNumberTree(GenTree* tree)
                     if (lclDefSsaNum != SsaConfig::RESERVED_SSA_NUM)
                     {
                         ValueNumPair newLhsVNPair;
-                        // Is this a full definition?
-                        if ((lclFld->gtFlags & GTF_VAR_USEASG) == 0)
+
+                        // We should never have a null field sequence here.
+                        assert(lclFld->gtFieldSeq != nullptr);
+
+                        if (lclFld->gtFieldSeq == FieldSeqStore::NotAField())
                         {
-                            assert(!lclFld->IsPartialLclFld(this));
-                            assert(rhsVNPair.GetLiberal() != ValueNumStore::NoVN);
-                            newLhsVNPair = rhsVNPair;
+                            // We don't know what field this represents.  Assign a new VN to the whole variable
+                            // (since we may be writing to an unknown portion of it.)
+                            newLhsVNPair.SetBoth(vnStore->VNForExpr(compCurBB, lvaGetActualType(lclFld->gtLclNum)));
                         }
                         else
                         {
-                            // We should never have a null field sequence here.
-                            assert(lclFld->gtFieldSeq != nullptr);
-                            if (lclFld->gtFieldSeq == FieldSeqStore::NotAField())
-                            {
-                                // We don't know what field this represents.  Assign a new VN to the whole variable
-                                // (since we may be writing to an unknown portion of it.)
-                                newLhsVNPair.SetBoth(vnStore->VNForExpr(compCurBB, lvaGetActualType(lclFld->gtLclNum)));
-                            }
-                            else
-                            {
-                                // We do know the field sequence.
-                                // The "lclFld" node will be labeled with the SSA number of its "use" identity
-                                // (we looked in a side table above for its "def" identity).  Look up that value.
-                                ValueNumPair oldLhsVNPair =
-                                    lvaTable[lclFld->GetLclNum()].GetPerSsaData(lclFld->GetSsaNum())->m_vnPair;
-                                newLhsVNPair = vnStore->VNPairApplySelectorsAssign(oldLhsVNPair, lclFld->gtFieldSeq,
-                                                                                   rhsVNPair, // Pre-value.
-                                                                                   lclFld->TypeGet(), compCurBB);
-                            }
+                            // We do know the field sequence.
+                            // The "lclFld" node will be labeled with the SSA number of its "use" identity.
+                            // Look up that value.
+                            ValueNumPair oldLhsVNPair =
+                                lvaTable[lclFld->GetLclNum()].GetPerSsaData(lclFld->GetSsaNum())->m_vnPair;
+                            newLhsVNPair = vnStore->VNPairApplySelectorsAssign(oldLhsVNPair, lclFld->gtFieldSeq,
+                                rhsVNPair, // Pre-value.
+                                lclFld->TypeGet(), compCurBB);
                         }
                         lvaTable[lclFld->GetLclNum()].GetPerSsaData(lclDefSsaNum)->m_vnPair = newLhsVNPair;
                         lhs->gtVNPair                                                       = newLhsVNPair;
