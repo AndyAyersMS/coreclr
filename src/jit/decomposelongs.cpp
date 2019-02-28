@@ -844,23 +844,69 @@ GenTree* DecomposeLongs::DecomposeStoreInd(LIR::Use& use)
 //
 GenTree* DecomposeLongs::DecomposeInd(LIR::Use& use)
 {
-    GenTree* indLow = use.Def();
+    GenTreeIndir* indLow = use.Def()->AsIndir();
 
-    LIR::Use address(Range(), &indLow->gtOp.gtOp1, indLow);
-    address.ReplaceWithLclVar(m_compiler, m_blockWeight);
-    JITDUMP("[DecomposeInd]: Saving addr tree to a temp var:\n");
-    DISPTREERANGE(Range(), address.Def());
+    // If the indir base is simple -- something that forms
+    // an address mode -- don't spill it to a temp.
+    //
+    // We currently do a simple detection. Might consider
+    // trying to leverage genCreateAddrMode here, or perhaps better
+    // yet, run an address mode formation pass upstream.
+    bool     isSimpleAddress = false;
+    unsigned baseLclNum      = BAD_VAR_NUM;
+    ssize_t  offset          = 0;
+
+    if (indLow->HasBase() && !indLow->HasIndex())
+    {
+        GenTree* base = indLow->Base();
+        if (base->OperIs(GT_LCL_VAR))
+        {
+            isSimpleAddress = true;
+            baseLclNum      = base->AsLclVarCommon()->GetLclNum();
+            offset          = indLow->Offset();
+        }
+        else if (base->OperIs(GT_ADD))
+        {
+            GenTree* op1 = base->gtOp.gtOp1;
+            GenTree* op2 = base->gtOp.gtOp2;
+
+            if (op1->OperIs(GT_LCL_VAR) && op2->IsIntCnsFitsInI32())
+            {
+                isSimpleAddress = true;
+                baseLclNum      = op1->AsLclVarCommon()->GetLclNum();
+                offset          = op2->AsIntCon()->gtIconVal;
+            }
+            else if (op2->OperIs(GT_LCL_VAR) && op1->IsIntCnsFitsInI32())
+            {
+                isSimpleAddress = true;
+                baseLclNum      = op2->AsLclVarCommon()->GetLclNum();
+                offset          = op1->AsIntCon()->gtIconVal;
+            }
+        }
+    }
+
+    if (!isSimpleAddress)
+    {
+        LIR::Use address(Range(), &indLow->gtOp.gtOp1, indLow);
+        baseLclNum = address.ReplaceWithLclVar(m_compiler, m_blockWeight);
+        offset     = 0;
+        JITDUMP("[DecomposeInd]: Saving addr tree to a temp var V%02u:\n", baseLclNum);
+        DISPTREERANGE(Range(), address.Def());
+    }
 
     // Change the type of lower ind.
     indLow->gtType = TYP_INT;
 
-    // Create tree of ind(addr+4)
-    GenTree* addrBase     = indLow->gtGetOp1();
-    GenTree* addrBaseHigh = new (m_compiler, GT_LCL_VAR)
-        GenTreeLclVar(GT_LCL_VAR, addrBase->TypeGet(), addrBase->AsLclVarCommon()->GetLclNum());
-    GenTree* addrHigh =
-        new (m_compiler, GT_LEA) GenTreeAddrMode(TYP_REF, addrBaseHigh, nullptr, 0, genTypeSize(TYP_INT));
-    GenTree* indHigh = new (m_compiler, GT_IND) GenTreeIndir(GT_IND, TYP_INT, addrHigh, nullptr);
+    // We now know the address is just a simple lcl var base, either
+    // because it came in that way, or we created a new base.
+    //
+    // Load the high part.
+    GenTree* addrBase     = indLow->Base();
+    GenTree* addrBaseHigh = new (m_compiler, GT_LCL_VAR) GenTreeLclVar(GT_LCL_VAR, addrBase->TypeGet(), baseLclNum);
+    // overflow?
+    const ssize_t highOffset = offset + genTypeSize(TYP_INT);
+    GenTree*      addrHigh   = new (m_compiler, GT_LEA) GenTreeAddrMode(TYP_REF, addrBaseHigh, nullptr, 0, highOffset);
+    GenTree*      indHigh    = new (m_compiler, GT_IND) GenTreeIndir(GT_IND, TYP_INT, addrHigh, nullptr);
     indHigh->gtFlags |= (indLow->gtFlags & (GTF_GLOB_REF | GTF_EXCEPT | GTF_IND_FLAGS));
 
     Range().InsertAfter(indLow, addrBaseHigh, addrHigh, indHigh);
