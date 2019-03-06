@@ -8368,6 +8368,10 @@ public:
         {
             return !OptimizationDisabled();
         }
+        bool OptimizationEnabledInTier0()
+        {
+            return !compDbgCode && jitFlags->IsSet(JitFlags::JIT_FLAG_TIER0);
+        }
 
         void SetMinOpts(bool val)
         {

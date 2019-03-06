@@ -2544,6 +2544,13 @@ void Compiler::compInitOptions(JitFlags* jitFlags)
     opts.jitFlags  = jitFlags;
     opts.compFlags = CLFLG_MAXOPT; // Default value is for full optimization
 
+#if defined(DEBUG)
+    if (JitConfig.JitTier0())
+    {
+        jitFlags->Set(JitFlags::JIT_FLAG_TIER0);
+    }
+#endif // defined(DEBUG)
+
     if (jitFlags->IsSet(JitFlags::JIT_FLAG_DEBUG_CODE) || jitFlags->IsSet(JitFlags::JIT_FLAG_MIN_OPT) ||
         jitFlags->IsSet(JitFlags::JIT_FLAG_TIER0))
     {
