@@ -14853,8 +14853,8 @@ bool Compiler::fgFoldConditional(BasicBlock* block)
 {
     bool result = false;
 
-    // We don't want to make any code unreachable
-    if (opts.OptimizationDisabled())
+    // We don't want to make any code unreachable if we're not optimizing
+    if (opts.OptimizationDisabled() && !opts.OptimizationEnabledInTier0())
     {
         return false;
     }
