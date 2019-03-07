@@ -125,7 +125,7 @@ CONFIG_INTEGER(JitStressModeNamesOnly, W("JitStressModeNamesOnly"), 0) // Intern
                                                                        // stress modes listed in JitStressModeNames
 CONFIG_INTEGER(JitStressRegs, W("JitStressRegs"), 0)
 CONFIG_INTEGER(JitStrictCheckForNonVirtualCallToVirtualMethod, W("JitStrictCheckForNonVirtualCallToVirtualMethod"), 1)
-CONFIG_INTEGER(JitTier0, W("JitTier0"), 0)                                       // Forces Tier0 jitting
+CONFIG_INTEGER(JitTier0, W("JitTier0"), 0)                 // Forces Tier0 jitting
 CONFIG_INTEGER(JitVNMapSelLimit, W("JitVNMapSelLimit"), 0) // If non-zero, assert if # of VNF_MapSelect applications
                                                            // considered reaches this
 CONFIG_INTEGER(NgenHashDump, W("NgenHashDump"), -1)        // same as JitHashDump, but for ngen
