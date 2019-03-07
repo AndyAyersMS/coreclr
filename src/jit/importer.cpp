@@ -3510,7 +3510,7 @@ GenTree* Compiler::impIntrinsic(GenTree*                newobjThis,
     GenTree* retNode = nullptr;
 
     // Under debug and minopts, only expand what is required.
-    if (!mustExpand && opts.OptimizationDisabled())
+    if (!mustExpand && opts.OptimizationDisabled() && !opts.OptimizationEnabledInTier0())
     {
         *pIntrinsicID = CORINFO_INTRINSIC_Illegal;
         return retNode;
@@ -5949,7 +5949,8 @@ void Compiler::impImportAndPushBox(CORINFO_RESOLVED_TOKEN* pResolvedToken)
     // structs is cheap.
     JITDUMP("\nCompiler::impImportAndPushBox -- handling BOX(value class) via");
     bool canExpandInline = (boxHelper == CORINFO_HELP_BOX);
-    bool optForSize      = !exprToBox->IsCall() && (operCls != nullptr) && opts.OptimizationDisabled();
+    bool isOptimizing    = opts.OptimizationEnabled() || opts.OptimizationEnabledInTier0();
+    bool optForSize      = !exprToBox->IsCall() && (operCls != nullptr) && !isOptimizing;
     bool expandInline    = canExpandInline && !optForSize;
 
     if (expandInline)
@@ -5967,7 +5968,7 @@ void Compiler::impImportAndPushBox(CORINFO_RESOLVED_TOKEN* pResolvedToken)
         // and the other you get
         //    *(temp+4) = expr
 
-        if (opts.OptimizationDisabled())
+        if (!isOptimizing)
         {
             // For minopts/debug code, try and minimize the total number
             // of box temps by reusing an existing temp when possible.
@@ -10207,7 +10208,7 @@ GenTree* Compiler::impOptimizeCastClassOrIsInst(GenTree* op1, CORINFO_RESOLVED_T
     assert(op1->TypeGet() == TYP_REF);
 
     // Don't optimize for minopts or debug codegen.
-    if (opts.OptimizationDisabled())
+    if (opts.OptimizationDisabled() && !opts.OptimizationEnabledInTier0())
     {
         return nullptr;
     }
@@ -10361,7 +10362,7 @@ GenTree* Compiler::impCastClassOrIsInstToTree(GenTree*                op1,
     if (!expandInline)
     {
         JITDUMP("\nExpanding %s as call because %s\n", isCastClass ? "castclass" : "isinst",
-                canExpandInline ? "want smaller code or faster jitting" : "inline expansion not legal");
+                shouldExpandInline ? "inline expansion not legal" : "want smaller code or faster jitting");
 
         // If we CSE this class handle we prevent assertionProp from making SubType assertions
         // so instead we force the CSE logic to not consider CSE-ing this class handle.
@@ -19942,8 +19943,8 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     // This should be a virtual vtable or virtual stub call.
     assert(call->IsVirtual());
 
-    // Bail if not optimizing
-    if (opts.OptimizationDisabled())
+    // Bail if not optimizing or not jitting in Tier0
+    if (opts.OptimizationDisabled() && !opts.OptimizationEnabledInTier0())
     {
         return;
     }
@@ -19953,6 +19954,11 @@ void Compiler::impDevirtualizeCall(GenTreeCall*            call,
     if (JitConfig.JitEnableDevirtualization() == 0)
     {
         return;
+    }
+
+    if (opts.OptimizationDisabled() && opts.OptimizationEnabledInTier0())
+    {
+        JITDUMP("\n*** tier-0 devirt\n");
     }
 
     const bool doPrint = JitConfig.JitPrintDevirtualizedMethods() == 1;

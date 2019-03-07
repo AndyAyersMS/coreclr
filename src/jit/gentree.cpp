@@ -11938,7 +11938,7 @@ GenTree* Compiler::gtFoldExpr(GenTree* tree)
     }
     else if ((kind & GTK_BINOP) && op1 && tree->AsOp()->gtOp2 &&
              // Don't take out conditionals for debugging
-             (opts.OptimizationEnabled() || !tree->OperIsCompare()))
+             (opts.OptimizationEnabled() || opts.OptimizationEnabledInTier0() || !tree->OperIsCompare()))
     {
         GenTree* op2 = tree->AsOp()->gtOp2;
 
@@ -12037,7 +12037,7 @@ GenTree* Compiler::gtFoldExprCall(GenTreeCall* call)
     }
 
     // Defer folding if not optimizing.
-    if (opts.OptimizationDisabled())
+    if (opts.OptimizationDisabled() && !opts.OptimizationEnabledInTier0())
     {
         return call;
     }
