@@ -3538,20 +3538,23 @@ GenTree* Compiler::optAssertionProp_Ind(ASSERT_VALARG_TP assertions, GenTree* tr
 
     bool updated = false;
 
-    // (1) copyprop if source Ind(Addr(Lcl))
-    if ((tree->gtFlags & GTF_DONT_CSE) == 0)
+    // (1) copyprop if source Ind(Addr(Lcl)) and we have assertions
+    if (assertions != nullptr)
     {
-        GenTree* addr = tree->AsIndir()->Addr();
-
-        if (addr->OperIs(GT_ADDR))
+        if ((tree->gtFlags & GTF_DONT_CSE) == 0)
         {
-            GenTree* op = addr->gtGetOp1();
+            GenTree* addr = tree->AsIndir()->Addr();
 
-            // Only copyprop structs
-            if (op->OperIs(GT_LCL_VAR) && (op->TypeGet() == TYP_STRUCT))
+            if (addr->OperIs(GT_ADDR))
             {
-                GenTree* newOp = optAssertionProp_LclVar(assertions, op, stmt, true);
-                updated        = (newOp != nullptr);
+                GenTree* op = addr->gtGetOp1();
+
+                // Only copyprop structs
+                if (op->OperIs(GT_LCL_VAR) && (op->TypeGet() == TYP_STRUCT))
+                {
+                    GenTree* newOp = optAssertionProp_LclVar(assertions, op, stmt, true);
+                    updated        = (newOp != nullptr);
+                }
             }
         }
     }
