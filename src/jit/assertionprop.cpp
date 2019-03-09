@@ -2842,6 +2842,9 @@ GenTree* Compiler::optCopyAssertionProp(AssertionDsc* curAssertion,
 
 GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt, bool copyPropOnly)
 {
+    JITDUMP("\n --- ap lcl var \n");
+    DISPTREE(tree);
+
     assert(tree->gtOper == GT_LCL_VAR);
     // If we have a var definition then bail or
     // If this is the address of the var then it will have the GTF_DONT_CSE
@@ -2912,6 +2915,35 @@ GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree*
             }
         }
     }
+    return nullptr;
+}
+
+GenTree* Compiler::optAssertionProp_Field(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt)
+{
+    JITDUMP("\n --- ap field\n");
+    DISPTREE(tree);
+
+    if ((tree->gtFlags & GTF_DONT_CSE) == 0)
+    {
+        GenTree* addr = tree->AsField()->gtFldObj;
+
+        if ((addr != nullptr) && addr->OperIs(GT_ADDR))
+        {
+            GenTree* op = addr->gtGetOp1();
+
+            // Only copyprop structs
+            if (op->OperIs(GT_LCL_VAR) && (op->TypeGet() == TYP_STRUCT))
+            {
+                GenTree* newTree = optAssertionProp_LclVar(assertions, op, stmt, true);
+
+                if (newTree != nullptr)
+                {
+                    return optAssertionProp_Update(tree, tree, stmt);
+                }
+            }
+        }
+    }
+
     return nullptr;
 }
 
@@ -3515,7 +3547,8 @@ GenTree* Compiler::optAssertionProp_Ind(ASSERT_VALARG_TP assertions, GenTree* tr
         {
             GenTree* op = addr->gtGetOp1();
 
-            if (op->OperIs(GT_LCL_VAR))
+            // Only copyprop structs
+            if (op->OperIs(GT_LCL_VAR) && (op->TypeGet() == TYP_STRUCT))
             {
                 GenTree* newOp = optAssertionProp_LclVar(assertions, op, stmt, true);
                 updated        = (newOp != nullptr);
@@ -4015,6 +4048,9 @@ GenTree* Compiler::optAssertionProp(ASSERT_VALARG_TP assertions, GenTree* tree, 
         case GT_GE:
 
             return optAssertionProp_RelOp(assertions, tree, stmt);
+
+        case GT_FIELD:
+            return optAssertionProp_Field(assertions, tree, stmt);
 
         default:
             return nullptr;
