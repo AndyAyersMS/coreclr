@@ -2014,6 +2014,58 @@ void Compiler::fgComputeLifeLIR(VARSET_TP& life, BasicBlock* block, VARSET_VALAR
                 break;
             }
 
+            case GT_STORE_BLK:
+            {
+                GenTree* dest = node->gtOp.gtOp1;
+
+                if (dest->OperIsLocalAddr())
+                {
+                    GenTreeLclVarCommon* const lclVarNode = dest->AsLclVarCommon();
+                    LclVarDsc&                 varDsc     = lvaTable[lclVarNode->gtLclNum];
+
+                    if (varDsc.lvTracked)
+                    {
+                        isDeadStore = fgComputeLifeTrackedLocalDef(life, keepAliveVars, varDsc, lclVarNode);
+                        if (isDeadStore)
+                        {
+                            JITDUMP("Removing dead BLK store:\n");
+                            DISPNODE(lclVarNode);
+
+                            // Remove the store. DCE will iteratively clean up any ununsed operands.
+                            dest->SetUnusedValue();
+                            node->gtOp.gtOp2->SetUnusedValue();
+
+                            // If the store is marked as a late argument, it is referenced by a call. Instead of
+                            // removing
+                            // it, bash it to a NOP.
+                            if ((node->gtFlags & GTF_LATE_ARG) != 0)
+                            {
+                                JITDUMP("node is a late arg; replacing with NOP\n");
+                                node->gtBashToNOP();
+
+                                // NOTE: this is a bit of a hack. We need to keep these nodes around as they are
+                                // referenced by the call, but they're considered side-effect-free non-value-producing
+                                // nodes, so they will be removed if we don't do this.
+                                node->gtFlags |= GTF_ORDER_SIDEEFF;
+                            }
+                            else
+                            {
+                                blockRange.Remove(node);
+                            }
+
+                            assert(!opts.MinOpts());
+                            fgStmtRemoved = true;
+                        }
+                    }
+                    else
+                    {
+                        fgComputeLifeUntrackedLocal(life, keepAliveVars, varDsc, lclVarNode);
+                    }
+                }
+
+                break;
+            }
+
             case GT_LABEL:
             case GT_FTN_ADDR:
             case GT_CNS_INT:
@@ -2041,7 +2093,6 @@ void Compiler::fgComputeLifeLIR(VARSET_TP& life, BasicBlock* block, VARSET_VALAR
             case GT_STOREIND:
             case GT_ARR_BOUNDS_CHECK:
             case GT_STORE_OBJ:
-            case GT_STORE_BLK:
             case GT_STORE_DYN_BLK:
 #if defined(FEATURE_SIMD)
             case GT_SIMD_CHK:
