@@ -2845,8 +2845,7 @@ GenTree* Compiler::optCopyAssertionProp(AssertionDsc* curAssertion,
  *  We pass in the root of the tree via 'stmt', for local copy prop 'stmt' will
  *  be nullptr. Returns the modified tree, or nullptr if no assertion prop took place.
  */
-
-GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree* tree, Statement* stmt)
+GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt, bool copyPropOnly)
 {
     assert(tree->gtOper == GT_LCL_VAR);
     // If we have a var definition then bail or
@@ -2897,8 +2896,8 @@ GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree*
         // gtFoldExpr, specifically the case of a cast, where the fold operation changes the type of the LclVar
         // node.  In such a case is not safe to perform the substitution since later on the JIT will assert mismatching
         // types between trees.
-        else if (curAssertion->op1.lcl.lclNum == tree->AsLclVarCommon()->GetLclNum() &&
-                 tree->gtType == lvaTable[tree->AsLclVarCommon()->GetLclNum()].lvType)
+        else if (!copyPropOnly && curAssertion->op1.lcl.lclNum == tree->gtLclVarCommon.GetLclNum() &&
+                 tree->gtType == lvaTable[tree->gtLclVarCommon.GetLclNum()].lvType)
         {
             // If local assertion prop just, perform constant prop.
             if (optLocalAssertionProp)
@@ -3572,10 +3571,47 @@ GenTree* Compiler::optAssertionProp_Ind(ASSERT_VALARG_TP assertions, GenTree* tr
 {
     assert(tree->OperIsIndir());
 
-    if (!(tree->gtFlags & GTF_EXCEPT))
+    bool updated = false;
+
+    // (1) copyprop if source Ind(Addr(Lcl))
+    if ((tree->gtFlags & GTF_DONT_CSE) == 0)
     {
-        return nullptr;
+        GenTree* addr = tree->AsIndir()->Addr();
+
+        if (addr->OperIs(GT_ADDR))
+        {
+            GenTree* op = addr->gtGetOp1();
+
+            if (op->OperIs(GT_LCL_VAR))
+            {
+                GenTree* newOp = optAssertionProp_LclVar(assertions, op, stmt, true);
+                updated        = (newOp != nullptr);
+            }
+        }
     }
+
+    // (2) try and mark the tree as nonfaulting
+    if (tree->gtFlags & GTF_EXCEPT)
+    {
+        GenTree* newTree = optAssertionProp_IndNonfaulting(assertions, tree, stmt);
+        if (newTree != nullptr)
+        {
+            updated = true;
+            tree    = newTree; // hmm
+        }
+    }
+
+    if (updated)
+    {
+        return optAssertionProp_Update(tree, tree, stmt);
+    }
+
+    return nullptr;
+}
+
+GenTree* Compiler::optAssertionProp_IndNonfaulting(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt)
+{
+    assert(tree->gtFlags & GTF_EXCEPT);
 
     // Check for add of a constant.
     GenTree* op1 = tree->AsIndir()->Addr();
