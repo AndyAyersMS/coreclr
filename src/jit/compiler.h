@@ -6786,6 +6786,7 @@ public:
                                      GenTree*         tree,
                                      GenTree*         stmt,
                                      bool             copyPropOnly = false);
+    GenTree* optAssertionProp_Field(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt);
     GenTree* optAssertionProp_Ind(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt);
     GenTree* optAssertionProp_IndNonfaulting(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt);
     GenTree* optAssertionProp_Cast(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt);
