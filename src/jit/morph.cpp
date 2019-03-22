@@ -6783,15 +6783,16 @@ void Compiler::fgMorphCallInlineHelper(GenTreeCall* call, InlineResult* result)
     }
 
     // Re-check this because guarded devirtualization may allow these through.
-    if (gtIsRecursiveCall(call) && call->IsImplicitTailCall())
+    if (gtIsRecursiveCall(call) && call->CanTailCall())
     {
+        // TODO: Fix reason
         result->NoteFatal(InlineObservation::CALLSITE_IMPLICIT_REC_TAIL_CALL);
         return;
     }
 
-    // impMarkInlineCandidate() is expected not to mark tail prefixed calls
-    // and recursive tail calls as inline candidates.
-    noway_assert(!call->IsTailPrefixedCall());
+    // impMarkInlineCandidate() is expected not to mark
+    // recursive tail calls as inline candidates.
+    noway_assert(!call->IsTailPrefixedCall() || !gtIsRecursiveCall(call));
     noway_assert(!call->IsImplicitTailCall() || !gtIsRecursiveCall(call));
 
     /* If the caller's stack frame is marked, then we can't do any inlining. Period.

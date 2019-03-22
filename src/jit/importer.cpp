@@ -13852,7 +13852,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                         // implicit tail call sites in the inline body. These call sites
                         // often end up in non BBJ_RETURN blocks, so only flag them when
                         // we're able to handle shared returns.
-                        if (impInlineInfo->iciCall->IsImplicitTailCall())
+                        if (impInlineInfo->iciCall->CanTailCall())
                         {
                             JITDUMP(" (Inline Implicit Tail call: prefixFlags |= PREFIX_TAILCALL_IMPLICIT)");
                             prefixFlags |= PREFIX_TAILCALL_IMPLICIT;
