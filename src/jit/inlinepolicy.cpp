@@ -431,6 +431,72 @@ void DefaultPolicy::NoteBool(InlineObservation obs, bool value)
                 // bail out, if necessary, during importation
                 break;
 
+            case InlineObservation::CALLEE_HAS_EXPLICIT_TAIL_CALL:
+                // TODO: implement the proper heuristic
+                // See https://github.com/dotnet/coreclr/issues/23370
+                //
+                // Which is roughly
+                //    if (call site is tail call): ok if stack frame increase from
+                //        this candidate is "small" and we're not converting a
+                //        fast tail call into a slow one
+                //    if (call site is not tail call): ok if stack frame increase
+                //        from this candidate is "small"
+                //
+                // We may also need to worry about cases where this candidate makes
+                // other calls that could be inlined, as doing those inlines might
+                // increase the stack contribution from the candidate.
+                //
+                // So perhaps we need to flag this candidate and use a different
+                // heuristic when considering inline candidates it inspires?
+                //
+                // Eg  A -> B, B -(et)-> C && B -> D
+                //
+                // If we allow B to inline into A -- because B's stack is currenlty
+                // deemed "small" and hence we're ok with tail calling C from A+B --
+                // is the same still true if we inline D into (A+B)?
+                //
+                // We likely would inline D in to B if we tail called B.
+                //
+                // Using crude stack math,
+                //
+                //    S = max(A, B + D, C)   -- if we don't inline B into A
+                //    S' = max(A + B + D, C) -- if we inline B into A
+                //
+                // So stack increase from inlining both B and D is
+                //
+                //    SG = S' - S = max(A + B + D, C) - max(A, B + D, C)
+                //
+                // If C is large (which we won't know) we're fine. It is tail
+                // called either way, and its stack use will surpass whatever
+                // happens with A, B, and D.
+                //
+                // If C is small, it drops out of both maxes, and this reduces to
+                //
+                //    SG = A + B + D - max(A, B + D)
+                //
+                // We also know B is small. So if A is large we have
+                //
+                //    SG = min(A, B + D)
+                //
+                // Generally, if B has many inlined callees Di
+                //
+                //    SG = min(A, B + sum(Di))
+                //
+                // Because stack size A depends on other things inlined into A
+                // and we're in the middle of inlining into A, we probably don't want
+                // the heuristic to depend on stack size of A.
+                //
+                // So we need to make sure sum(Di) does not get too big, hence perhaps
+                // a more restrictive policy for subsequent (non-tail) inlines into B.
+                //
+                // For now, assume it's all ok. Should not be an immediate correctness
+                // issue, we'll just have larger frames and perhaps slow tail calls instead
+                // of fast ones.
+                //
+                // When we can fail here, we'll need to add some new failure reasons to
+                // inline.def.
+                break;
+
             default:
                 // Ignore the remainder for now
                 break;

@@ -13866,6 +13866,20 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     }
                 }
 
+                // If we have an explicit tail call site in the inlinee, unmark it if the call site was not
+                // in tail position. Assume inline policy has already blessed this "demotion".
+                //
+                // TODO: leave breadcrumb so we can describe this as a failed tail call later, if
+                // we don't inline...?
+                if (compIsForInlining() && ((prefixFlags & PREFIX_TAILCALL_EXPLICIT) != 0))
+                {
+                    if (!impInlineInfo->iciCall->CanTailCall())
+                    {
+                        JITDUMP(" (Demoting inline explicit tail call: prefixFlags &= ~PREFIX_TAILCALL_EXPLICIT)");
+                        prefixFlags &= ~PREFIX_TAILCALL_EXPLICIT;
+                    }
+                }
+
                 // Treat this call as tail call for verification only if "tail" prefixed (i.e. explicit tail call).
                 explicitTailCall = (prefixFlags & PREFIX_TAILCALL_EXPLICIT) != 0;
                 readonlyCall     = (prefixFlags & PREFIX_READONLY) != 0;
@@ -19582,18 +19596,15 @@ void Compiler::impMarkInlineCandidateHelper(GenTreeCall*           call,
         return;
     }
 
-    // Inlining candidate determination needs to honor only IL tail prefix.
-    // Inlining takes precedence over implicit tail call optimization (if the call is not directly recursive).
-    if (call->IsTailPrefixedCall())
+    // Tail recursion elimination takes precedence over inlining.
+    // Otherwise, we may now allow inlining an explicitly tail called method.
+    if (gtIsRecursiveCall(call) && call->IsTailPrefixedCall())
     {
-        inlineResult.NoteFatal(InlineObservation::CALLSITE_EXPLICIT_TAIL_PREFIX);
+        inlineResult.NoteFatal(InlineObservation::CALLSITE_EXPLICIT_REC_TAIL_CALL);
         return;
     }
 
     // Tail recursion elimination takes precedence over inlining.
-    // TODO: We may want to do some of the additional checks from fgMorphCall
-    // here to reduce the chance we don't inline a call that won't be optimized
-    // as a fast tail call or turned into a loop.
     if (gtIsRecursiveCall(call) && call->IsImplicitTailCall())
     {
         inlineResult.NoteFatal(InlineObservation::CALLSITE_IMPLICIT_REC_TAIL_CALL);

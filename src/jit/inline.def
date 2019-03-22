@@ -61,7 +61,6 @@ INLINE_OBSERVATION(STFLD_NEEDS_HELPER,        bool,   "stfld needs helper",     
 INLINE_OBSERVATION(THROW_WITH_INVALID_STACK,  bool,   "throw with invalid stack",      FATAL,       CALLEE)
 INLINE_OBSERVATION(TOO_MANY_ARGUMENTS,        bool,   "too many arguments",            FATAL,       CALLEE)
 INLINE_OBSERVATION(TOO_MANY_LOCALS,           bool,   "too many locals",               FATAL,       CALLEE)
-INLINE_OBSERVATION(EXPLICIT_TAIL_PREFIX,      bool,   "explicit tail prefix in callee",FATAL,       CALLEE)
 
 // ------ Callee Performance ------- 
 
@@ -79,6 +78,7 @@ INLINE_OBSERVATION(BELOW_ALWAYS_INLINE_SIZE,  bool,   "below ALWAYS_INLINE size"
 INLINE_OBSERVATION(CLASS_PROMOTABLE,          bool,   "promotable value class",        INFORMATION, CALLEE)
 INLINE_OBSERVATION(DOES_NOT_RETURN,           bool,   "does not return",               INFORMATION, CALLEE)
 INLINE_OBSERVATION(END_OPCODE_SCAN,           bool,   "done looking at opcodes",       INFORMATION, CALLEE)
+INLINE_OBSERVATION(HAS_EXPLICIT_TAIL_CALL,    bool,   "has explicit tail call",        INFORMATION, CALLEE)
 INLINE_OBSERVATION(HAS_GC_STRUCT,             bool,   "has gc field in struct local",  INFORMATION, CALLEE)
 INLINE_OBSERVATION(HAS_LOCALLOC,              bool,   "has localloc",                  INFORMATION, CALLEE)
 INLINE_OBSERVATION(HAS_PINNED_LOCALS,         bool,   "has pinned locals",             INFORMATION, CALLEE)
@@ -128,7 +128,7 @@ INLINE_OBSERVATION(COMPILATION_FAILURE,       bool,   "failed to compile",      
 INLINE_OBSERVATION(CROSS_BOUNDARY_CALLI,      bool,   "cross-boundary calli",          FATAL,       CALLSITE)
 INLINE_OBSERVATION(CROSS_BOUNDARY_SECURITY,   bool,   "cross-boundary security check", FATAL,       CALLSITE)
 INLINE_OBSERVATION(EXCEEDS_THRESHOLD,         bool,   "exceeds profit threshold",      FATAL,       CALLSITE)
-INLINE_OBSERVATION(EXPLICIT_TAIL_PREFIX,      bool,   "explicit tail prefix",          FATAL,       CALLSITE)
+INLINE_OBSERVATION(EXPLICIT_REC_TAIL_CALL,    bool,   "explicit recursive tail call",  FATAL,       CALLSITE)
 INLINE_OBSERVATION(GENERIC_DICTIONARY_LOOKUP, bool,   "runtime dictionary lookup",     FATAL,       CALLSITE)
 INLINE_OBSERVATION(HAS_CALL_VIA_LDVIRTFTN,    bool,   "call via ldvirtftn",            FATAL,       CALLSITE)
 INLINE_OBSERVATION(HAS_COMPLEX_HANDLE,        bool,   "complex handle access",         FATAL,       CALLSITE)

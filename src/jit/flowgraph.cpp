@@ -5530,13 +5530,16 @@ unsigned Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, F
                 break;
 
             case CEE_TAILCALL:
+
+                retBlocks++;
                 if (compIsForInlining())
                 {
-                    // TODO-CQ: We can inline some callees with explicit tail calls if we can guarantee that the calls
-                    // can be dispatched as tail calls from the caller.
-                    compInlineResult->NoteFatal(InlineObservation::CALLEE_EXPLICIT_TAIL_PREFIX);
-                    retBlocks++;
-                    return retBlocks;
+                    // Notify the inline policy: the candidate has an explicit tail call
+                    compInlineResult->Note(InlineObservation::CALLEE_HAS_EXPLICIT_TAIL_CALL);
+                    if (compInlineResult->IsFailure())
+                    {
+                        return retBlocks;
+                    }
                 }
 
                 __fallthrough;
