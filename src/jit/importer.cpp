@@ -13343,18 +13343,13 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 ++codeAddr;
 
                 // should zero be allowed to indicate no checks omitted? (in this impl it is)
-                if ((val & (NO_PREFIX_TYPECHECK | NO_PREFIX_RANGECHECK | NO_PREFIX_NULLCHECK)) != val) 
-                {
-                    // value has unrecognised bits set - (should  we allow invalid values and just read the relevant bits?)
-                    BADCODE("Invalid no. values - must be typecheck (0x01), rangecheck (0x02), or nullcheck (0x04), or "
-                            "some OR'ed combination or these");
-                }
+                // should we enforce only relevant bits set? (in this impl it is not - 0b_1111_1111 is valid)
 
                 Verify(!(prefixFlags & PREFIX_NO), "Multiple .no prefixes");
 
                 impValidateCheckOmittionOpcode(codeAddr, codeEndp, val);
 
-                // prefixFlags |= PREFIX_NO; will doing this cause any validation issues? if not, we could still keep the flag but just treat it as a nop
+                prefixFlags |= PREFIX_NO; // will this cause any issue? it is useful to prevent multiple prefixes
 
                 assert(sz == 1);
 
