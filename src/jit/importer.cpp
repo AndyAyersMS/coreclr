@@ -7072,17 +7072,27 @@ bool Compiler::impTailCallRetTypeCompatible(var_types            callerRetType,
     return false;
 }
 
+enum
+{
+    NO_PREFIX_TYPECHECK = 0x01,
+    NO_PREFIX_RANGECHECK = 0x02,
+    NO_PREFIX_NULLCHECK = 0x04
+};
+
 // For prefixFlags
 enum
 {
     PREFIX_TAILCALL_EXPLICIT = 0x00000001, // call has "tail" IL prefix
     PREFIX_TAILCALL_IMPLICIT =
         0x00000010, // call is treated as having "tail" prefix even though there is no "tail" IL prefix
+    PREFIX_TAILCALL_IMPLICIT = 0x00000010, // call is treated as having "tail" prefix even though there is no "tail" IL
+                                           // prefix
     PREFIX_TAILCALL    = (PREFIX_TAILCALL_EXPLICIT | PREFIX_TAILCALL_IMPLICIT),
     PREFIX_VOLATILE    = 0x00000100,
     PREFIX_UNALIGNED   = 0x00001000,
     PREFIX_CONSTRAINED = 0x00010000,
-    PREFIX_READONLY    = 0x00100000
+    PREFIX_READONLY    = 0x00100000,
+    PREFIX_NO          = 0x01000000,
 };
 
 /********************************************************************************
@@ -9987,6 +9997,52 @@ static void impValidateMemoryAccessOpcode(const BYTE* codeAddr, const BYTE* code
             (volatilePrefix && ((opcode == CEE_LDSFLD) || (opcode == CEE_STSFLD)))))
     {
         BADCODE("Invalid opcode for unaligned. or volatile. prefix");
+    }
+}
+
+/*****************************************************************************/
+
+/*****************************************************************************/
+// Checks whether the opcode is a valid opcode for the no. prefixe
+
+static void impValidateCheckOmittionOpcode(const BYTE* codeAddr, const BYTE* codeEndp, int omittionValues)
+{
+    OPCODE opcode = impGetNonPrefixOpcode(codeAddr, codeEndp);
+
+    // LEGAL VALUES
+    // 0x01: typecheck (castclass, unbox, ldelema, stelem, stelem)
+    // 0x02: rangecheck (ldelem.*, ldelema, stelem.*)
+    // 0x04: nullcheck (ldfld, stfld, callvirt, ldvirtftn, ldelem.*, stelem.*, ldelema)
+
+    // Fast case ldelema and stelem.*
+    if (opcode == CEE_LDELEMA || (opcode >= CEE_STELEM_I && opcode <= CEE_STELEM_REF))
+        return;
+
+    // these could be chained but it would be entirely unreadable
+
+    // check that each bit is either not set or the correct opcodes for each possible value (0x01, 0x02, 0x04)
+    if (!(
+        
+        // 0x01: typecheck (castclass, unbox, ldelema, stelem, stelem)
+        (!(omittionValues & NO_PREFIX_TYPECHECK)
+        || (opcode == CEE_CASTCLASS || opcode == CEE_UNBOX || opcode == CEE_STELEM))
+
+        &&
+
+        // 0x02: rangecheck (ldelem.*, ldelema, stelem.*)
+        (!(omittionValues & NO_PREFIX_RANGECHECK
+        || (opcode >= CEE_LDELEM_I1 && opcode <= CEE_LDELEM_REF)))
+
+        &&
+
+        // 0x04: nullcheck (ldfld, stfld, callvirt, ldvirtftn, ldelem.*, stelem.*, ldelema)
+        (!(omittionValues & NO_PREFIX_NULLCHECK
+        || opcode == CEE_LDFLD || opcode == CEE_STFLD || opcode == CEE_CALLVIRT || opcode == CEE_LDVIRTFTN
+        || (opcode >= CEE_LDELEM_I1 && opcode <= CEE_LDELEM_REF)))
+        
+        ))
+    {
+        BADCODE("Invalid opcode for no. prefix");
     }
 }
 
@@ -13275,6 +13331,37 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 assert(sz == 0);
                 goto PREFIX;
+
+            case CEE_NO:
+                
+                // Verifiable IL does not permit the use of no
+                if (tiVerificationNeeded)
+                {
+                    Verify(false, "bad opcode");
+                }
+
+                val = getU1LittleEndian(codeAddr); // the set options, typecheck (0x01), rangecheck (0x02), and
+                                                   // nullcheck (0x04) - can be OR'ed together as flags
+                ++codeAddr;
+
+                // should zero be allowed to indicate no checks omitted? (in this impl it is)
+                if ((val & (NO_PREFIX_TYPECHECK | NO_PREFIX_RANGECHECK | NO_PREFIX_NULLCHECK)) != val) 
+                {
+                    // value has unrecognised bits set - (should  we allow invalid values and just read the relevant bits?)
+                    BADCODE("Invalid no. values - must be typecheck (0x01), rangecheck (0x02), or nullcheck (0x04), or "
+                            "some OR'ed combination or these");
+                }
+
+                Verify(!(prefixFlags & PREFIX_NO), "Multiple .no prefixes");
+
+                impValidateCheckOmittionOpcode(codeAddr, codeEndp, val);
+
+                // prefixFlags |= PREFIX_NO; will doing this cause any validation issues? if not, we could still keep the flag but just treat it as a nop
+
+                assert(sz == 1);
+
+                goto PREFIX;
+
 
             case CEE_LDFTN:
             {
