@@ -7076,7 +7076,7 @@ enum
 {
     NO_PREFIX_TYPECHECK = 0x01,
     NO_PREFIX_RANGECHECK = 0x02,
-    NO_PREFIX_NULLCHECK = 0x04
+    NO_PREFIX_NULLCHECK = 0x04,
 };
 
 // For prefixFlags
@@ -7090,7 +7090,11 @@ enum
     PREFIX_UNALIGNED   = 0x00001000,
     PREFIX_CONSTRAINED = 0x00010000,
     PREFIX_READONLY    = 0x00100000,
-    PREFIX_NO          = 0x01000000,
+    PREFIX_NO_TYPECHK  = 0x01000000,
+    PREFIX_NO_RANGECHK = 0x10000000,
+    PREFIX_NO_NULLCHK  = 0x00000002, // irregular value, an issue?
+    PREFIX_NO_ANY      = PREFIX_NO_TYPECHK | PREFIX_NO_RANGECHK | PREFIX_NO_NULLCHK
+
 };
 
 /********************************************************************************
@@ -11743,7 +11747,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 /* Create the index node and push it on the stack */
 
-                op1 = gtNewIndexRef(lclTyp, op1, op2);
+                op1 = gtNewIndexRef(lclTyp, op3, op1, prefixFlags & PREFIX_NO_RANGECHK);
 
                 ldstruct = (opcode == CEE_LDELEM && lclTyp == TYP_STRUCT);
 
@@ -11982,7 +11986,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 /* Create the index node */
 
-                op1 = gtNewIndexRef(lclTyp, op3, op1);
+                op1 = gtNewIndexRef(lclTyp, op3, op1, prefixFlags & PREFIX_NO_RANGECHK);
 
                 /* Create the assignment node and append it */
 
@@ -13345,11 +13349,22 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 // should zero be allowed to indicate no checks omitted? (in this impl it is)
                 // should we enforce only relevant bits set? (in this impl it is not - 0b_1111_1111 is valid)
 
-                Verify(!(prefixFlags & PREFIX_NO), "Multiple .no prefixes");
+                Verify(!(prefixFlags & PREFIX_NO_ANY), "Multiple no. prefixes with equal values");
+                
+                if (val & NO_PREFIX_TYPECHECK)
+                {
+                    prefixFlags |= PREFIX_NO_TYPECHK;
+                }
+                if (val & NO_PREFIX_RANGECHECK)
+                {
+                    prefixFlags |= PREFIX_NO_RANGECHK;
+                }
+                if (val & NO_PREFIX_NULLCHECK)
+                {
+                    prefixFlags |= PREFIX_NO_NULLCHK;
+                }
 
                 impValidateCheckOmittionOpcode(codeAddr, codeEndp, val);
-
-                prefixFlags |= PREFIX_NO; // will this cause any issue? it is useful to prevent multiple prefixes
 
                 assert(sz == 1);
 
