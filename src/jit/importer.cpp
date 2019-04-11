@@ -7074,9 +7074,9 @@ bool Compiler::impTailCallRetTypeCompatible(var_types            callerRetType,
 
 enum
 {
-    NO_PREFIX_TYPECHECK = 0x01,
+    NO_PREFIX_TYPECHECK  = 0x01,
     NO_PREFIX_RANGECHECK = 0x02,
-    NO_PREFIX_NULLCHECK = 0x04,
+    NO_PREFIX_NULLCHECK  = 0x04,
 };
 
 // For prefixFlags
@@ -10005,9 +10005,9 @@ static void impValidateMemoryAccessOpcode(const BYTE* codeAddr, const BYTE* code
 /*****************************************************************************/
 
 /*****************************************************************************/
-// Checks whether the opcode is a valid opcode for the no. prefixe
+// Checks whether the opcode is a valid opcode for the no. prefix
 
-static void impValidateCheckOmittionOpcode(const BYTE* codeAddr, const BYTE* codeEndp, int omittionValues)
+static void impValidateCheckNoPrefix(const BYTE* codeAddr, const BYTE* codeEndp, int prefixValues)
 {
     OPCODE opcode = impGetNonPrefixOpcode(codeAddr, codeEndp);
 
@@ -10016,35 +10016,38 @@ static void impValidateCheckOmittionOpcode(const BYTE* codeAddr, const BYTE* cod
     // 0x02: rangecheck (ldelem.*, ldelema, stelem.*)
     // 0x04: nullcheck (ldfld, stfld, callvirt, ldvirtftn, ldelem.*, stelem.*, ldelema)
 
-    // Fast case ldelema and stelem.*
+    // Fast case ldelema and stelem.* where all prefixes are valid
     if (opcode == CEE_LDELEMA || (opcode >= CEE_STELEM_I && opcode <= CEE_STELEM_REF))
-        return;
-
-    // these could be chained but it would be entirely unreadable
-
-    // check that each bit is either not set or the correct opcodes for each possible value (0x01, 0x02, 0x04)
-    if (!(
-        
-        // 0x01: typecheck (castclass, unbox, ldelema, stelem, stelem)
-        (!(omittionValues & NO_PREFIX_TYPECHECK)
-        || (opcode == CEE_CASTCLASS || opcode == CEE_UNBOX || opcode == CEE_STELEM))
-
-        &&
-
-        // 0x02: rangecheck (ldelem.*, ldelema, stelem.*)
-        (!(omittionValues & NO_PREFIX_RANGECHECK
-        || (opcode >= CEE_LDELEM_I1 && opcode <= CEE_LDELEM_REF)))
-
-        &&
-
-        // 0x04: nullcheck (ldfld, stfld, callvirt, ldvirtftn, ldelem.*, stelem.*, ldelema)
-        (!(omittionValues & NO_PREFIX_NULLCHECK
-        || opcode == CEE_LDFLD || opcode == CEE_STFLD || opcode == CEE_CALLVIRT || opcode == CEE_LDVIRTFTN
-        || (opcode >= CEE_LDELEM_I1 && opcode <= CEE_LDELEM_REF)))
-        
-        ))
     {
-        BADCODE("Invalid opcode for no. prefix");
+        return;
+    }
+
+    if (prefixValues & NO_PREFIX_TYPECHECK)
+    {
+        if (!(opcode == CEE_CASTCLASS || opcode == CEE_UNBOX || opcode == CEE_STELEM))
+        {
+            JITDUMP("Invalid opcode %s for no typecheck prefix", opcodeNames[opcode]);
+            BADCODE("Invalid opcode for no typecheck prefix");
+        }
+    }
+
+    if (prefixValues & NO_PREFIX_RANGECHECK)
+    {
+        if (!(opcode >= CEE_LDELEM_I1 && opcode <= CEE_LDELEM_REF))
+        {
+            JITDUMP("Invalid opcode %s for no rangecheck prefix", opcodeNames[opcode]);
+            BADCODE("Invalid opcode for no rangecheck prefix");
+        }
+    }
+
+    if (prefixValues & NO_PREFIX_NULLCHECK)
+    {
+        if (!((opcode >= CEE_LDELEM_I1 && opcode <= CEE_LDELEM_REF) || opcode == CEE_LDFLD || opcode == CEE_STFLD ||
+              opcode == CEE_CALLVIRT || opcode == CEE_LDVIRTFTN))
+        {
+            JITDUMP("Invalid opcode %s for no nullcheck prefix", opcodeNames[opcode]);
+            BADCODE("Invalid opcode for no nullcheck prefix");
+        }
     }
 }
 
@@ -11747,7 +11750,14 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 /* Create the index node and push it on the stack */
 
-                op1 = gtNewIndexRef(lclTyp, op3, op1, prefixFlags & PREFIX_NO_RANGECHK);
+                op1 = gtNewIndexRef(lclTyp, op1, op2);
+
+                // optonally clear range check flag
+                if (prefixFlags & PREFIX_NO_RANGECHK)
+                {
+                    JITDUMP("\n -- No rangecheck prefix applied to [%06u]\n", dspTreeID(op1));
+                    op1->gtFlags &= ~GTF_INX_RNGCHK;
+                }
 
                 ldstruct = (opcode == CEE_LDELEM && lclTyp == TYP_STRUCT);
 
@@ -11986,7 +11996,14 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 /* Create the index node */
 
-                op1 = gtNewIndexRef(lclTyp, op3, op1, prefixFlags & PREFIX_NO_RANGECHK);
+                op1 = gtNewIndexRef(lclTyp, op3, op1);
+
+                // Optionally clear the rangecheck flag
+                if (prefixFlags & PREFIX_NO_RANGECHK)
+                {
+                    JITDUMP("\n -- No rangecheck prefix applied to [%06u]\n", dspTreeID(op1));
+                    op1->gtFlags &= ~GTF_INX_RNGCHK;
+                }
 
                 /* Create the assignment node and append it */
 
@@ -13335,7 +13352,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 goto PREFIX;
 
             case CEE_NO:
-                
+
                 // Verifiable IL does not permit the use of no
                 if (tiVerificationNeeded)
                 {
@@ -13350,7 +13367,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 // should we enforce only relevant bits set? (in this impl it is not - 0b_1111_1111 is valid)
 
                 Verify(!(prefixFlags & PREFIX_NO_ANY), "Multiple no. prefixes with equal values");
-                
+
                 if (val & NO_PREFIX_TYPECHECK)
                 {
                     prefixFlags |= PREFIX_NO_TYPECHK;
@@ -13364,12 +13381,11 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     prefixFlags |= PREFIX_NO_NULLCHK;
                 }
 
-                impValidateCheckOmittionOpcode(codeAddr, codeEndp, val);
+                impValidateCheckNoPrefix(codeAddr, codeEndp, val);
 
                 assert(sz == 1);
 
                 goto PREFIX;
-
 
             case CEE_LDFTN:
             {

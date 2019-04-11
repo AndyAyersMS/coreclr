@@ -4567,7 +4567,6 @@ struct GenTreeIndex : public GenTreeOp
         }
         else
 #endif
-        if (arr->gtFlags & GTF_INX_RNGCHK)
         {
             // Do bounds check
             gtFlags |= GTF_INX_RNGCHK;

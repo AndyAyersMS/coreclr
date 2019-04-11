@@ -1210,16 +1210,9 @@ inline GenTree* Compiler::gtNewFieldRef(var_types typ, CORINFO_FIELD_HANDLE fldH
  *  A little helper to create an array index node.
  */
 
-inline GenTree* Compiler::gtNewIndexRef(var_types typ, GenTree* arrayOp, GenTree* indexOp, bool rngChkRequired)
+inline GenTree* Compiler::gtNewIndexRef(var_types typ, GenTree* arrayOp, GenTree* indexOp)
 {
     GenTreeIndex* gtIndx = new (this, GT_INDEX) GenTreeIndex(typ, arrayOp, indexOp, genTypeSize(typ));
-
-    assert(!(gtIndx->gtFlags & GTF_INX_RNGCHK));
-
-    if (rngChkRequired)
-    {
-        gtIndx->gtFlags |= GTF_INX_RNGCHK;
-    }
 
     return gtIndx;
 }
