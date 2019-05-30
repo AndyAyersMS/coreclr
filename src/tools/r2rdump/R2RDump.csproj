@@ -21,9 +21,7 @@
     <PackageReference Include="Microsoft.NETCore.CoreDisTools">
       <Version>1.0.1-prerelease-00005</Version>
     </PackageReference>
-    <PackageReference Include="System.CommandLine">
-      <Version>0.1.0-e160119-1</Version>
-    </PackageReference>
+    <PackageReference Include="System.CommandLine.Experimental" Version="0.2.0-alpha.19272.1" />
     <PackageReference Include="System.Reflection.Metadata">
       <Version>1.6.0</Version>
     </PackageReference>
