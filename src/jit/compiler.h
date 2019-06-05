@@ -6386,6 +6386,8 @@ public:
         {
             unsigned lclNum; // assigned to or property of this local var number
             unsigned ssaNum;
+            FieldSeqNode* fieldSeq;
+            // unsigned fieldSeqOffset;  for non-partial copy assertion prop
         };
         struct ArrBnd
         {
