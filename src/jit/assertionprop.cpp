@@ -988,8 +988,9 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
     //
     // Are we making an assertion about a local variable?
     //
-    else if (op1->gtOper == GT_LCL_VAR)
+    else if ((op1->OperIs(GT_LCL_FLD, GT_LCL_VAR)))
     {
+        JITDUMP("--- assertion: GT_ASG local op1\n");
         unsigned lclNum = op1->gtLclVarCommon.gtLclNum;
         noway_assert(lclNum < lvaCount);
         LclVarDsc* lclVar = &lvaTable[lclNum];
@@ -997,7 +998,21 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
         //  If the local variable has its address exposed then bail
         if (lclVar->lvAddrExposed)
         {
+            JITDUMP("--- op1 exposed, sorry\n");
             goto DONE_ASSERTION; // Don't make an assertion
+        }
+
+        // If this is a LCL_FLD, it must cover the entire LCL_VAR
+        // TODO: could relax this....
+        if (op1->IsPartialLclFld(this))
+        {
+            JITDUMP("--- partial local field op1, sorry\n");
+            goto DONE_ASSERTION; // Don't make an assertion
+        }
+
+        if (op1->OperIs(GT_LCL_FLD))
+        {
+            JITDUMP("--- total local field op1\n");
         }
 
         if (haveArgs)
@@ -1056,6 +1071,15 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
             assertion->op1.lcl.lclNum = lclNum;
             assertion->op1.vn         = vnStore->VNConservativeNormalValue(op1->gtVNPair);
             assertion->op1.lcl.ssaNum = op1->AsLclVarCommon()->GetSsaNum();
+
+            if (op1->OperIs(GT_LCL_FLD))
+            {
+                assertion->op1.lcl.fieldSeq = op1->AsLclFld()->gtFieldSeq;
+            }
+            else
+            {
+                assertion->op1.lcl.fieldSeq = nullptr;
+            }
 
             switch (op2->gtOper)
             {
@@ -1154,12 +1178,15 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
                 //  Copy Assertions
                 //
                 case GT_LCL_VAR:
+                case GT_LCL_FLD:
                 {
+                    JITDUMP("--- lcl or lcl_fld op2\n");
                     //
                     // Must either be an OAK_EQUAL or an OAK_NOT_EQUAL assertion
                     //
                     if ((assertionKind != OAK_EQUAL) && (assertionKind != OAK_NOT_EQUAL))
                     {
+                        JITDUMP("--- not eq or neq, sorry\n");
                         goto DONE_ASSERTION; // Don't make an assertion
                     }
 
@@ -1168,14 +1195,19 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
                     LclVarDsc* lclVar2 = &lvaTable[lclNum2];
 
                     // If the two locals are the same then bail
+                    //
+                    // TODO: could allow this for within-struct field copies.
                     if (lclNum == lclNum2)
                     {
+                        JITDUMP("--- self assign, sorry\n");
                         goto DONE_ASSERTION; // Don't make an assertion
                     }
 
-                    // If the types are different then bail */
+                    // If the types are different then bail
+                    // TODO: for LCL_FLD we could relax this...
                     if (lclVar->lvType != lclVar2->lvType)
                     {
+                        JITDUMP("--- type mismatch, sorry\n");
                         goto DONE_ASSERTION; // Don't make an assertion
                     }
 
@@ -1183,19 +1215,44 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
                     // has to be "normalize on load" as well, otherwise we risk skipping normalization.
                     if (lclVar2->lvNormalizeOnLoad() && !lclVar->lvNormalizeOnLoad())
                     {
+                        JITDUMP("--- normalize mismatch, sorry\n");
                         goto DONE_ASSERTION; // Don't make an assertion
                     }
 
                     //  If the local variable has its address exposed then bail
                     if (lclVar2->lvAddrExposed)
                     {
+                        JITDUMP("--- lcl2 exposed, sorry\n");
                         goto DONE_ASSERTION; // Don't make an assertion
+                    }
+
+                    // If we have a LCL_FLD, make sure it covers the entirety of the
+                    // backing local VAR.
+                    // (TODO: could relax this...)
+                    if (op2->IsPartialLclFld(this))
+                    {
+                        JITDUMP("--- partial local field op2, sorry\n");
+                        goto DONE_ASSERTION; // Don't make an assertion
+                    }
+
+                    if (op1->OperIs(GT_LCL_FLD) || op2->OperIs(GT_LCL_FLD))
+                    {
+                        JITDUMP("--- local fields rule!\n");
                     }
 
                     assertion->op2.kind       = O2K_LCLVAR_COPY;
                     assertion->op2.lcl.lclNum = lclNum2;
                     assertion->op2.vn         = vnStore->VNConservativeNormalValue(op2->gtVNPair);
                     assertion->op2.lcl.ssaNum = op2->AsLclVarCommon()->GetSsaNum();
+
+                    if (op2->OperIs(GT_LCL_FLD))
+                    {
+                        assertion->op2.lcl.fieldSeq = op2->AsLclFld()->gtFieldSeq;
+                    }
+                    else
+                    {
+                        assertion->op2.lcl.fieldSeq = nullptr;
+                    }
 
                     //
                     // Ok everything has been set and the assertion looks good
@@ -1225,13 +1282,6 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
                     goto SUBRANGE_COMMON;
 
                 case GT_ARR_ELEM:
-
-                    /* Assigning the result of an indirection into a LCL_VAR, see if we can add a subrange assertion */
-
-                    toType = op2->gtType;
-                    goto SUBRANGE_COMMON;
-
-                case GT_LCL_FLD:
 
                     /* Assigning the result of an indirection into a LCL_VAR, see if we can add a subrange assertion */
 
@@ -2071,6 +2121,7 @@ void Compiler::optAssertionGen(GenTree* tree)
             // VN takes care of non local assertions for assignments and data flow.
             if (optLocalAssertionProp)
             {
+                JITDUMP("local assertion gen on [%06u]\n", dspTreeID(tree));
                 assertionInfo = optCreateAssertion(tree->gtOp.gtOp1, tree->gtOp.gtOp2, OAK_EQUAL);
             }
             else
@@ -2773,29 +2824,45 @@ GenTree* Compiler::optCopyAssertionProp(AssertionDsc* curAssertion,
                                         GenTree*      tree,
                                         GenTreeStmt* stmt DEBUGARG(AssertionIndex index))
 {
+    JITDUMP("@@ copy assertion prop at [%06u]\n", dspTreeID(tree));
+
     const AssertionDsc::AssertionDscOp1& op1 = curAssertion->op1;
     const AssertionDsc::AssertionDscOp2& op2 = curAssertion->op2;
 
     noway_assert(op1.lcl.lclNum != op2.lcl.lclNum);
 
-    unsigned lclNum = tree->gtLclVarCommon.GetLclNum();
+    const bool isLclFld = tree->OperIs(GT_LCL_FLD);
+    const unsigned lclNum = tree->gtLclVarCommon.GetLclNum();
+
+    // Figure out which side of the assertion we've matched
+    const bool matchedOp1 = op1.lcl.lclNum == lclNum;
+    const bool matchedOp2 = op2.lcl.lclNum == lclNum;
+
+    assert(!matchedOp1 || !matchedOp2);
 
     // Make sure one of the lclNum of the assertion matches with that of the tree.
-    if (op1.lcl.lclNum != lclNum && op2.lcl.lclNum != lclNum)
+    if (!matchedOp1 && !matchedOp2)
     {
+        JITDUMP(" -- sorry, no match for V%02u or V%02u\n", op1.lcl.lclNum, op2.lcl.lclNum);
         return nullptr;
     }
 
     // Extract the matching lclNum and ssaNum.
-    unsigned copyLclNum = (op1.lcl.lclNum == lclNum) ? op2.lcl.lclNum : op1.lcl.lclNum;
+    unsigned copyLclNum = matchedOp1 ? op2.lcl.lclNum : op1.lcl.lclNum;
     unsigned copySsaNum = BAD_VAR_NUM;
     if (!optLocalAssertionProp)
     {
         // Extract the ssaNum of the matching lclNum.
-        unsigned ssaNum = (op1.lcl.lclNum == lclNum) ? op1.lcl.ssaNum : op2.lcl.ssaNum;
-        copySsaNum      = (op1.lcl.lclNum == lclNum) ? op2.lcl.ssaNum : op1.lcl.ssaNum;
+        unsigned ssaNum = matchedOp1 ? op1.lcl.ssaNum : op2.lcl.ssaNum;
+        copySsaNum      = matchedOp1 ? op2.lcl.ssaNum : op1.lcl.ssaNum;
 
         if (ssaNum != tree->AsLclVarCommon()->GetSsaNum())
+        {
+            return nullptr;
+        }
+
+        // Don't handle LCL_FLD cases globally (yet?)
+        if (isLclFld)
         {
             return nullptr;
         }
@@ -2804,16 +2871,63 @@ GenTree* Compiler::optCopyAssertionProp(AssertionDsc* curAssertion,
     LclVarDsc* copyVarDsc = &lvaTable[copyLclNum];
     LclVarDsc* lclVarDsc  = &lvaTable[lclNum];
 
-    // Make sure the types are compatible.
+    // Make sure the types are compatible (TODO: may need work).
     if (!optAssertionProp_LclVarTypeCheck(tree, lclVarDsc, copyVarDsc))
     {
+        JITDUMP(" -- sorry, failed type check\n");
         return nullptr;
     }
 
     // Make sure we can perform this copy prop.
-    if (optCopyProp_LclVarScore(lclVarDsc, copyVarDsc, curAssertion->op1.lcl.lclNum == lclNum) <= 0)
+    if (optCopyProp_LclVarScore(lclVarDsc, copyVarDsc, matchedOp1) <= 0)
     {
+        JITDUMP(" -- sorry, failed score check\n");
         return nullptr;
+    }
+
+    // Handle field sequences and offsets. These may arise from the tree
+    //
+    // v2 = v1
+    //    = v2.f    // v1.f
+    //
+    // or the assertion
+    //
+    //  v2 = v1.f
+    //     = v2     // v1.f
+    //
+    // or both
+    //
+    // v2.f = v1.j
+    //      = v2.k  // v1.j.k
+    //
+    // Note we currenly only handle "entire" copies so the offset on 
+    // the assertion side is always zero.
+
+    FieldSeqNode* copyFieldSeq = 
+        matchedOp1 ? op1.lcl.fieldSeq : op2.lcl.fieldSeq;
+
+    if (copyFieldSeq != nullptr)
+    {
+        // Don't handle LCL_FLD cases globally (yet?)
+
+        if (!optLocalAssertionProp)
+        {
+            return nullptr;
+        }
+        
+        if (tree->OperIs(GT_LCL_FLD))
+        {
+            GenTreeLclFld* lclFldTree = tree->AsLclFld();
+            assert(lclFldTree->gtLclOffs == 0);
+            FieldSeqNode* finalFieldSeq = GetFieldSeqStore()->Append(lclFldTree->gtFieldSeq, copyFieldSeq);
+            lclFldTree->gtFieldSeq = finalFieldSeq;
+        }
+        else
+        {
+            tree->ChangeOper(GT_LCL_FLD);
+            tree->AsLclFld()->gtFieldSeq = copyFieldSeq;
+            tree->AsLclFld()->gtLclOffs = 0;
+        }
     }
 
     tree->gtLclVarCommon.SetSsaNum(copySsaNum);
@@ -2834,7 +2948,7 @@ GenTree* Compiler::optCopyAssertionProp(AssertionDsc* curAssertion,
 
 /*****************************************************************************
  *
- *  Given a tree consisting of a just a LclVar and a set of available assertions
+ *  Given a tree consisting of a just a LclVar (or entire LclFld) and a set of available assertions
  *  we try to propagate an assertion and modify the LclVar tree if we can.
  *  We pass in the root of the tree via 'stmt', for local copy prop 'stmt' will
  *  be nullptr. Returns the modified tree, or nullptr if no assertion prop took place.
@@ -2842,7 +2956,8 @@ GenTree* Compiler::optCopyAssertionProp(AssertionDsc* curAssertion,
 
 GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree* tree, GenTreeStmt* stmt)
 {
-    assert(tree->gtOper == GT_LCL_VAR);
+    assert(tree->OperIs(GT_LCL_VAR, GT_LCL_FLD));
+
     // If we have a var definition then bail or
     // If this is the address of the var then it will have the GTF_DONT_CSE
     // flag set and we don't want to to assertion prop on it.
@@ -3949,6 +4064,7 @@ GenTree* Compiler::optAssertionProp(ASSERT_VALARG_TP assertions, GenTree* tree, 
     switch (tree->gtOper)
     {
         case GT_LCL_VAR:
+        case GT_LCL_FLD:
             return optAssertionProp_LclVar(assertions, tree, stmt);
 
         case GT_OBJ:

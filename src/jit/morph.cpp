@@ -9970,7 +9970,7 @@ GenTree* Compiler::fgMorphBlkNode(GenTree* tree, bool isDest)
 //
 // Notes:
 //    This does the following:
-//    - Ensures that a struct operand is a block node or lclVar.
+//    - Ensures that a struct operand is a block node, lclVar, or lclFld.
 //    - Ensures that any COMMAs are above ADDR nodes.
 //    Although 'tree' WAS an operand of a block assignment, the assignment
 //    may have been retyped to be a scalar assignment.
@@ -10013,12 +10013,12 @@ GenTree* Compiler::fgMorphBlockOperand(GenTree* tree, var_types asgType, unsigne
         {
             indirTree     = effectiveVal->AsIndir();
             GenTree* addr = effectiveVal->AsIndir()->Addr();
-            if ((addr->OperGet() == GT_ADDR) && (addr->gtGetOp1()->OperGet() == GT_LCL_VAR))
+            if ((addr->OperGet() == GT_ADDR) && (addr->gtGetOp1()->OperIs(GT_LCL_VAR, GT_LCL_FLD)))
             {
                 lclNode = addr->gtGetOp1()->AsLclVarCommon();
             }
         }
-        else if (effectiveVal->OperGet() == GT_LCL_VAR)
+        else if (effectiveVal->OperIs(GT_LCL_VAR, GT_LCL_FLD))
         {
             lclNode = effectiveVal->AsLclVarCommon();
         }
@@ -10029,7 +10029,7 @@ GenTree* Compiler::fgMorphBlockOperand(GenTree* tree, var_types asgType, unsigne
             {
                 if (effectiveVal != lclNode)
                 {
-                    JITDUMP("Replacing block node [%06d] with lclVar V%02u\n", dspTreeID(tree), lclNode->gtLclNum);
+                    JITDUMP("Replacing block node [%06d] with lclVar V%02u via [%06d]\n", dspTreeID(tree), lclNode->gtLclNum, dspTreeID(lclNode));
                     effectiveVal = lclNode;
                 }
                 needsIndirection = false;
