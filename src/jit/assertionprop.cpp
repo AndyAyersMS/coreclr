@@ -2840,7 +2840,7 @@ GenTree* Compiler::optCopyAssertionProp(AssertionDsc* curAssertion,
  *  be nullptr. Returns the modified tree, or nullptr if no assertion prop took place.
  */
 
-GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt, bool copyPropOnly)
+GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree* tree, GenTreeStmt* stmt, bool copyPropOnly)
 {
     JITDUMP("\n --- ap lcl var \n");
     DISPTREE(tree);
@@ -2918,7 +2918,7 @@ GenTree* Compiler::optAssertionProp_LclVar(ASSERT_VALARG_TP assertions, GenTree*
     return nullptr;
 }
 
-GenTree* Compiler::optAssertionProp_Field(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt)
+GenTree* Compiler::optAssertionProp_Field(ASSERT_VALARG_TP assertions, GenTree* tree, GenTreeStmt* stmt)
 {
     JITDUMP("\n --- ap field\n");
     DISPTREE(tree);
@@ -3578,7 +3578,7 @@ GenTree* Compiler::optAssertionProp_Ind(ASSERT_VALARG_TP assertions, GenTree* tr
     return nullptr;
 }
 
-GenTree* Compiler::optAssertionProp_IndNonfaulting(ASSERT_VALARG_TP assertions, GenTree* tree, GenTree* stmt)
+GenTree* Compiler::optAssertionProp_IndNonfaulting(ASSERT_VALARG_TP assertions, GenTree* tree, GenTreeStmt* stmt)
 {
     assert(tree->gtFlags & GTF_EXCEPT);
 
