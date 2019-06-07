@@ -10013,12 +10013,12 @@ GenTree* Compiler::fgMorphBlockOperand(GenTree* tree, var_types asgType, unsigne
         {
             indirTree     = effectiveVal->AsIndir();
             GenTree* addr = effectiveVal->AsIndir()->Addr();
-            if ((addr->OperGet() == GT_ADDR) && (addr->gtGetOp1()->OperIs(GT_LCL_VAR, GT_LCL_FLD)))
+            if ((addr->OperGet() == GT_ADDR) && (addr->gtGetOp1()->OperGet() == GT_LCL_VAR))
             {
                 lclNode = addr->gtGetOp1()->AsLclVarCommon();
             }
         }
-        else if (effectiveVal->OperIs(GT_LCL_VAR, GT_LCL_FLD))
+        else if (effectiveVal->OperGet() == GT_LCL_VAR)
         {
             lclNode = effectiveVal->AsLclVarCommon();
         }
@@ -10029,7 +10029,7 @@ GenTree* Compiler::fgMorphBlockOperand(GenTree* tree, var_types asgType, unsigne
             {
                 if (effectiveVal != lclNode)
                 {
-                    JITDUMP("Replacing block node [%06d] with lclVar V%02u via [%06d]\n", dspTreeID(tree), lclNode->gtLclNum, dspTreeID(lclNode));
+                    JITDUMP("Replacing block node [%06d] with lclVar V%02u\n", dspTreeID(tree), lclNode->gtLclNum);
                     effectiveVal = lclNode;
                 }
                 needsIndirection = false;
