@@ -113,6 +113,12 @@ int Compiler::optCopyProp_LclVarScore(LclVarDsc* lclVarDsc, LclVarDsc* copyVarDs
     }
 #endif
 
+    if (lclVarDsc->lvType == TYP_STRUCT)
+    {
+        JITDUMP("struct copy prop score: prefer2=%u, score=%d", preferOp2, score);
+        if (preferOp2) score += 4;
+    }
+
     // Otherwise we prefer to use the op2LclNum
     return score + ((preferOp2) ? 1 : -1);
 }

@@ -3046,7 +3046,7 @@ GenTree* Compiler::optAssertionProp_Field(ASSERT_VALARG_TP assertions, GenTree* 
             GenTree* op = addr->gtGetOp1();
 
             // Only copyprop structs
-            if (op->OperIs(GT_LCL_VAR) && (op->TypeGet() == TYP_STRUCT))
+            if (op->OperIs(GT_LCL_VAR, GT_LCL_FLD) && (op->TypeGet() == TYP_STRUCT))
             {
                 GenTree* newTree = optAssertionProp_LclVar(assertions, op, stmt, true);
 
@@ -3056,6 +3056,10 @@ GenTree* Compiler::optAssertionProp_Field(ASSERT_VALARG_TP assertions, GenTree* 
                 }
             }
         }
+    }
+    else
+    {
+        JITDUMP("sorry, DONT_CSE\n");
     }
 
     return nullptr;
@@ -3655,6 +3659,7 @@ GenTree* Compiler::optAssertionProp_Ind(ASSERT_VALARG_TP assertions, GenTree* tr
     // (1) copyprop if source Ind(Addr(Lcl)) and we have assertions
     if (assertions != nullptr)
     {
+        JITDUMP("--ap IND\n");
         if ((tree->gtFlags & GTF_DONT_CSE) == 0)
         {
             GenTree* addr = tree->AsIndir()->Addr();
@@ -3664,12 +3669,21 @@ GenTree* Compiler::optAssertionProp_Ind(ASSERT_VALARG_TP assertions, GenTree* tr
                 GenTree* op = addr->gtGetOp1();
 
                 // Only copyprop structs
-                if (op->OperIs(GT_LCL_VAR) && (op->TypeGet() == TYP_STRUCT))
+                if (op->OperIs(GT_LCL_VAR, GT_LCL_FLD) && (op->TypeGet() == TYP_STRUCT))
                 {
                     GenTree* newOp = optAssertionProp_LclVar(assertions, op, stmt, true);
                     updated        = (newOp != nullptr);
                 }
+                else if (op->OperIs(GT_FIELD))
+                {
+                    GenTree* newOp = optAssertionProp_Field(assertions, op, stmt);
+                    updated        = (newOp != nullptr);
+                }
             }
+        }
+        else
+        {
+            JITDUMP("-- sorry, DONT_CSE\n");
         }
     }
 
