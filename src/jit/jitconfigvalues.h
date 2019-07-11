@@ -402,6 +402,10 @@ CONFIG_INTEGER(JitGuardedDevirtualizationGuessBestClass, W("JitGuardedDevirtuali
 #endif // DEBUG
 
 #if defined(DEBUG)
+CONFIG_INTEGER(JitPatchpoints, W("JitPatchpoints"), 0)
+#endif // defined(DEBUG)
+
+#if defined(DEBUG)
 // JitFunctionFile: Name of a file that contains a list of functions. If the currently compiled function is in the
 // file, certain other JIT config variables will be active. If the currently compiled function is not in the file,
 // the specific JIT config variables will not be active.

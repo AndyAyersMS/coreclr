@@ -6343,6 +6343,7 @@ public:
 #define OMF_HAS_FATPOINTER 0x00000020    // Method contains call, that needs fat pointer transformation.
 #define OMF_HAS_OBJSTACKALLOC 0x00000040 // Method contains an object allocated on the stack.
 #define OMF_HAS_GUARDEDDEVIRT 0x00000080 // Method contains guarded devirtualization candidate
+#define OMF_HAS_PATCHPOINT 0x00000100    // Method contains patchpoints
 
     bool doesMethodHaveFatPointer()
     {
@@ -6381,6 +6382,16 @@ public:
                                              CORINFO_CLASS_HANDLE  classHandle,
                                              unsigned              methodAttr,
                                              unsigned              classAttr);
+
+    bool doesMethodHavePatchpoints()
+    {
+        return (optMethodFlags & OMF_HAS_PATCHPOINT) != 0;
+    }
+
+    void setMethodHasPatchpoint()
+    {
+        optMethodFlags |= OMF_HAS_PATCHPOINT;
+    }
 
     unsigned optMethodFlags;
 

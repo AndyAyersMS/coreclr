@@ -5183,10 +5183,13 @@ void Compiler::fgObserveInlineConstants(OPCODE opcode, const FgStack& stack, boo
     }
 }
 
-/*****************************************************************************
- *
- *  Finally link up the bbJumpDest of the blocks together
- */
+//------------------------------------------------------------------------
+// fgMarkBackwardJump: mark blocks indicating there is a jump backwards in
+//   IL, from a higher to lower IL offset.
+//
+// Arguments:
+//   startBlock -- target of the jump
+//   endBlock -- source of the jump
 
 void Compiler::fgMarkBackwardJump(BasicBlock* startBlock, BasicBlock* endBlock)
 {
@@ -5200,6 +5203,8 @@ void Compiler::fgMarkBackwardJump(BasicBlock* startBlock, BasicBlock* endBlock)
             compHasBackwardJump = true;
         }
     }
+
+    startBlock->bbFlags |= BBF_BACKWARD_JUMP_TARGET;
 }
 
 /*****************************************************************************

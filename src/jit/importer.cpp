@@ -10542,6 +10542,31 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
     impBeginTreeList();
 
+    // Are there any plausible patchpoint locations in this method?
+    if (fgHasBackwardJump)
+    {
+        // Are patchpoints enabled?
+        if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_TIER0) && (JitConfig.JitPatchpoint() > 0))
+        {
+            // We don't inline at Tier0, if we do, we may need rethink our approach.
+            // Could probalby support inlines that don't introduce flow.
+            assert(!compIsForInlining());
+
+            // Is this block a patchpoint?
+            // Current strategy is stack-empty backwards branch targets
+            if (block->bbFlags & BBF_BACKWARD_JUMP_TARGET && (verCurrentState.esStackDepth == 0))
+            {
+                block->bbFlags |= BBF_PATCHPOINT;
+                setMethodHasPatchpoint();
+            }
+        }
+    }
+    else
+    {
+        // Should not see backward branch targets w/o backwards branches
+        assert((block->bbFlags & BBF_BACKWARD_JUMP_TARGET) == 0);
+    }
+
     /* Walk the opcodes that comprise the basic block */
 
     const BYTE* codeAddr = info.compCode + block->bbCodeOffs;
