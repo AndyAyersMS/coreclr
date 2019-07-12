@@ -4499,6 +4499,12 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
     // Transform indirect calls that require control flow expansion.
     fgTransformIndirectCalls();
 
+    // Expand any patchpoints, if we're processing the root method and not prejitting.
+    if (!compIsForInlining() && !opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
+    {
+        fgTransformPatchpoints();
+    }
+
     EndPhase(PHASE_IMPORTATION);
 
     if (compIsForInlining())

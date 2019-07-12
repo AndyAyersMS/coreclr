@@ -5490,6 +5490,27 @@ HCIMPL0(void, JIT_DebugLogLoopCloning)
 }
 HCIMPLEND
 
+
+// Stub, for now just reset the counter
+
+HCIMPL1(void, JIT_Patchpoint, int* counter)
+{
+    FCALL_CONTRACT;
+
+    // void * ip = _ReturnAddress();
+
+    HELPER_METHOD_FRAME_BEGIN_0();
+
+    // use ip to look up per-pp state in some table
+    // switch (state)...
+
+    *counter = 1000;
+    
+    HELPER_METHOD_FRAME_END();
+}
+HCIMPLEND
+
+
 //========================================================================
 //
 //      INTEROP HELPERS

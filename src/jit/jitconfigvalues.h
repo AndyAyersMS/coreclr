@@ -402,7 +402,7 @@ CONFIG_INTEGER(JitGuardedDevirtualizationGuessBestClass, W("JitGuardedDevirtuali
 #endif // DEBUG
 
 #if defined(DEBUG)
-CONFIG_INTEGER(JitPatchpoints, W("JitPatchpoints"), 0)
+CONFIG_INTEGER(JitPatchpoint, W("JitPatchpoint"), 0)
 #endif // defined(DEBUG)
 
 #if defined(DEBUG)
