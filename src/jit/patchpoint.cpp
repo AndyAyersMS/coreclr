@@ -18,7 +18,8 @@ class PatchpointTransformer
 public:
     PatchpointTransformer(Compiler* compiler) : compiler(compiler)
     {
-        ppCounterLclNum = compiler->lvaGrabTemp(true DEBUGARG("patchpoint counter"));
+        ppCounterLclNum                            = compiler->lvaGrabTemp(true DEBUGARG("patchpoint counter"));
+        compiler->lvaTable[ppCounterLclNum].lvType = TYP_INT;
     }
 
     //------------------------------------------------------------------------
@@ -28,12 +29,21 @@ public:
     //   Number of patchpoints transformed.
     int Run()
     {
-        int count = 0;
+        // If the first block is a patchpoint, insert a scratch block.
+        if (compiler->fgFirstBB->bbFlags & BBF_PATCHPOINT)
+        {
+            compiler->fgEnsureFirstBBisScratch();
+        }
 
-        for (BasicBlock* block = compiler->fgFirstBB; block != nullptr; block = block->bbNext)
+        BasicBlock* block = compiler->fgFirstBB;
+        TransformEntry(block);
+
+        int count = 0;
+        for (block = block->bbNext; block != nullptr; block = block->bbNext)
         {
             if (block->bbFlags & BBF_PATCHPOINT)
             {
+                assert(block != compiler->fgFirstBB);
                 TransformBlock(block);
                 count++;
             }
@@ -81,7 +91,7 @@ private:
     {
         // Current block now becomes the test block
         BasicBlock* remainderBlock = compiler->fgSplitBlockAtBeginning(block);
-        BasicBlock* helperBlock    = CreateAndInsertBasicBlock(BBJ_ALWAYS, block);
+        BasicBlock* helperBlock    = CreateAndInsertBasicBlock(BBJ_NONE, block);
 
         // Update flow
         block->bbJumpKind = BBJ_COND;
@@ -104,7 +114,7 @@ private:
         // if (ppCounter < 0)
         GenTree*     ppCounterUpdated = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
         GenTree*     zero             = compiler->gtNewIconNode(0, TYP_INT);
-        GenTree*     compare          = compiler->gtNewOperNode(GT_LT, TYP_INT, ppCounterUpdated, zero);
+        GenTree*     compare          = compiler->gtNewOperNode(GT_GE, TYP_INT, ppCounterUpdated, zero);
         GenTree*     jmp              = compiler->gtNewOperNode(GT_JTRUE, TYP_VOID, compare);
         GenTreeStmt* jmpStmt          = compiler->fgNewStmtFromTree(jmp);
         compiler->fgInsertStmtAtEnd(block, jmpStmt);
@@ -116,6 +126,18 @@ private:
         GenTreeArgList* helperArgs    = compiler->gtNewArgList(ppCounterAddr);
         GenTreeCall*    helperCall    = compiler->gtNewHelperCallNode(CORINFO_HELP_PATCHPOINT, TYP_VOID, helperArgs);
         compiler->fgInsertStmtAtEnd(helperBlock, helperCall);
+    }
+
+    //  ppCounter = 0 (could set it nonzero to save some cycles)
+    void TransformEntry(BasicBlock* block)
+    {
+        assert((block->bbFlags & BBF_PATCHPOINT) == 0);
+
+        GenTree*     zero         = compiler->gtNewIconNode(0, TYP_INT);
+        GenTree*     ppCounterRef = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
+        GenTree*     ppCounterAsg = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterRef, zero);
+        GenTreeStmt* asgStmt      = compiler->fgNewStmtFromTree(ppCounterAsg);
+        compiler->fgInsertStmtNearEnd(block, asgStmt);
     }
 };
 
@@ -135,6 +157,8 @@ void Compiler::fgTransformPatchpoints()
         JITDUMP(" -- no patchpoints to transform\n");
         return;
     }
+
+    printf("@@@@ Placing patchpoints in %s\n", info.compFullName);
 
     PatchpointTransformer ppTransformer(this);
     int                   count = ppTransformer.Run();

@@ -5497,12 +5497,14 @@ HCIMPL1(void, JIT_Patchpoint, int* counter)
 {
     FCALL_CONTRACT;
 
-    // void * ip = _ReturnAddress();
+    void * ip = _ReturnAddress();
 
     HELPER_METHOD_FRAME_BEGIN_0();
 
     // use ip to look up per-pp state in some table
     // switch (state)...
+
+    printf("@@@ Patchpoint reload at %p\n", ip);
 
     *counter = 1000;
     
