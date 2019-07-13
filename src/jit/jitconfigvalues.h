@@ -401,9 +401,7 @@ CONFIG_INTEGER(JitGuardedDevirtualizationGuessUniqueInterface, W("JitGuardedDevi
 CONFIG_INTEGER(JitGuardedDevirtualizationGuessBestClass, W("JitGuardedDevirtualizationGuessBestClass"), 1)
 #endif // DEBUG
 
-#if defined(DEBUG)
 CONFIG_INTEGER(JitPatchpoint, W("JitPatchpoint"), 0)
-#endif // defined(DEBUG)
 
 #if defined(DEBUG)
 // JitFunctionFile: Name of a file that contains a list of functions. If the currently compiled function is in the

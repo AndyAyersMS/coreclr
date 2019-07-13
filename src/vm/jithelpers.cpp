@@ -5490,6 +5490,8 @@ HCIMPL0(void, JIT_DebugLogLoopCloning)
 }
 HCIMPLEND
 
+typedef EEPtrHashTable JitPatchpointTable;
+JitPatchpointTable *g_pJitPatchpointTable = NULL;
 
 // Stub, for now just reset the counter
 
@@ -5501,17 +5503,32 @@ HCIMPL1(void, JIT_Patchpoint, int* counter)
 
     HELPER_METHOD_FRAME_BEGIN_0();
 
-    // use ip to look up per-pp state in some table
-    // switch (state)...
+    GCX_COOP();
 
-    printf("@@@ Patchpoint reload at %p\n", ip);
+    HashDatum entry = (HashDatum) 0;
 
-    *counter = 1000;
-    
+    // Use generic handle CRST as a hack
+    CrstHolder lock(&g_pJitGenericHandleCacheCrst);
+    g_pJitPatchpointTable->GetValue(ip, &entry);
+    int state = (int) entry;
+    printf("@@@ Patchpoint 0x%p %d\n", ip, state);
+
+    *counter = 10000;
+
+    if (state == 10)
+    {
+        EECodeInfo codeInfo((PCODE)ip);
+        MethodDesc* pMD = codeInfo.GetMethodDesc();
+        printf("### Patchpoint 0x%p is at %d in 0x%p %s::%s%s\n", ip, codeInfo.GetRelOffset(), pMD,
+            pMD->m_pszDebugClassName, pMD->m_pszDebugMethodName, pMD->m_pszDebugMethodSignature);
+    }
+
+    state++;
+    g_pJitPatchpointTable->InsertValue(ip, (HashDatum)state);
+
     HELPER_METHOD_FRAME_END();
 }
 HCIMPLEND
-
 
 //========================================================================
 //
@@ -5633,12 +5650,18 @@ void InitJITHelpers2()
 
     g_pJitGenericHandleCacheCrst.Init(CrstJitGenericHandleCache, CRST_UNSAFE_COOPGC);
 
-    // Allocate and initialize the table
+    // Allocate and initialize the generic handle cache
     NewHolder <JitGenericHandleCache> tempGenericHandleCache (new JitGenericHandleCache());
     LockOwner sLock = {&g_pJitGenericHandleCacheCrst, IsOwnerOfCrst};
     if (!tempGenericHandleCache->Init(59, &sLock))
         COMPlusThrowOM();
     g_pJitGenericHandleCache = tempGenericHandleCache.Extract();
+
+    // Allocate and initialize the patchpoint table
+    NewHolder <JitPatchpointTable> tempJitPatchpointTable (new JitPatchpointTable());
+    if (!tempJitPatchpointTable->Init(59, &sLock))
+        COMPlusThrowOM();
+    g_pJitPatchpointTable = tempJitPatchpointTable.Extract();
 }
 
 #if defined(_TARGET_AMD64_) || defined(_TARGET_ARM_)

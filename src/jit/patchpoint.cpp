@@ -158,7 +158,7 @@ void Compiler::fgTransformPatchpoints()
         return;
     }
 
-    printf("@@@@ Placing patchpoints in %s\n", info.compFullName);
+    // printf("@@@@ Placing patchpoints in %s\n", info.compFullName);
 
     PatchpointTransformer ppTransformer(this);
     int                   count = ppTransformer.Run();
