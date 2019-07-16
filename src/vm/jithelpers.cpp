@@ -5492,6 +5492,7 @@ HCIMPLEND
 
 typedef EEPtrHashTable JitPatchpointTable;
 JitPatchpointTable *g_pJitPatchpointTable = NULL;
+CrstStatic g_pJitPatchpointCrst;
 
 // Stub, for now just reset the counter
 
@@ -5503,28 +5504,80 @@ HCIMPL1(void, JIT_Patchpoint, int* counter)
 
     HELPER_METHOD_FRAME_BEGIN_0();
 
-    GCX_COOP();
+    // Query and update the patchpoint state
+    //
+    // Note we may not need repeated callbacks to trigger
+    // but we might want to use them to gage how frequently
+    // we're hitting the patchpoint. For instance we might
+    // trigger based on some kind of weighted average of 
+    // callback intervals -- lots of callbacks in a short
+    // period of time being the criteria for OSR, not just
+    // some total number of callbacks.
+    //
+    // We'd need more state to do this and we might not want to
+    // allocate that additional state until this patchpoint reaches
+    // some initial hotness threshold.
+    //
+    // So we might use the initial callbacks to filter out
+    // patchpoints that will never be interesting for OSR because
+    // the patchpoint just isn't hit that often over the
+    // lifetime of the process, and the subsequent ones 
+    // to filter out methods where we won't OSR because
+    // while the patchpoing was hit sufficently often, those
+    // hits were spread out over time and so the method
+    // was never truly hot.
+    int state = 0;
 
-    HashDatum entry = (HashDatum) 0;
+    {
+        HashDatum entry = (HashDatum) 0;
+        CrstHolder lock(&g_pJitPatchpointCrst);
+        g_pJitPatchpointTable->GetValue(ip, &entry);
+        state = (int) entry;
+        g_pJitPatchpointTable->InsertValue(ip, (HashDatum)(state + 1));
+    }
 
-    // Use generic handle CRST as a hack
-    CrstHolder lock(&g_pJitGenericHandleCacheCrst);
-    g_pJitPatchpointTable->GetValue(ip, &entry);
-    int state = (int) entry;
-    printf("@@@ Patchpoint 0x%p %d\n", ip, state);
+    // For now we us a simple trigger, we OSR at the 10th callback.
+    // Because we currently initialze the counter to zero and reload
+    // to 10,000, this implies the patchpoint was hit ~90,000 times.
+    //
+    // Note we are currently using a frame-local counter so do not
+    // need to update it under any lock.
+    bool doOSR = (state == 10);
 
-    *counter = 10000;
-
-    if (state == 10)
+    if (!doOSR)
+    {
+        printf("@@@ Patchpoint 0x%p %d\n", ip, state);
+        *counter = 10000;
+    }
+    else
     {
         EECodeInfo codeInfo((PCODE)ip);
         MethodDesc* pMD = codeInfo.GetMethodDesc();
-        printf("### Patchpoint 0x%p is at %d in 0x%p %s::%s%s\n", ip, codeInfo.GetRelOffset(), pMD,
+        printf("### Patchpoint 0x%p TRIGGER at native offset 0x%x in 0x%p %s::%s%s\n", ip, codeInfo.GetRelOffset(), pMD,
             pMD->m_pszDebugClassName, pMD->m_pszDebugMethodName, pMD->m_pszDebugMethodSignature);
-    }
 
-    state++;
-    g_pJitPatchpointTable->InsertValue(ip, (HashDatum)state);
+        // First, find the il method version corresponding to this method.
+        ReJITID rejitId = ReJitManager::GetReJitId(pMD, codeInfo.GetStartAddress());
+        CodeVersionManager* codeVersionManager = pMD->GetCodeVersionManager();
+        NativeCodeVersion osrNativeCodeVersion;
+        {
+            CodeVersionManager::TableLockHolder lock(codeVersionManager);
+            ILCodeVersion ilCodeVersion = codeVersionManager->GetILCodeVersion(pMD, rejitId);
+
+            // When this is real we'll need to pass in the IL offset
+            ilCodeVersion.AddNativeCodeVersion(pMD, NativeCodeVersion::OptimizationTier1, &osrNativeCodeVersion);
+        }
+
+        // And this will need to invoke the jit specially, passing IL offset,
+        // current stack frame, etc....
+        {
+            GCX_PREEMP(); // hmmm
+            PCODE pCode = pMD->PrepareCode(osrNativeCodeVersion);
+        }
+
+        // We never make this "active" as it is not a generally callable method.
+        // But we might need to do some other notifications ...?
+    }
 
     HELPER_METHOD_FRAME_END();
 }
@@ -5657,9 +5710,12 @@ void InitJITHelpers2()
         COMPlusThrowOM();
     g_pJitGenericHandleCache = tempGenericHandleCache.Extract();
 
+    g_pJitPatchpointCrst.Init(CrstJitPatchpoint, CRST_DEFAULT);
+
     // Allocate and initialize the patchpoint table
     NewHolder <JitPatchpointTable> tempJitPatchpointTable (new JitPatchpointTable());
-    if (!tempJitPatchpointTable->Init(59, &sLock))
+    LockOwner sLock2 = {&g_pJitPatchpointCrst, IsOwnerOfCrst};
+    if (!tempJitPatchpointTable->Init(59, &sLock2))
         COMPlusThrowOM();
     g_pJitPatchpointTable = tempJitPatchpointTable.Extract();
 }
