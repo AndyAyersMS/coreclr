@@ -83,19 +83,24 @@ private:
     //
     //  if (--ppCounter < 0)
     //  {
-    //     ppHelper(&ppCounter);
+    //     ppHelper(&ppCounter, ilOffset);
     //  }
     //  S;
     //
     void TransformBlock(BasicBlock* block)
     {
+        // Capture the IL offset
+        IL_OFFSET ilOffset = block->bbCodeOffs;
+        assert(ilOffset != BAD_IL_OFFSET);
+
         // Current block now becomes the test block
         BasicBlock* remainderBlock = compiler->fgSplitBlockAtBeginning(block);
         BasicBlock* helperBlock    = CreateAndInsertBasicBlock(BBJ_NONE, block);
 
-        // Update flow
+        // Update flow and flags
         block->bbJumpKind = BBJ_COND;
         block->bbJumpDest = remainderBlock;
+        helperBlock->bbFlags |= BBF_BACKWARD_JUMP;
 
         // Update weights
         remainderBlock->inheritWeight(block);
@@ -120,11 +125,13 @@ private:
         compiler->fgInsertStmtAtEnd(block, jmpStmt);
 
         // Fill in helper block
-        // call PPHelper(&ppCounter)
+        // call PPHelper(&ppCounter, ilOffset)
+        GenTree*        ilOffsetNode  = compiler->gtNewIconNode(ilOffset, TYP_INT);
+        GenTreeArgList* helperArgs1   = compiler->gtNewArgList(ilOffsetNode);
         GenTree*        ppCounterRef  = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
         GenTree*        ppCounterAddr = compiler->gtNewOperNode(GT_ADDR, TYP_I_IMPL, ppCounterRef);
-        GenTreeArgList* helperArgs    = compiler->gtNewArgList(ppCounterAddr);
-        GenTreeCall*    helperCall    = compiler->gtNewHelperCallNode(CORINFO_HELP_PATCHPOINT, TYP_VOID, helperArgs);
+        GenTreeArgList* helperArgs2   = compiler->gtNewListNode(ppCounterAddr, helperArgs1);
+        GenTreeCall*    helperCall    = compiler->gtNewHelperCallNode(CORINFO_HELP_PATCHPOINT, TYP_VOID, helperArgs2);
         compiler->fgInsertStmtAtEnd(helperBlock, helperCall);
     }
 

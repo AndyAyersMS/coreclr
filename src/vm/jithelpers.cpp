@@ -5496,7 +5496,7 @@ CrstStatic g_pJitPatchpointCrst;
 
 // Stub, for now just reset the counter
 
-HCIMPL1(void, JIT_Patchpoint, int* counter)
+HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
 {
     FCALL_CONTRACT;
 
@@ -5546,17 +5546,19 @@ HCIMPL1(void, JIT_Patchpoint, int* counter)
 
     if (!doOSR)
     {
-        printf("@@@ Patchpoint 0x%p %d\n", ip, state);
+        printf("@@@ Patchpoint 0x%p state %d\n", ip, state);
         *counter = 10000;
     }
     else
     {
+        // Find the method desc for this bit of code
         EECodeInfo codeInfo((PCODE)ip);
         MethodDesc* pMD = codeInfo.GetMethodDesc();
-        printf("### Patchpoint 0x%p TRIGGER at native offset 0x%x in 0x%p %s::%s%s\n", ip, codeInfo.GetRelOffset(), pMD,
+        printf("### Patchpoint 0x%p TRIGGER at native offset 0x%x il offset 0x%x in 0x%p %s::%s%s\n",
+            ip, codeInfo.GetRelOffset(), ilOffset, pMD,
             pMD->m_pszDebugClassName, pMD->m_pszDebugMethodName, pMD->m_pszDebugMethodSignature);
 
-        // First, find the il method version corresponding to this method.
+        // Find the il method version corresponding to this version of the method.
         ReJITID rejitId = ReJitManager::GetReJitId(pMD, codeInfo.GetStartAddress());
         CodeVersionManager* codeVersionManager = pMD->GetCodeVersionManager();
         NativeCodeVersion osrNativeCodeVersion;
@@ -5564,8 +5566,11 @@ HCIMPL1(void, JIT_Patchpoint, int* counter)
             CodeVersionManager::TableLockHolder lock(codeVersionManager);
             ILCodeVersion ilCodeVersion = codeVersionManager->GetILCodeVersion(pMD, rejitId);
 
-            // When this is real we'll need to pass in the IL offset
+            // Request a new native version that is optimized. 
             ilCodeVersion.AddNativeCodeVersion(pMD, NativeCodeVersion::OptimizationTier1, &osrNativeCodeVersion);
+
+            // osrNativeCodeVersion.SetILOffset(ilOffset);
+            // etc...
         }
 
         // And this will need to invoke the jit specially, passing IL offset,
