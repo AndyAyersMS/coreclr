@@ -5547,7 +5547,7 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
     if (!doOSR)
     {
 #if _DEBUG
-        printf("@@@ Patchpoint 0x%p state %d\n", ip, state);
+        // printf("@@@ Runtime: Patchpoint 0x%p state %d\n", ip, state);
 #endif
         *counter = 10000;
     }
@@ -5558,7 +5558,7 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
         MethodDesc* pMD = codeInfo.GetMethodDesc();
 
 #if _DEBUG
-        printf("### Patchpoint 0x%p TRIGGER at native offset 0x%x il offset 0x%x in 0x%p %s::%s%s\n",
+        printf("### Runtime: patchpoint 0x%p TRIGGER at native offset 0x%x il offset 0x%x in 0x%p %s::%s %s\n",
             ip, codeInfo.GetRelOffset(), ilOffset, pMD,
             pMD->m_pszDebugClassName, pMD->m_pszDebugMethodName, pMD->m_pszDebugMethodSignature);
 #endif
