@@ -510,7 +510,8 @@ void ZapInfo::CompileMethod()
                                                      &m_currentMethodInfo,
                                                      CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
                                                      &pCode,
-                                                     &cCode );
+                                                     &cCode, 
+                                                     0);
         if (FAILED(res))
         {
             // We will fall back to the "main" JIT on failure.
@@ -526,7 +527,8 @@ void ZapInfo::CompileMethod()
                                     &m_currentMethodInfo,
                                     CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
                                     &pCode,
-                                    &cCode);
+                                    &cCode,
+                                    0);
 
         if (FAILED(res))
         {

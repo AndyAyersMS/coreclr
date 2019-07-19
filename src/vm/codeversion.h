@@ -85,6 +85,13 @@ public:
 #endif
 #endif // FEATURE_TIERED_COMPILATION
 
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+    unsigned GetILOffset() const;
+#ifndef DACCESS_COMPILE
+    void SetILOffset(unsigned offset);
+#endif
+#endif // FEATURE_ON_STACK_REPLACEMENT
+
 #ifdef HAVE_GCCOVER
     PTR_GCCoverageInfo GetGCCoverageInfo() const;
     void SetGCCoverageInfo(PTR_GCCoverageInfo gcCover);
@@ -277,6 +284,13 @@ public:
     void SetGCCoverageInfo(PTR_GCCoverageInfo gcCover);
 #endif
 
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+    unsigned GetILOffset() const;
+#ifndef DACCESS_COMPILE
+    void SetILOffset(unsigned offset);
+#endif
+#endif
+
 private:
     //union - could save a little memory?
     //{
@@ -292,6 +306,9 @@ private:
 #endif
 #ifdef HAVE_GCCOVER
     PTR_GCCoverageInfo m_gcCover;
+#endif
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+    unsigned m_ilOffset;
 #endif
 
     enum NativeCodeVersionNodeFlags

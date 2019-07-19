@@ -290,11 +290,11 @@ void JitTls::SetCompiler(Compiler* compiler)
 // method.  Usually that is where you want to go.
 
 CorJitResult CILJit::compileMethod(
-    ICorJitInfo* compHnd, CORINFO_METHOD_INFO* methodInfo, unsigned flags, BYTE** entryAddress, ULONG* nativeSizeOfCode)
+    ICorJitInfo* compHnd, CORINFO_METHOD_INFO* methodInfo, unsigned flags, BYTE** entryAddress, ULONG* nativeSizeOfCode, unsigned ilOffset)
 {
     if (g_realJitCompiler != nullptr)
     {
-        return g_realJitCompiler->compileMethod(compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
+        return g_realJitCompiler->compileMethod(compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode, ilOffset);
     }
 
     JitFlags jitFlags;
@@ -314,7 +314,7 @@ CorJitResult CILJit::compileMethod(
     assert(methodInfo->ILCode);
 
     result = jitNativeCode(methodHandle, methodInfo->scope, compHnd, methodInfo, &methodCodePtr, nativeSizeOfCode,
-                           &jitFlags, nullptr);
+                           &jitFlags, nullptr, ilOffset);
 
     if (result == CORJIT_OK)
     {

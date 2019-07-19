@@ -240,7 +240,8 @@ public:
             struct CORINFO_METHOD_INFO  *info,               /* IN */
             unsigned /* code:CorJitFlag */   flags,          /* IN */
             BYTE                        **nativeEntry,       /* OUT */
-            ULONG                       *nativeSizeOfCode    /* OUT */
+            ULONG                       *nativeSizeOfCode,   /* OUT */
+            unsigned                    ilOffset             /* IN */
             ) = 0;
 
     // Some JIT compilers (most notably Phoenix), cache information about EE structures from one invocation

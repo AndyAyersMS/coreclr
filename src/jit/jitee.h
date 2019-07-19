@@ -39,7 +39,7 @@ public:
 
     #endif // !defined(_TARGET_X86_)
 
-        JIT_FLAG_UNUSED6                 = 13,
+        JIT_FLAG_OSR                     = 13, // Generate alternate version for On Stack Replacement
 
     #if defined(_TARGET_X86_) || defined(_TARGET_AMD64_)
 

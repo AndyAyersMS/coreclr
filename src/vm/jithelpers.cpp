@@ -5546,7 +5546,9 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
 
     if (!doOSR)
     {
+#if _DEBUG
         printf("@@@ Patchpoint 0x%p state %d\n", ip, state);
+#endif
         *counter = 10000;
     }
     else
@@ -5554,9 +5556,12 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
         // Find the method desc for this bit of code
         EECodeInfo codeInfo((PCODE)ip);
         MethodDesc* pMD = codeInfo.GetMethodDesc();
+
+#if _DEBUG
         printf("### Patchpoint 0x%p TRIGGER at native offset 0x%x il offset 0x%x in 0x%p %s::%s%s\n",
             ip, codeInfo.GetRelOffset(), ilOffset, pMD,
             pMD->m_pszDebugClassName, pMD->m_pszDebugMethodName, pMD->m_pszDebugMethodSignature);
+#endif
 
         // Find the il method version corresponding to this version of the method.
         ReJITID rejitId = ReJitManager::GetReJitId(pMD, codeInfo.GetStartAddress());
@@ -5568,9 +5573,7 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
 
             // Request a new native version that is optimized. 
             ilCodeVersion.AddNativeCodeVersion(pMD, NativeCodeVersion::OptimizationTier1, &osrNativeCodeVersion);
-
-            // osrNativeCodeVersion.SetILOffset(ilOffset);
-            // etc...
+            osrNativeCodeVersion.SetILOffset(ilOffset);
         }
 
         // And this will need to invoke the jit specially, passing IL offset,

@@ -22707,7 +22707,7 @@ void Compiler::fgInvokeInlineeCompiler(GenTreeCall* call, InlineResult* inlineRe
                 int result =
                     jitNativeCode(pParam->fncHandle, pParam->inlineCandidateInfo->methInfo.scope,
                                   pParam->pThis->info.compCompHnd, &pParam->inlineCandidateInfo->methInfo,
-                                  (void**)pParam->inlineInfo, nullptr, &compileFlagsForInlinee, pParam->inlineInfo);
+                                  (void**)pParam->inlineInfo, nullptr, &compileFlagsForInlinee, pParam->inlineInfo, 0);
 
                 if (result != CORJIT_OK)
                 {

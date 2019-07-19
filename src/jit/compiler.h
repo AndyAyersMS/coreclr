@@ -8783,6 +8783,7 @@ public:
         const BYTE*    compCode;
         IL_OFFSET      compILCodeSize;     // The IL code size
         IL_OFFSET      compILImportSize;   // Estimated amount of IL actually imported
+        IL_OFFSET      compILEntry;        // The IL entry point (normally 0)
         UNATIVE_OFFSET compNativeCodeSize; // The native code size, after instructions are issued. This
                                            // is less than (compTotalHotCodeSize + compTotalColdCodeSize) only if:
         // (1) the code is not hot/cold split, and we issued less code than we expected, or
@@ -9051,7 +9052,8 @@ public:
                     CORINFO_METHOD_INFO*  methodInfo,
                     void**                methodCodePtr,
                     ULONG*                methodCodeSize,
-                    JitFlags*             compileFlags);
+                    JitFlags*             compileFlags,
+                    unsigned              ilOffset);
     void compCompileFinish();
     int compCompileHelper(CORINFO_MODULE_HANDLE            classPtr,
                           COMP_HANDLE                      compHnd,

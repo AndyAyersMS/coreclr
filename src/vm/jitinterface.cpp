@@ -12307,7 +12307,8 @@ static CorJitResult CompileMethodWithEtwWrapper(EEJitManager *jitMgr,
                                                       struct CORINFO_METHOD_INFO *info,
                                                       unsigned flags,
                                                       BYTE **nativeEntry,
-                                                      ULONG *nativeSizeOfCode)
+                                                      ULONG *nativeSizeOfCode,
+                                                      unsigned ilOffset)
 {
     STATIC_CONTRACT_THROWS;
     STATIC_CONTRACT_GC_TRIGGERS;
@@ -12317,7 +12318,7 @@ static CorJitResult CompileMethodWithEtwWrapper(EEJitManager *jitMgr,
     // Fire an ETW event to mark the beginning of JIT'ing
     ETW::MethodLog::MethodJitting(reinterpret_cast<MethodDesc*>(info->ftn), &namespaceOrClassName, &methodName, &methodSignature);
 
-    CorJitResult ret = jitMgr->m_jit->compileMethod(comp, info, flags, nativeEntry, nativeSizeOfCode);
+    CorJitResult ret = jitMgr->m_jit->compileMethod(comp, info, flags, nativeEntry, nativeSizeOfCode, ilOffset);
 
     // Logically, it would seem that the end-of-JITting ETW even should go here, but it must come after the native code has been
     // set for the given method desc, which happens in a caller.
@@ -12334,7 +12335,8 @@ CorJitResult invokeCompileMethodHelper(EEJitManager *jitMgr,
                                  struct CORINFO_METHOD_INFO *info,
                                  CORJIT_FLAGS jitFlags,
                                  BYTE **nativeEntry,
-                                 ULONG *nativeSizeOfCode)
+                                 ULONG *nativeSizeOfCode,
+                                 unsigned ilOffset)
 {
     STATIC_CONTRACT_THROWS;
     STATIC_CONTRACT_GC_TRIGGERS;
@@ -12360,7 +12362,8 @@ CorJitResult invokeCompileMethodHelper(EEJitManager *jitMgr,
                                                      info,
                                                      CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
                                                      nativeEntry,
-                                                     nativeSizeOfCode );
+                                                     nativeSizeOfCode,
+                                                     ilOffset );
 
 #ifdef FEATURE_STACK_SAMPLING
         if (jitFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_SAMPLING_JIT_BACKGROUND))
@@ -12406,7 +12409,8 @@ CorJitResult invokeCompileMethodHelper(EEJitManager *jitMgr,
                                           info,
                                           CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
                                           nativeEntry,
-                                          nativeSizeOfCode);
+                                          nativeSizeOfCode,
+                                          ilOffset);
     }
 
     if (interpreterFallback == true)
@@ -12428,7 +12432,8 @@ CorJitResult invokeCompileMethodHelper(EEJitManager *jitMgr,
                                             info,
                                             CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
                                             nativeEntry,
-                                            nativeSizeOfCode);
+                                            nativeSizeOfCode,
+                                            ilOffset);
     }
 #endif // FEATURE_INTERPRETER
 
@@ -12476,7 +12481,8 @@ CorJitResult invokeCompileMethod(EEJitManager *jitMgr,
                                  struct CORINFO_METHOD_INFO *info,
                                  CORJIT_FLAGS jitFlags,
                                  BYTE **nativeEntry,
-                                 ULONG *nativeSizeOfCode)
+                                 ULONG *nativeSizeOfCode,
+                                 unsigned ilOffset)
 {
     CONTRACTL {
         THROWS;
@@ -12489,7 +12495,7 @@ CorJitResult invokeCompileMethod(EEJitManager *jitMgr,
 
     GCX_PREEMP();
 
-    CorJitResult ret = invokeCompileMethodHelper(jitMgr, comp, info, jitFlags, nativeEntry, nativeSizeOfCode);
+    CorJitResult ret = invokeCompileMethodHelper(jitMgr, comp, info, jitFlags, nativeEntry, nativeSizeOfCode, ilOffset);
 
     //
     // Verify that we are still in preemptive mode when we return
@@ -12527,6 +12533,7 @@ CorJitResult CallCompileMethodWithSEHWrapper(EEJitManager *jitMgr,
         ULONG *nativeSizeOfCode;
         MethodDesc *ftn;
         CorJitResult res;
+        unsigned ilOffset;
     }; Param param;
     param.jitMgr = jitMgr;
     param.comp = comp;
@@ -12536,6 +12543,14 @@ CorJitResult CallCompileMethodWithSEHWrapper(EEJitManager *jitMgr,
     param.nativeSizeOfCode = nativeSizeOfCode;
     param.ftn = ftn;
     param.res = CORJIT_INTERNALERROR;
+
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+    // Note we can't just hack the code start address as
+    // control could reach lower IL offsets from this entry
+    param.ilOffset = nativeCodeVersion.GetILOffset();
+#else
+    param.ilOffset = 0;
+#endif 
 
     PAL_TRY(Param *, pParam, &param)
     {
@@ -12548,7 +12563,8 @@ CorJitResult CallCompileMethodWithSEHWrapper(EEJitManager *jitMgr,
                                            pParam->info,
                                            pParam->flags,
                                            pParam->nativeEntry,
-                                           pParam->nativeSizeOfCode);
+                                           pParam->nativeSizeOfCode,
+                                           pParam->ilOffset);
     }
     PAL_FINALLY
     {

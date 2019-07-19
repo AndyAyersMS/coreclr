@@ -51,7 +51,6 @@ void NativeCodeVersion::SetGCCoverageInfo(PTR_GCCoverageInfo gcCover)
 bool NativeCodeVersion::operator==(const NativeCodeVersion & rhs) const { return m_pMethodDesc == rhs.m_pMethodDesc; }
 bool NativeCodeVersion::operator!=(const NativeCodeVersion & rhs) const { return !operator==(rhs); }
 
-
 #else // FEATURE_CODE_VERSIONING
 
 
@@ -78,6 +77,9 @@ NativeCodeVersionNode::NativeCodeVersionNode(
 #endif
 #ifdef HAVE_GCCOVER
     m_gcCover(PTR_NULL),
+#endif
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+    m_ilOffset(0),
 #endif
     m_flags(0)
 {}
@@ -180,6 +182,27 @@ void NativeCodeVersionNode::SetOptimizationTier(NativeCodeVersion::OptimizationT
 #endif
 
 #endif // FEATURE_TIERED_COMPILATION
+
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+
+unsigned NativeCodeVersionNode::GetILOffset() const
+{
+    LIMITED_METHOD_DAC_CONTRACT;
+    return m_ilOffset;
+}
+
+#ifndef DACCESS_COMPILE
+
+void NativeCodeVersionNode::SetILOffset(unsigned offset)
+{
+    LIMITED_METHOD_CONTRACT;
+    // _ASSERTE(offset <= ...);  // ilversion max offset
+    m_ilOffset = offset;
+}
+
+#endif
+
+#endif // FEATURE_ON_STACK_REPLACEMENT
 
 #ifdef HAVE_GCCOVER
 
@@ -410,6 +433,39 @@ void NativeCodeVersion::SetOptimizationTier(OptimizationTier tier)
 #endif
 
 #endif
+
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+
+unsigned NativeCodeVersion::GetILOffset() const
+{
+    LIMITED_METHOD_DAC_CONTRACT;
+    if (m_storageKind == StorageKind::Explicit)
+    {
+        return AsNode()->GetILOffset();
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+#ifndef DACCESS_COMPILE
+void NativeCodeVersion::SetILOffset(unsigned offset)
+{
+    WRAPPER_NO_CONTRACT;
+    if (m_storageKind == StorageKind::Explicit)
+    {
+        AsNode()->SetILOffset(offset);
+    }
+    else
+    {
+        _ASSERTE(!"Cannot set IL offset here");
+    }
+}
+#endif
+
+#endif
+
 
 #ifdef HAVE_GCCOVER
 

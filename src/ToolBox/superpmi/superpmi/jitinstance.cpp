@@ -311,7 +311,7 @@ JitInstance::Result JitInstance::CompileMethod(MethodContext* MethodToCompile, i
             pParam->pThis->lt.Start();
         }
         CorJitResult jitResult = pParam->pThis->pJitInstance->compileMethod(pParam->pThis->icji, &pParam->info,
-                                                                       pParam->flags, &NEntryBlock, &NCodeSizeBlock);
+                                                                       pParam->flags, &NEntryBlock, &NCodeSizeBlock, 0);
         if (pParam->collectThroughput)
         {
             pParam->pThis->lt.Stop();
@@ -392,7 +392,7 @@ void JitInstance::timeResult(CORINFO_METHOD_INFO info, unsigned flags)
         delete mc->cr;
         mc->cr = new CompileResult();
         lt.Start();
-        pJitInstance->compileMethod(icji, &info, flags, &NEntryBlock, &NCodeSizeBlock);
+        pJitInstance->compileMethod(icji, &info, flags, &NEntryBlock, &NCodeSizeBlock, 0);
         lt.Stop();
         time = lt.GetCycles();
         if (times[1] == 0)

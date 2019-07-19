@@ -10,7 +10,8 @@ class CILJit : public ICorJitCompiler
                                          CORINFO_METHOD_INFO* methodInfo,      /* IN */
                                          unsigned             flags,           /* IN */
                                          BYTE**               nativeEntry,     /* OUT */
-                                         ULONG*               nativeSizeOfCode /* OUT */
+                                         ULONG*               nativeSizeOfCode,/* OUT */
+                                         unsigned             ilOffset         /* IN */
                                          );
 
     void clearCache(void);

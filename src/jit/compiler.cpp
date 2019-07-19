@@ -2541,6 +2541,11 @@ void Compiler::compInitOptions(JitFlags* jitFlags)
         assert(jitFlags->IsSet(JitFlags::JIT_FLAG_SKIP_VERIFICATION));
     }
 
+    if (!compIsForInlining() && jitFlags->IsSet(JitFlags::JIT_FLAG_OSR))
+    {
+        printf("$$$ Jit sees OSR flag set on root method, version entry point is 0x%x\n", info.compILEntry);
+    }
+
     opts.jitFlags  = jitFlags;
     opts.compFlags = CLFLG_MAXOPT; // Default value is for full optimization
 
@@ -5172,7 +5177,8 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
                           CORINFO_METHOD_INFO*  methodInfo,
                           void**                methodCodePtr,
                           ULONG*                methodCodeSize,
-                          JitFlags*             compileFlags)
+                          JitFlags*             compileFlags,
+                          unsigned              ilOffset)
 {
 #ifdef FEATURE_JIT_METHOD_PERF
     static bool checkedForJitTimeLog = false;
@@ -5256,6 +5262,25 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
     info.compCompHnd    = compHnd;
     info.compMethodHnd  = methodHnd;
     info.compMethodInfo = methodInfo;
+
+    if (compIsForInlining())
+    {
+        compileFlags->Clear(JitFlags::JIT_FLAG_OSR);
+        info.compILEntry = 0;
+    }
+    else
+    {
+        info.compILEntry = ilOffset;
+    }
+
+    if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
+    {
+        assert(ilOffset > 0);
+    }
+    else
+    {
+        assert(ilOffset == 0);
+    }
 
     virtualStubParamInfo = new (this, CMK_Unknown) VirtualStubParamInfo(IsTargetAbi(CORINFO_CORERT_ABI));
 
@@ -6682,7 +6707,8 @@ int jitNativeCode(CORINFO_METHOD_HANDLE methodHnd,
                   void**                methodCodePtr,
                   ULONG*                methodCodeSize,
                   JitFlags*             compileFlags,
-                  void*                 inlineInfoPtr)
+                  void*                 inlineInfoPtr,
+                  unsigned              ilOffset)
 {
     //
     // A non-NULL inlineInfo means we are compiling the inlinee method.
@@ -6727,6 +6753,7 @@ START:
         ULONG*                methodCodeSize;
         JitFlags*             compileFlags;
         InlineInfo*           inlineInfo;
+        unsigned              ilOffset;
 #if MEASURE_CLRAPI_CALLS
         WrapICorJitInfo* wrapCLR;
 #endif
@@ -6744,6 +6771,7 @@ START:
     param.methodCodeSize     = methodCodeSize;
     param.compileFlags       = compileFlags;
     param.inlineInfo         = inlineInfo;
+    param.ilOffset           = ilOffset;
 #if MEASURE_CLRAPI_CALLS
     param.wrapCLR = nullptr;
 #endif
@@ -6798,7 +6826,7 @@ START:
             // Now generate the code
             pParam->result =
                 pParam->pComp->compCompile(pParam->methodHnd, pParam->classPtr, pParam->compHnd, pParam->methodInfo,
-                                           pParam->methodCodePtr, pParam->methodCodeSize, pParam->compileFlags);
+                                           pParam->methodCodePtr, pParam->methodCodeSize, pParam->compileFlags, pParam->ilOffset);
         }
         finallyErrorTrap()
         {
