@@ -17958,7 +17958,7 @@ void Compiler::impSpillCliqueSetMember(SpillCliqueDir predOrSucc, BasicBlock* bl
  *  basic flowgraph has already been constructed and is passed in.
  */
 
-void Compiler::impImport(BasicBlock* method)
+void Compiler::impImport()
 {
 #ifdef DEBUG
     if (verbose)
@@ -18020,21 +18020,45 @@ void Compiler::impImport(BasicBlock* method)
 
     impPendingList = impPendingFree = nullptr;
 
-    /* Add the entry-point to the worker-list */
+    // Skip leading internal blocks. 
+    // These can arise from needing a leading scratch BB, from EH normalization, and from OSR entry redirects.
+    //
+    // We expect a linear flow to the first non-internal block. But not necessarily straght-line flow.
+    BasicBlock* entryBlock = fgFirstBB;
 
-    // Skip leading internal blocks. There can be one as a leading scratch BB, and more
-    // from EH normalization.
-    // NOTE: It might be possible to always just put fgFirstBB on the pending list, and let everything else just fall
-    // out.
-    for (; method->bbFlags & BBF_INTERNAL; method = method->bbNext)
+    while (entryBlock->bbFlags & BBF_INTERNAL)
     {
-        // Treat these as imported.
-        assert(method->bbJumpKind == BBJ_NONE); // We assume all the leading ones are fallthrough.
-        JITDUMP("Marking leading BBF_INTERNAL block " FMT_BB " as BBF_IMPORTED\n", method->bbNum);
-        method->bbFlags |= BBF_IMPORTED;
+        JITDUMP("Marking leading BBF_INTERNAL block " FMT_BB " as BBF_IMPORTED\n", entryBlock->bbNum);
+        entryBlock->bbFlags |= BBF_IMPORTED;
+
+        if (entryBlock->bbJumpKind == BBJ_NONE)
+        {
+            entryBlock = entryBlock->bbNext;
+        }
+        else if (entryBlock->bbJumpKind == BBJ_ALWAYS)
+        {
+            // Only expected for OSR
+            assert(opts.jitFlags->IsSet(JitFlags::JIT_FLAG_OSR));
+            entryBlock = entryBlock->bbJumpDest;
+        }
+        else
+        {
+            assert(!"unexpected bbJumpKind in entry sequence");
+        }
     }
 
-    impImportBlockPending(method);
+    // Note for OSR we'd like to be able to verify this block must be
+    // stack empty, but won't know that until we've imported...so instead
+    // we'll BADCODE out if we mess up.
+    //
+    // (the concern here is that the runtime asks us to OSR a
+    // different IL version than the one that matched the method that
+    // triggered OSR).  This should not happen but I might have the
+    // IL versioning stuff wrong.
+    // 
+    // TODO: we also currently expect this block to be a join point,
+    // which we should verify over when we find jump targets.
+    impImportBlockPending(entryBlock);
 
     /* Import blocks in the worker-list until there are no more */
 

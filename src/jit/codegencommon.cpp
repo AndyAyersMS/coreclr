@@ -2129,6 +2129,11 @@ void CodeGen::genGenerateCode(void** codePtr, ULONG* nativeSizeOfCode)
             printf("; ReadyToRun compilation\n");
         }
 
+        if (compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_OSR))
+        {
+            printf("; OSR variant for entry point 0x%x\n", compiler->info.compILEntry);
+        }
+
         if ((compiler->opts.compFlags & CLFLG_MAXOPT) == CLFLG_MAXOPT)
         {
             printf("; optimized code\n");

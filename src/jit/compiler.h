@@ -3492,8 +3492,7 @@ public:
 
 public:
     void impInit();
-
-    void impImport(BasicBlock* method);
+    void impImport();
 
     CORINFO_CLASS_HANDLE impGetRefAnyClass();
     CORINFO_CLASS_HANDLE impGetRuntimeArgumentHandle();

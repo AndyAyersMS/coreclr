@@ -6013,6 +6013,21 @@ void Compiler::fgFindBasicBlocks()
         return;
     }
 
+    // If we are doing OSR, add an entry block that simply branches to the right IL offset.
+    // Might need to do something special if we're entering try regions?
+    if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_OSR))
+    {
+        assert(info.compILEntry > 0);
+        BasicBlock* bbTarget = fgLookupBB(info.compILEntry);
+
+        fgEnsureFirstBBisScratch();
+        fgFirstBB->bbJumpKind = BBJ_ALWAYS;
+        fgFirstBB->bbJumpDest = bbTarget;
+
+        JITDUMP("OSR: redirecting flow at entry via " FMT_BB " to " FMT_BB " (il offset 0x%x)\n",
+            fgFirstBB->bbNum, bbTarget->bbNum, info.compILEntry);
+    }
+
     /* Mark all blocks within 'try' blocks as such */
 
     if (info.compXcptnsCount == 0)
@@ -6889,7 +6904,7 @@ unsigned Compiler::fgGetNestingLevel(BasicBlock* block, unsigned* pFinallyNestin
 
 void Compiler::fgImport()
 {
-    impImport(fgFirstBB);
+    impImport();
 
     if (!opts.jitFlags->IsSet(JitFlags::JIT_FLAG_SKIP_VERIFICATION))
     {

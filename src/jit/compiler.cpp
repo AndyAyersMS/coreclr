@@ -3589,6 +3589,11 @@ void Compiler::compInitOptions(JitFlags* jitFlags)
             printf("OPTIONS: Tier-1/FullOpts compilation, switched to MinOpts");
         }
 
+        if (jitFlags->IsSet(JitFlags::JIT_FLAG_OSR))
+        {
+            printf("OPTIONS: OSR variant with entry point 0x%x\n", info.compILEntry);
+        }
+
         printf("OPTIONS: compCodeOpt = %s\n",
                (opts.compCodeOpt == BLENDED_CODE)
                    ? "BLENDED_CODE"
