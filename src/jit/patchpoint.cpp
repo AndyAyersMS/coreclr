@@ -41,8 +41,26 @@ public:
         int count = 0;
         for (block = block->bbNext; block != nullptr; block = block->bbNext)
         {
+            // If block is in a handler region, don't insert a patchpoint.
+            // We can't OSR from funclets.
+            if (compiler->ehGetBlockHndDsc(block) != nullptr)
+            {
+                JITDUMP("Patchpoint: skipping " FMT_BB " as it is in a handler\n", block->bbNum);
+                continue;
+            }
+
+            // If block is in a try region, don't insert a patchpoint.
+            // This is a temporary workaround until the OSR jit can
+            // trim try regions to just the parts reachable via the patchpoint entry.
+            if (compiler->ehGetBlockTryDsc(block) != nullptr)
+            {
+                JITDUMP("Patchpoint: [temporarily] skipping " FMT_BB " as it is in a try\n", block->bbNum);
+                continue;
+            }
+
             if (block->bbFlags & BBF_PATCHPOINT)
             {
+                JITDUMP("Patchpoint: instrumenting " FMT_BB "\n", block->bbNum);
                 assert(block != compiler->fgFirstBB);
                 TransformBlock(block);
                 count++;
@@ -170,7 +188,7 @@ void Compiler::fgTransformPatchpoints()
     PatchpointTransformer ppTransformer(this);
     int                   count = ppTransformer.Run();
 
-    assert(count > 0);
+    // assert(count > 0);
 
     JITDUMP("\n*************** After fgTransformPatchpoints() [%d patchpoints transformed]\n", count);
     INDEBUG(if (verbose) { fgDispBasicBlocks(true); });

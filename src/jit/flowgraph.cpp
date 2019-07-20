@@ -6026,6 +6026,9 @@ void Compiler::fgFindBasicBlocks()
 
         JITDUMP("OSR: redirecting flow at entry via " FMT_BB " to " FMT_BB " (il offset 0x%x)\n",
             fgFirstBB->bbNum, bbTarget->bbNum, info.compILEntry);
+
+        // rebuild lookup table... should be able to avoid this by leaving room up front.
+        fgInitBBLookup();
     }
 
     /* Mark all blocks within 'try' blocks as such */
