@@ -5495,6 +5495,7 @@ class PatchpointInfo
 public:
     PatchpointInfo() : 
         m_recurrenceTime(0),
+        m_existingCode(0),
         m_patchpointCount(0),
         m_triggered(FALSE)
     {
@@ -5504,6 +5505,7 @@ public:
     static LARGE_INTEGER s_qpcFrequency;
     LARGE_INTEGER m_previousTime;
     double m_recurrenceTime;    
+    PCODE m_existingCode;
     int m_patchpointCount;
     BOOL m_triggered;
 };
@@ -5545,6 +5547,11 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
     // while the patchpoing was hit sufficently often, those
     // hits were spread out over time and so the method
     // was never truly hot.
+    //
+    // Note relying on actual time measurements as part of the trigger
+    // policy has its downsides, as program behavior may be overly
+    // sensitive to the kind of machine we're running on, what else is
+    // running on the machine, whether we're debugging, etc.
 
     // Determine current patchpoint invocation time.
     if (PatchpointInfo::s_qpcFrequency.QuadPart == 0)
@@ -5567,6 +5574,16 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
             ppInfo = new (nothrow) PatchpointInfo();
             g_pJitPatchpointTable->InsertValue(ip, (HashDatum)ppInfo);
         }
+    }
+
+    // Todo: think about how to safely update ppInfo ... do we lock?
+    // Do some kind of RCU?
+
+    // Do we already have a suitable OSR variant?
+    PCODE osrVariant = ppInfo->m_existingCode;
+
+    if (osrVariant != NULL)
+    {
     }
 
     int hitCount = ppInfo->m_patchpointCount;
@@ -5603,7 +5620,7 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
         else
         {
             // Note we can see large outliers in recurrence time (from say a jit request,
-            // from gc, etc). Also jitter from shared counters.
+            // from gc, etc). Also, jitter from shared counters.
             //
             // So we keep weight parameter here fairly small, meaning we should update
             // our estimate (relatively) slowly. Think low-pass filter.
@@ -5671,6 +5688,8 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
                 {
                     GCX_PREEMP(); // hmmm
                     PCODE pCode = pMD->PrepareCode(osrNativeCodeVersion);
+
+                    ppInfo->m_existingCode = pCode;
                 }
 
                 // Fudge current time to hide the time the jit took...???
