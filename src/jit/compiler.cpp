@@ -6829,9 +6829,9 @@ START:
 #endif
 
             // Now generate the code
-            pParam->result =
-                pParam->pComp->compCompile(pParam->methodHnd, pParam->classPtr, pParam->compHnd, pParam->methodInfo,
-                                           pParam->methodCodePtr, pParam->methodCodeSize, pParam->compileFlags, pParam->ilOffset);
+            pParam->result = pParam->pComp->compCompile(pParam->methodHnd, pParam->classPtr, pParam->compHnd,
+                                                        pParam->methodInfo, pParam->methodCodePtr,
+                                                        pParam->methodCodeSize, pParam->compileFlags, pParam->ilOffset);
         }
         finallyErrorTrap()
         {

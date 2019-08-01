@@ -6024,8 +6024,8 @@ void Compiler::fgFindBasicBlocks()
         fgFirstBB->bbJumpKind = BBJ_ALWAYS;
         fgFirstBB->bbJumpDest = bbTarget;
 
-        JITDUMP("OSR: redirecting flow at entry via " FMT_BB " to " FMT_BB " (il offset 0x%x)\n",
-            fgFirstBB->bbNum, bbTarget->bbNum, info.compILEntry);
+        JITDUMP("OSR: redirecting flow at entry via " FMT_BB " to " FMT_BB " (il offset 0x%x)\n", fgFirstBB->bbNum,
+                bbTarget->bbNum, info.compILEntry);
 
         // rebuild lookup table... should be able to avoid this by leaving room up front.
         fgInitBBLookup();

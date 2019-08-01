@@ -271,6 +271,7 @@ void Compiler::lvaInitTypeRef()
         }
 
         varDsc->lvOnFrame = true; // The final home for this local variable might be our local stack frame
+        varDsc->lvIsLocal = true;
 
         if (corInfoType == CORINFO_TYPE_CLASS)
         {

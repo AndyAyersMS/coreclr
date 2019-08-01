@@ -1773,7 +1773,15 @@ void LinearScan::insertZeroInitRefPositions()
                 RefPosition* pos =
                     newRefPosition(interval, MinLocation, RefTypeZeroInit, firstNode, allRegs(interval->registerType));
                 pos->setRegOptional(true);
-                varDsc->lvMustInit = true;
+
+                if (compiler->opts.IsOSR() && varDsc->lvIsLocal) // also promoted locals...
+                {
+                    varDsc->lvMustOSRInit = true;
+                }
+                else
+                {
+                    varDsc->lvMustInit = true;
+                }
             }
             else
             {

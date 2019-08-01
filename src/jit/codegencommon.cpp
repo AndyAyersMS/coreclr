@@ -2129,7 +2129,7 @@ void CodeGen::genGenerateCode(void** codePtr, ULONG* nativeSizeOfCode)
             printf("; ReadyToRun compilation\n");
         }
 
-        if (compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_OSR))
+        if (compiler->opts.IsOSR())
         {
             printf("; OSR variant for entry point 0x%x\n", compiler->info.compILEntry);
         }
@@ -4547,6 +4547,12 @@ void CodeGen::genCheckUseBlockInit()
             continue;
         }
 
+        // For OSR, initialization of locals will be handled specially
+        if (compiler->opts.IsOSR() && (compiler->compMap2ILvarNum(varNum) != ICorDebugInfo::UNKNOWN_ILNUM))
+        {
+            continue;
+        }
+
         if (!varDsc->lvIsInReg() && !varDsc->lvOnFrame)
         {
             noway_assert(varDsc->lvRefCnt() == 0);
@@ -6464,6 +6470,38 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
 
             inst_ST_RV(ins_Store(TYP_I_IMPL), tempThis, 0, genGetZeroReg(initReg, pInitRegZeroed), TYP_I_IMPL);
         }
+    }
+
+    /* Initialize any lvMustOSRInit vars on the stack */
+
+    LclVarDsc* varDsc;
+    unsigned   varNum;
+
+    for (varNum = 0, varDsc = compiler->lvaTable; varNum < compiler->lvaCount; varNum++, varDsc++)
+    {
+        // If the local is dead or immediately stored to we don't need to initalize it... (hmm)
+        if (!varDsc->lvMustOSRInit)
+        {
+            continue;
+        }
+
+        // Frame locals just use their original method locations.
+        if (!varDsc->lvIsInReg())
+        {
+            continue;
+        }
+
+        // TODO: Special handing for promoted locals...
+
+        // TODO: Find original frame offset, and copy from there to reg
+        const unsigned originalLclNum = compiler->compMap2ILvarNum(varNum) - compiler->info.compILargsCount;
+        const unsigned lclSize        = roundUp(compiler->lvaLclSize(varNum), (unsigned)sizeof(int));
+        ;
+        JITDUMP("TODO: EMIT proper OSR init offset for local%u\n", originalLclNum);
+        // hack for now
+        const int stkOffs = -4 + -4 * originalLclNum;
+        getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), lclSize == 4 ? EA_4BYTE : EA_PTRSIZE, varDsc->lvRegNum,
+                                   REG_FPBASE, stkOffs);
     }
 }
 

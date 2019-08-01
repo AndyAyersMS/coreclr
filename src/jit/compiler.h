@@ -396,6 +396,7 @@ public:
 
     unsigned char lvIsParam : 1;           // is this a parameter?
     unsigned char lvIsRegArg : 1;          // is this an argument that was passed by register?
+    unsigned char lvIsLocal : 1;           // is this a local?
     unsigned char lvFramePointerBased : 1; // 0 = off of REG_SPBASE (e.g., ESP), 1 = off of REG_FPBASE (e.g., EBP)
 
     unsigned char lvOnFrame : 1;  // (part of) the variable lives on the frame
@@ -409,6 +410,7 @@ public:
     unsigned char lvPinned : 1; // is this a pinned variable?
 
     unsigned char lvMustInit : 1;    // must be initialized
+    unsigned char lvMustOSRInit : 1; // OSR compile, local must be initialized to original method's value
     unsigned char lvAddrExposed : 1; // The address of this variable is "exposed" -- passed as an argument, stored in a
                                      // global location, etc.
                                      // We cannot reason reliably about the value of the variable.
@@ -8402,6 +8404,18 @@ public:
         }
 #else
         bool IsReadyToRun()
+        {
+            return false;
+        }
+#endif
+
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+        bool IsOSR()
+        {
+            return jitFlags->IsSet(JitFlags::JIT_FLAG_OSR);
+        }
+#else
+        bool IsOSR()
         {
             return false;
         }

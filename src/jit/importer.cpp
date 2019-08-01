@@ -18020,7 +18020,7 @@ void Compiler::impImport()
 
     impPendingList = impPendingFree = nullptr;
 
-    // Skip leading internal blocks. 
+    // Skip leading internal blocks.
     // These can arise from needing a leading scratch BB, from EH normalization, and from OSR entry redirects.
     //
     // We expect a linear flow to the first non-internal block. But not necessarily straght-line flow.
@@ -18038,7 +18038,7 @@ void Compiler::impImport()
         else if (entryBlock->bbJumpKind == BBJ_ALWAYS)
         {
             // Only expected for OSR
-            assert(opts.jitFlags->IsSet(JitFlags::JIT_FLAG_OSR));
+            assert(opts.IsOSR());
             entryBlock = entryBlock->bbJumpDest;
         }
         else
@@ -18055,7 +18055,7 @@ void Compiler::impImport()
     // different IL version than the one that matched the method that
     // triggered OSR).  This should not happen but I might have the
     // IL versioning stuff wrong.
-    // 
+    //
     // TODO: we also currently expect this block to be a join point,
     // which we should verify over when we find jump targets.
     impImportBlockPending(entryBlock);
