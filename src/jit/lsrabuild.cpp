@@ -1897,6 +1897,11 @@ void LinearScan::updateRegStateForArg(LclVarDsc* argDsc)
             compiler->raUpdateRegStateForArg(intRegState, argDsc);
         }
     }
+
+    if (compiler->opts.IsOSR())
+    {
+        argDsc->lvMustOSRInit = true;
+    }
 }
 
 //------------------------------------------------------------------------

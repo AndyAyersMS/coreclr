@@ -5517,13 +5517,15 @@ LARGE_INTEGER PatchpointInfo::s_qpcFrequency;
 
 // Stub, for now just reset the counter
 
-HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
+// HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
+void JIT_Patchpoint(int* counter, int ilOffset)
 {
-    FCALL_CONTRACT;
+    STATIC_CONTRACT_GC_NOTRIGGER;
+    STATIC_CONTRACT_MODE_COOPERATIVE
 
-    void * ip = _ReturnAddress();
+    void* ip = _ReturnAddress();
 
-    HELPER_METHOD_FRAME_BEGIN_0();
+    // HELPER_METHOD_FRAME_BEGIN_0();
 
     // TODO: Sanity check that our caller is the kind of frame
     // we can handle (RBP frame)
@@ -5708,57 +5710,76 @@ HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
     // Now, transition, if we have code to transition to...
     if (osrVariant != NULL)
     {
+        Thread *pThread = GetThread();
+
+#ifdef FEATURE_HIJACK
+        // We can't crawl the stack of a thread that currently has a hijack pending
+        // (since the hijack routine won't be recognized by any code manager). So we
+        // undo any hijack, the EE will re-attempt it later.
+        pThread->UnhijackThread();
+#endif
+
 #if _DEBUG
         printf("### Runtime: patchpoint 0x%p TRANSITION to code at %p\n", ip, osrVariant);
 #endif
         
         // Find context for the original method
         CONTEXT frameContext;
+        frameContext.ContextFlags = CONTEXT_FULL;
         RtlCaptureContext(&frameContext);
-        if (Thread::VirtualUnwindToFirstManagedCallFrame(&frameContext) == 0)
-        {
-            // unexpected, just bail.
-#if _DEBUG
-            printf("### Runtime: patchpoint 0x%p TRANSITION first unwind failed\n", ip);
-#endif
 
+        // Unwind back to our caller in managed code
+        ULONG_PTR establisherFrame = 0; 
+        PVOID     handlerData = NULL;
+        static PT_RUNTIME_FUNCTION my_pdata;
+        static ULONG_PTR           my_imagebase;
+
+        if (!VolatileLoadWithoutBarrier(&my_imagebase)) {
+            ULONG_PTR imagebase = 0;
+            my_pdata = RtlLookupFunctionEntry(GetIP(&frameContext), &imagebase, NULL);
+            InterlockedExchangeT(&my_imagebase, imagebase);
         }
-        else
+
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER, my_imagebase, GetIP(&frameContext), my_pdata,
+            &frameContext, &handlerData, &establisherFrame, NULL);
+
+        // Remember RBP and RSP because new method will inherit them.
+        UINT_PTR currentSP = GetSP(&frameContext);
+        UINT_PTR currentFP = GetFP(&frameContext);
+
+        // We expect to be back at the right IP
+        if ((UINT_PTR)ip != GetIP(&frameContext))
         {
-            // Remember RBP and RSP because new method will inherit them.
-            UINT_PTR currentSP = GetSP(&frameContext);
-            UINT_PTR currentFP = GetFP(&frameContext);
-
-            // Now unwind back to the context for the caller of the original method.
-            if (Thread::VirtualUnwindCallFrame(&frameContext) == 0)
-            {
-#if _DEBUG
-                printf("### Runtime: patchpoint 0x%p TRANSITION second unwind failed\n", ip);
-#endif
-
-            }
-            else
-            {
-#if _DEBUG
-                printf("### Runtime: patchpoint 0x%p TRANSITION RSP will be %p, RBP %p, RIP %p\n", ip, currentSP, currentFP, osrVariant);
-#endif
-
-                // Put RSP and RBP back to their old values
-                SetSP(&frameContext, currentSP);
-                frameContext.Rbp = currentFP;
-
-                // Install new entry point as IP
-                SetIP(&frameContext, osrVariant);
-
-                // Transition!
-                RtlRestoreContext(&frameContext, NULL);
-            }
+            printf("### Runtime: patchpoint 0x%p TRANSITION -- odd that context has ip %p\n",
+                ip, GetIP(&frameContext));
         }
+
+        // Now unwind back to our caller's caller
+        EECodeInfo codeInfo(GetIP(&frameContext));
+        establisherFrame = 0; 
+        frameContext.ContextFlags = CONTEXT_FULL;
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER, codeInfo.GetModuleBase(), GetIP(&frameContext), codeInfo.GetFunctionEntry(), 
+            &frameContext, &handlerData, &establisherFrame, NULL);
+
+#if _DEBUG
+        printf("### Runtime: patchpoint 0x%p TRANSITION RSP %p RBP %p RIP %p\n", 
+            ip, currentSP, currentFP, osrVariant);
+#endif
+        
+        // Put RSP and RBP back to their old values
+        SetSP(&frameContext, currentSP);
+        frameContext.Rbp = currentFP;
+        
+        // Install new entry point as IP
+        SetIP(&frameContext, osrVariant);
+
+        // Transition!
+        RtlRestoreContext(&frameContext, NULL);
     }
 
-    HELPER_METHOD_FRAME_END();
+    // HELPER_METHOD_FRAME_END();
 }
-HCIMPLEND
+// HCIMPLEND
 
 //========================================================================
 //

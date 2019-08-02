@@ -6485,7 +6485,8 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
             continue;
         }
 
-        // Frame locals just use their original method locations.
+        // TODO: Frame locals will use their original method locations. Could also clean up
+        // cases where a reg arg is immediately spilled.
         if (!varDsc->lvIsInReg())
         {
             continue;
@@ -6494,12 +6495,19 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         // TODO: Special handing for promoted locals...
 
         // TODO: Find original frame offset, and copy from there to reg
-        const unsigned originalLclNum = compiler->compMap2ILvarNum(varNum) - compiler->info.compILargsCount;
+        const unsigned originalLclNum = compiler->compMap2ILvarNum(varNum);
         const unsigned lclSize        = roundUp(compiler->lvaLclSize(varNum), (unsigned)sizeof(int));
-        ;
-        JITDUMP("TODO: EMIT proper OSR init offset for local%u\n", originalLclNum);
+        JITDUMP("TODO: EMIT proper OSR init offset for arg/local%u\n", originalLclNum);
         // hack for now
-        const int stkOffs = -4 + -4 * originalLclNum;
+        int stkOffs = 0;
+        if (varDsc->lvIsParam)
+        {
+            stkOffs  = 16 + 8 * originalLclNum;
+        }
+        else
+        {
+            stkOffs  = -4 + -4 * (originalLclNum - compiler->info.compILargsCount);
+        }
         getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), lclSize == 4 ? EA_4BYTE : EA_PTRSIZE, varDsc->lvRegNum,
                                    REG_FPBASE, stkOffs);
     }
