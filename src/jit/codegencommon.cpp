@@ -8287,7 +8287,7 @@ void CodeGen::genFnEpilog(BasicBlock* block)
 
     /* Compute the size in bytes we've pushed/popped */
 
-    if (!doubleAlignOrFramePointerUsed())
+    if (!doubleAlignOrFramePointerUsed() && !compiler->opts.IsOSR())
     {
         // We have an ESP frame */
 
@@ -8319,7 +8319,7 @@ void CodeGen::genFnEpilog(BasicBlock* block)
     }
     else
     {
-        noway_assert(doubleAlignOrFramePointerUsed());
+        noway_assert(doubleAlignOrFramePointerUsed() || compiler->opts.IsOSR());
 
         /* Tear down the stack frame */
 
@@ -8350,6 +8350,15 @@ void CodeGen::genFnEpilog(BasicBlock* block)
                 // ESP may be variable if a localloc was actually executed. Reset it.
                 //    lea esp, [ebp - compiler->compCalleeRegsPushed * REGSIZE_BYTES]
 
+                needLea = true;
+            }
+            else if (compiler->opts.IsOSR())
+            {
+                // OSR frames are implicitly always RBP frames
+                // 
+                // TODO: after popping any callee saves, a second
+                // adjustment may be needed to get RSP back to pointing
+                // to the old RBP.
                 needLea = true;
             }
             else if (!regSet.rsRegsModified(RBM_CALLEE_SAVED))
@@ -8421,6 +8430,8 @@ void CodeGen::genFnEpilog(BasicBlock* block)
         //
 
         genPopCalleeSavedRegisters();
+
+        // TODO: Extra OSR adjust of SP (pop off original frame)
 
 #ifdef _TARGET_AMD64_
         assert(!needMovEspEbp); // "mov esp, ebp" is not allowed in AMD64 epilogs
