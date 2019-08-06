@@ -30,9 +30,9 @@ public:
 CorJitResult __stdcall compileMethod(ICorJitInfo*                comp,     /* IN */
                                      struct CORINFO_METHOD_INFO* info,     /* IN */
                                      unsigned /* code:CorJitFlag */ flags, /* IN */
+                                     OSRInfo* osrInfo,                     /* IN */
                                      BYTE** nativeEntry,                   /* OUT */
-                                     ULONG* nativeSizeOfCode,              /* OUT */
-                                     unsigned ilOffset                     /* IN */
+                                     ULONG* nativeSizeOfCode               /* OUT */
                                      );
 
 // Some JIT compilers (most notably Phoenix), cache information about EE structures from one invocation

@@ -6502,11 +6502,11 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         int stkOffs = 0;
         if (varDsc->lvIsParam)
         {
-            stkOffs  = 16 + 8 * originalLclNum;
+            stkOffs = 16 + 8 * originalLclNum;
         }
         else
         {
-            stkOffs  = -4 + -4 * (originalLclNum - compiler->info.compILargsCount);
+            stkOffs = -4 + -4 * (originalLclNum - compiler->info.compILargsCount);
         }
         getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), lclSize == 4 ? EA_4BYTE : EA_PTRSIZE, varDsc->lvRegNum,
                                    REG_FPBASE, stkOffs);
@@ -8363,7 +8363,7 @@ void CodeGen::genFnEpilog(BasicBlock* block)
             else if (compiler->opts.IsOSR())
             {
                 // OSR frames are implicitly always RBP frames
-                // 
+                //
                 // TODO: after popping any callee saves, a second
                 // adjustment may be needed to get RSP back to pointing
                 // to the old RBP.
@@ -8439,7 +8439,7 @@ void CodeGen::genFnEpilog(BasicBlock* block)
 
         genPopCalleeSavedRegisters();
 
-        // TODO: Extra OSR adjust of SP (pop off original frame)
+// TODO: Extra OSR adjust of SP (pop off original frame)
 
 #ifdef _TARGET_AMD64_
         assert(!needMovEspEbp); // "mov esp, ebp" is not allowed in AMD64 epilogs

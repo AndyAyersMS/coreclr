@@ -1351,7 +1351,7 @@ CORJIT_FLAGS VersionedPrepareCodeConfig::GetJitCompilationFlags()
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
     // NB we could see patchpoint at offset 0, need to handle this
-    if (GetILOffset() > 0)
+    if (GetOSRInfo()->patchpointInfo != NULL)
     {
         flags.Add(CORJIT_FLAGS::CORJIT_FLAG_OSR);
     }
@@ -1382,9 +1382,9 @@ PrepareCodeConfigBuffer::PrepareCodeConfigBuffer(NativeCodeVersion codeVersion)
 }
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-unsigned VersionedPrepareCodeConfig::GetILOffset() const
+OSRInfo* VersionedPrepareCodeConfig::GetOSRInfo()
 {
-    return m_nativeCodeVersion.GetILOffset();
+    return m_nativeCodeVersion.GetOSRInfo();
 }
 #endif
 

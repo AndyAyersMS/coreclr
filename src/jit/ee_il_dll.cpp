@@ -292,13 +292,13 @@ void JitTls::SetCompiler(Compiler* compiler)
 CorJitResult CILJit::compileMethod(ICorJitInfo*         compHnd,
                                    CORINFO_METHOD_INFO* methodInfo,
                                    unsigned             flags,
+                                   OSRInfo*             osrInfo,
                                    BYTE**               entryAddress,
-                                   ULONG*               nativeSizeOfCode,
-                                   unsigned             ilOffset)
+                                   ULONG*               nativeSizeOfCode)
 {
     if (g_realJitCompiler != nullptr)
     {
-        return g_realJitCompiler->compileMethod(compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode, ilOffset);
+        return g_realJitCompiler->compileMethod(compHnd, methodInfo, flags, osrInfo, entryAddress, nativeSizeOfCode);
     }
 
     JitFlags jitFlags;
@@ -318,7 +318,7 @@ CorJitResult CILJit::compileMethod(ICorJitInfo*         compHnd,
     assert(methodInfo->ILCode);
 
     result = jitNativeCode(methodHandle, methodInfo->scope, compHnd, methodInfo, &methodCodePtr, nativeSizeOfCode,
-                           &jitFlags, nullptr, ilOffset);
+                           &jitFlags, nullptr, osrInfo);
 
     if (result == CORJIT_OK)
     {

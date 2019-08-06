@@ -4962,6 +4962,13 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
     }
 #endif
 
+    // Generate PatchpointInfo
+    if (doesMethodHavePatchpoints())
+    {
+        // Stub
+        void* ppInfo = info.compCompHnd->allocPatchpointInfo(10);
+    }
+
     RecordStateAtEndOfCompilation();
 
 #ifdef FEATURE_TRACELOGGING
@@ -5183,7 +5190,7 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
                           void**                methodCodePtr,
                           ULONG*                methodCodeSize,
                           JitFlags*             compileFlags,
-                          unsigned              ilOffset)
+                          OSRInfo*              osrInfo)
 {
 #ifdef FEATURE_JIT_METHOD_PERF
     static bool checkedForJitTimeLog = false;
@@ -5271,20 +5278,13 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
     if (compIsForInlining())
     {
         compileFlags->Clear(JitFlags::JIT_FLAG_OSR);
-        info.compILEntry = 0;
+        info.compILEntry        = 0;
+        info.compPatchpointInfo = nullptr;
     }
-    else
+    else if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
     {
-        info.compILEntry = ilOffset;
-    }
-
-    if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
-    {
-        assert(ilOffset > 0);
-    }
-    else
-    {
-        assert(ilOffset == 0);
+        info.compILEntry        = osrInfo->ilOffset;
+        info.compPatchpointInfo = osrInfo->patchpointInfo;
     }
 
     virtualStubParamInfo = new (this, CMK_Unknown) VirtualStubParamInfo(IsTargetAbi(CORINFO_CORERT_ABI));
@@ -6713,7 +6713,7 @@ int jitNativeCode(CORINFO_METHOD_HANDLE methodHnd,
                   ULONG*                methodCodeSize,
                   JitFlags*             compileFlags,
                   void*                 inlineInfoPtr,
-                  unsigned              ilOffset)
+                  OSRInfo*              osrInfo)
 {
     //
     // A non-NULL inlineInfo means we are compiling the inlinee method.
@@ -6758,7 +6758,7 @@ START:
         ULONG*                methodCodeSize;
         JitFlags*             compileFlags;
         InlineInfo*           inlineInfo;
-        unsigned              ilOffset;
+        OSRInfo*              osrInfo;
 #if MEASURE_CLRAPI_CALLS
         WrapICorJitInfo* wrapCLR;
 #endif
@@ -6776,7 +6776,7 @@ START:
     param.methodCodeSize     = methodCodeSize;
     param.compileFlags       = compileFlags;
     param.inlineInfo         = inlineInfo;
-    param.ilOffset           = ilOffset;
+    param.osrInfo            = osrInfo;
 #if MEASURE_CLRAPI_CALLS
     param.wrapCLR = nullptr;
 #endif
@@ -6831,7 +6831,7 @@ START:
             // Now generate the code
             pParam->result = pParam->pComp->compCompile(pParam->methodHnd, pParam->classPtr, pParam->compHnd,
                                                         pParam->methodInfo, pParam->methodCodePtr,
-                                                        pParam->methodCodeSize, pParam->compileFlags, pParam->ilOffset);
+                                                        pParam->methodCodeSize, pParam->compileFlags, pParam->osrInfo);
         }
         finallyErrorTrap()
         {

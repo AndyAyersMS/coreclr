@@ -5677,7 +5677,21 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                         
                         // Request a new native version that is optimized. 
                         ilCodeVersion.AddNativeCodeVersion(pMD, NativeCodeVersion::OptimizationTier1, &osrNativeCodeVersion);
-                        osrNativeCodeVersion.SetILOffset(ilOffset);
+
+                        // Prepare info for the OSR method
+                        OSRInfo osrInfo;
+
+                        // OSR entry offset
+                        osrInfo.ilOffset = ilOffset;
+
+                        // Patchpoint info from the current method
+                        EEJitManager* jitMgr = ExecutionManager::GetEEJitManager();
+                        CodeHeader* codeHdr = jitMgr->GetCodeHeaderFromStartAddress(codeInfo.GetStartAddress());
+                        osrInfo.patchpointInfo = codeHdr->GetPatchpointInfo();
+
+                        if (osrInfo.patchpointInfo == NULL) printf ("Eh\n");
+
+                        osrNativeCodeVersion.SetOSRInfo(osrInfo);
                     }
                     
                     // And this will need to invoke the jit specially, passing IL offset,

@@ -8797,6 +8797,7 @@ public:
         IL_OFFSET      compILCodeSize;     // The IL code size
         IL_OFFSET      compILImportSize;   // Estimated amount of IL actually imported
         IL_OFFSET      compILEntry;        // The IL entry point (normally 0)
+        void*          compPatchpointInfo; // Patchpoint data for OSR (normally nullptr)
         UNATIVE_OFFSET compNativeCodeSize; // The native code size, after instructions are issued. This
                                            // is less than (compTotalHotCodeSize + compTotalColdCodeSize) only if:
         // (1) the code is not hot/cold split, and we issued less code than we expected, or
@@ -9066,7 +9067,7 @@ public:
                     void**                methodCodePtr,
                     ULONG*                methodCodeSize,
                     JitFlags*             compileFlags,
-                    unsigned              ilOffset);
+                    OSRInfo*              osrInfo);
     void compCompileFinish();
     int compCompileHelper(CORINFO_MODULE_HANDLE            classPtr,
                           COMP_HANDLE                      compHnd,

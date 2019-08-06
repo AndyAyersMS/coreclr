@@ -801,7 +801,7 @@ extern int jitNativeCode(CORINFO_METHOD_HANDLE methodHnd,
                          ULONG*                methodCodeSize,
                          JitFlags*             compileFlags,
                          void*                 inlineInfoPtr,
-                         unsigned              ilOffset);
+                         OSRInfo*              osrInfo);
 
 #ifdef _HOST_64BIT_
 const size_t INVALID_POINTER_VALUE = 0xFEEDFACEABADF00D;

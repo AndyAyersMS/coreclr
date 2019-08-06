@@ -86,9 +86,9 @@ public:
 #endif // FEATURE_TIERED_COMPILATION
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-    unsigned GetILOffset() const;
+    OSRInfo* GetOSRInfo();
 #ifndef DACCESS_COMPILE
-    void SetILOffset(unsigned offset);
+    void SetOSRInfo(const OSRInfo& info);
 #endif
 #endif // FEATURE_ON_STACK_REPLACEMENT
 
@@ -285,9 +285,9 @@ public:
 #endif
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-    unsigned GetILOffset() const;
+    OSRInfo* GetOSRInfo();
 #ifndef DACCESS_COMPILE
-    void SetILOffset(unsigned offset);
+    void SetOSRInfo(const OSRInfo& info);
 #endif
 #endif
 
@@ -308,7 +308,7 @@ private:
     PTR_GCCoverageInfo m_gcCover;
 #endif
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-    unsigned m_ilOffset;
+    OSRInfo  m_osrInfo;
 #endif
 
     enum NativeCodeVersionNodeFlags

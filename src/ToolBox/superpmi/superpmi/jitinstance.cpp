@@ -310,8 +310,10 @@ JitInstance::Result JitInstance::CompileMethod(MethodContext* MethodToCompile, i
         {
             pParam->pThis->lt.Start();
         }
+        // TODO: record and hook up real OSRInfo
+        OSRInfo* osrInfo = nullptr;
         CorJitResult jitResult = pParam->pThis->pJitInstance->compileMethod(pParam->pThis->icji, &pParam->info,
-                                                                       pParam->flags, &NEntryBlock, &NCodeSizeBlock, 0);
+                                                                            pParam->flags, osrInfo, &NEntryBlock, &NCodeSizeBlock);
         if (pParam->collectThroughput)
         {
             pParam->pThis->lt.Stop();
@@ -392,7 +394,9 @@ void JitInstance::timeResult(CORINFO_METHOD_INFO info, unsigned flags)
         delete mc->cr;
         mc->cr = new CompileResult();
         lt.Start();
-        pJitInstance->compileMethod(icji, &info, flags, &NEntryBlock, &NCodeSizeBlock, 0);
+        // TODO: support OSR
+        OSRInfo* osrInfo = nullptr;
+        pJitInstance->compileMethod(icji, &info, flags, osrInfo, &NEntryBlock, &NCodeSizeBlock);
         lt.Stop();
         time = lt.GetCycles();
         if (times[1] == 0)

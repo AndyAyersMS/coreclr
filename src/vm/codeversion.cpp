@@ -79,7 +79,7 @@ NativeCodeVersionNode::NativeCodeVersionNode(
     m_gcCover(PTR_NULL),
 #endif
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-    m_ilOffset(0),
+    m_osrInfo(),
 #endif
     m_flags(0)
 {}
@@ -185,19 +185,18 @@ void NativeCodeVersionNode::SetOptimizationTier(NativeCodeVersion::OptimizationT
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
 
-unsigned NativeCodeVersionNode::GetILOffset() const
+OSRInfo* NativeCodeVersionNode::GetOSRInfo()
 {
     LIMITED_METHOD_DAC_CONTRACT;
-    return m_ilOffset;
+    return &m_osrInfo;
 }
 
 #ifndef DACCESS_COMPILE
 
-void NativeCodeVersionNode::SetILOffset(unsigned offset)
+void NativeCodeVersionNode::SetOSRInfo(const OSRInfo& info)
 {
     LIMITED_METHOD_CONTRACT;
-    // _ASSERTE(offset <= ...);  // ilversion max offset
-    m_ilOffset = offset;
+    m_osrInfo = info;
 }
 
 #endif
@@ -436,26 +435,26 @@ void NativeCodeVersion::SetOptimizationTier(OptimizationTier tier)
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
 
-unsigned NativeCodeVersion::GetILOffset() const
+OSRInfo* NativeCodeVersion::GetOSRInfo()
 {
     LIMITED_METHOD_DAC_CONTRACT;
     if (m_storageKind == StorageKind::Explicit)
     {
-        return AsNode()->GetILOffset();
+        return AsNode()->GetOSRInfo();
     }
     else
     {
-        return 0;
+        return NULL;
     }
 }
 
 #ifndef DACCESS_COMPILE
-void NativeCodeVersion::SetILOffset(unsigned offset)
+void NativeCodeVersion::SetOSRInfo(const OSRInfo& info)
 {
     WRAPPER_NO_CONTRACT;
     if (m_storageKind == StorageKind::Explicit)
     {
-        AsNode()->SetILOffset(offset);
+        AsNode()->SetOSRInfo(info);
     }
     else
     {

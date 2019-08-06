@@ -12,9 +12,9 @@ interceptor_IEEMM* current_IEEMM = nullptr; // we want this to live beyond the s
 CorJitResult __stdcall interceptor_ICJC::compileMethod(ICorJitInfo*                comp,     /* IN */
                                                        struct CORINFO_METHOD_INFO* info,     /* IN */
                                                        unsigned /* code:CorJitFlag */ flags, /* IN */
+                                                       OSRInfo* osrInfo,                     /* IN */
                                                        BYTE** nativeEntry,                   /* OUT */
-                                                       ULONG* nativeSizeOfCode,              /* OUT */
-                                                       unsigned ilOffset                     /* IN */
+                                                       ULONG* nativeSizeOfCode               /* OUT */
                                                        )
 {
     interceptor_ICJI our_ICorJitInfo;
@@ -26,7 +26,7 @@ CorJitResult __stdcall interceptor_ICJC::compileMethod(ICorJitInfo*             
 
     mcs->AddCall("compileMethod");
     CorJitResult temp =
-        original_ICorJitCompiler->compileMethod(&our_ICorJitInfo, info, flags, nativeEntry, nativeSizeOfCode, ilOffset);
+        original_ICorJitCompiler->compileMethod(&our_ICorJitInfo, info, flags, osrInfo, nativeEntry, nativeSizeOfCode);
 
     return temp;
 }

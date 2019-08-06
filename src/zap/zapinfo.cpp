@@ -502,6 +502,7 @@ void ZapInfo::CompileMethod()
 
     BYTE *pCode;
     ULONG cCode;
+    OSRInfo* osrInfo = NULL;
 
 #ifdef ALLOW_SXS_JIT_NGEN
     if (m_zapper->m_alternateJit)
@@ -509,9 +510,9 @@ void ZapInfo::CompileMethod()
         res = m_zapper->m_alternateJit->compileMethod( this,
                                                      &m_currentMethodInfo,
                                                      CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
+                                                     osrInfo,
                                                      &pCode,
-                                                     &cCode, 
-                                                     0);
+                                                     &cCode);
         if (FAILED(res))
         {
             // We will fall back to the "main" JIT on failure.
@@ -526,9 +527,9 @@ void ZapInfo::CompileMethod()
         res = pCompiler->compileMethod(this,
                                     &m_currentMethodInfo,
                                     CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
+                                    osrInfo,
                                     &pCode,
-                                    &cCode,
-                                    0);
+                                    &cCode);
 
         if (FAILED(res))
         {
