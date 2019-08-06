@@ -360,6 +360,13 @@ public:
             size_t                  size        /* IN */
             ) = 0;
 
+    // Get a block of memory needed for patchpoint information (info
+    // for enumerating the frame offsets of arguments and locals of an
+    // unoptimized method).
+    virtual void * allocPatchpointInfo (
+            size_t                  size        /* IN */
+            ) = 0;
+
     virtual void yieldExecution() = 0;
 
     // Indicate how many exception handler blocks are to be returned.

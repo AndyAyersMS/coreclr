@@ -142,6 +142,7 @@ public:
     // contains the number of EH clauses, See EEJitManager::allocEHInfo
     PTR_EE_ILEXCEPTION  phdrJitEHInfo;
     PTR_BYTE            phdrJitGCInfo;
+    PTR_BYTE            phdrJitPatchpointInfo;
 
 #if defined(FEATURE_GDBJIT)
     VOID*            pCalledMethods;
@@ -173,6 +174,11 @@ public:
     {
         SUPPORTS_DAC;
         return phdrJitGCInfo;
+    }
+    PTR_BYTE                GetPatchpointInfo()
+    {
+        SUPPORTS_DAC;
+        return phdrJitPatchpointInfo;
     }
     PTR_MethodDesc          GetMethodDesc()
     {
@@ -214,6 +220,10 @@ public:
     void SetGCInfo(PTR_BYTE pGC)
     {
         phdrJitGCInfo = pGC;
+    }
+    void SetPatchpointInfo(PTR_BYTE pPP)
+    {
+        phdrJitPatchpointInfo = pPP;
     }
     void SetMethodDesc(PTR_MethodDesc pMD)
     {
@@ -263,6 +273,12 @@ public:
         SUPPORTS_DAC;
         return pRealCodeHeader->phdrJitGCInfo;
     }
+    PTR_BYTE                GetPatchpointInfo()
+    {
+        SUPPORTS_DAC;
+        return pRealCodeHeader->phdrJitPatchpointInfo;
+    }
+
     PTR_MethodDesc          GetMethodDesc()
     {
         SUPPORTS_DAC;
@@ -308,6 +324,10 @@ public:
     void SetGCInfo(PTR_BYTE pGC)
     {
         pRealCodeHeader->phdrJitGCInfo = pGC;
+    }
+    void SetPatchpointInfo(PTR_BYTE pPP)
+    {
+        pRealCodeHeader->phdrJitPatchpointInfo = pPP;
     }
     void SetMethodDesc(PTR_MethodDesc pMD)
     {
@@ -1004,7 +1024,7 @@ public:
     GCInfoToken         GetGCInfoToken(const METHODTOKEN& MethodToken);
 #endif // !CROSSGEN_COMPILE
 #if !defined DACCESS_COMPILE && !defined CROSSGEN_COMPILE
-    void                RemoveJitData(CodeHeader * pCHdr, size_t GCinfo_len, size_t EHinfo_len);
+    void                RemoveJitData(CodeHeader * pCHdr, size_t GCinfo_len, size_t EHinfo_len, size_t Patchpointinfo_len);
     void                Unload(LoaderAllocator* pAllocator);
     void                CleanupCodeHeaps();
 
@@ -1022,6 +1042,8 @@ public:
                                             BYTE * loAddr, BYTE * hiAddr,
                                             LoaderAllocator *pLoaderAllocator,
                                             bool throwOnOutOfMemoryWithinRange);
+
+    BYTE *              allocPatchpointInfo(CodeHeader* pCodeHeader, DWORD blockSize, size_t * pAllocationSize);
 
     void *              allocCodeFragmentBlock(size_t blockSize, unsigned alignment, LoaderAllocator *pLoaderAllocator, StubCodeBlockKind kind);
 #endif // !DACCESS_COMPILE && !CROSSGEN_COMPILE

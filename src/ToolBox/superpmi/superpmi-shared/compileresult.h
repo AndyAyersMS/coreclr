@@ -49,6 +49,16 @@ public:
         DWORDLONG size;
         DWORD     retval_offset;
     };
+    struct allocPatchpointInfoDetails
+    {
+        size_t size;
+        void*  retval;
+    };
+    struct Agnostic_AllocPatchpointInfo
+    {
+        DWORDLONG size;
+        DWORD     retval_offset;
+    };
     struct Agnostic_AllocMemDetails
     {
         DWORD     hotCodeSize;
@@ -205,6 +215,12 @@ public:
     void dmpAllocGCInfo(DWORD key, const Agnostic_AllocGCInfo& value);
     void repAllocGCInfo(size_t* size, void** retval);
 
+    void recAllocPatchpointInfo(size_t size, void* retval);
+    void recAllocPatchpointInfoCapture();
+    void dmpAllocPatchpointInfo(DWORD key, const Agnostic_AllocPatchpointInfo& value);
+    void repAllocPatchpointInfo(size_t* size, void** retval);
+
+
     void recCompileMethod(BYTE** nativeEntry, ULONG* nativeSizeOfCode, CorJitResult result);
     void dmpCompileMethod(DWORD key, const Agnostic_CompileMethodResults& value);
     void repCompileMethod(BYTE** nativeEntry, ULONG* nativeSizeOfCode, CorJitResult* result);
@@ -304,5 +320,6 @@ private:
     HANDLE                  codeHeap;
     Capture_AllocMemDetails allocMemDets;
     allocGCInfoDetails      allocGCInfoDets;
+    allocPatchpointInfoDetails      allocPatchpointInfoDets;
 };
 #endif

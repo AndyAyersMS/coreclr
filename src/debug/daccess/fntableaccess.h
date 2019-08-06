@@ -49,6 +49,7 @@ typedef struct _FakeHpRealCodeHdr
     LPVOID              phdrDebugInfo;
     LPVOID              phdrJitEHInfo;  // changed from EE_ILEXCEPTION*
     LPVOID              phdrJitGCInfo;  // changed from BYTE*
+    LPVOID              phdrJitPatchpointInfo;  // changed from BYTE*
 #if defined (FEATURE_GDBJIT)
     LPVOID              pCalledMethods;
 #endif

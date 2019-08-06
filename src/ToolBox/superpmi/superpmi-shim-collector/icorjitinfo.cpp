@@ -2061,6 +2061,14 @@ void* interceptor_ICJI::allocGCInfo(size_t size /* IN */)
     return temp;
 }
 
+void* interceptor_ICJI::allocPatchpointInfo(size_t size /* IN */)
+{
+    mc->cr->AddCall("allocPatchpointInfo");
+    void* temp = original_ICorJitInfo->allocPatchpointInfo(size);
+    mc->cr->recAllocPatchpointInfo(size, temp);
+    return temp;
+}
+
 // only used on x64
 void interceptor_ICJI::yieldExecution()
 {

@@ -1617,6 +1617,13 @@ void* interceptor_ICJI::allocGCInfo(size_t size /* IN */
     return original_ICorJitInfo->allocGCInfo(size);
 }
 
+void* interceptor_ICJI::allocPatchpointInfo(size_t size /* IN */
+                                    )
+{
+    mcs->AddCall("allocPatchpointInfo");
+    return original_ICorJitInfo->allocPatchpointInfo(size);
+}
+
 // only used on x64
 void interceptor_ICJI::yieldExecution()
 {

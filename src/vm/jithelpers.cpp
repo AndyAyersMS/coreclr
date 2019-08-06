@@ -5515,9 +5515,6 @@ JitPatchpointTable *g_pJitPatchpointTable = NULL;
 CrstStatic g_pJitPatchpointCrst;
 LARGE_INTEGER PatchpointInfo::s_qpcFrequency;
 
-// Stub, for now just reset the counter
-
-// HCIMPL2(void, JIT_Patchpoint, int* counter, int ilOffset)
 void JIT_Patchpoint(int* counter, int ilOffset)
 {
     STATIC_CONTRACT_GC_NOTRIGGER;
@@ -5525,10 +5522,8 @@ void JIT_Patchpoint(int* counter, int ilOffset)
 
     void* ip = _ReturnAddress();
 
-    // HELPER_METHOD_FRAME_BEGIN_0();
-
     // TODO: Sanity check that our caller is the kind of frame
-    // we can handle (RBP frame)
+    // we can handle (RBP frame), and other stuff...
 
     // Query and update the patchpoint state
     //
@@ -5687,8 +5682,11 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                     
                     // And this will need to invoke the jit specially, passing IL offset,
                     // current stack frame, etc....
+                    //
+                    // Probably need to delegate this to a slow path
+                    // helper that sets up a proper frame?
                     {
-                        GCX_PREEMP(); // hmmm
+                        GCX_PREEMP(); // hmmm, we didn't set up a proper transition frame
                         osrVariant = pMD->PrepareCode(osrNativeCodeVersion);
                         ppInfo->m_existingCode = osrVariant;
                     }

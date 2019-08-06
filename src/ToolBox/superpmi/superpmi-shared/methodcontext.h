@@ -1352,7 +1352,7 @@ private:
 };
 
 // ********************* Please keep this up-to-date to ease adding more ***************
-// Highest packet number: 174
+// Highest packet number: 175
 // *************************************************************************************
 enum mcPackets
 {
@@ -1510,6 +1510,7 @@ enum mcPackets
     PacketCR_AddressMap                        = 113,
     PacketCR_AllocMethodBlockCounts            = 131,
     PacketCR_AllocGCInfo                       = 114,
+    PacketCR_AllocPatchpointInfo               = 175, // added 8/5/2019
     PacketCR_AllocMem                          = 115,
     PacketCR_AllocUnwindInfo                   = 132,
     PacketCR_AssertLog                         = 138, // Added 6/10/2013 - added to nicely support ilgen

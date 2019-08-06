@@ -31,6 +31,9 @@ CompileResult::CompileResult()
     allocGCInfoDets.retval = 0;
     allocGCInfoDets.size   = 0;
 
+    allocPatchpointInfoDets.retval = 0;
+    allocPatchpointInfoDets.size   = 0;
+
     codeHeap = nullptr;
 }
 
@@ -363,6 +366,45 @@ void CompileResult::repAllocGCInfo(size_t* size, void** retval)
     *size = (size_t)value.size;
     if (*size > 0)
         *retval = (void*)AllocGCInfo->GetBuffer(value.retval_offset);
+}
+
+void CompileResult::recAllocPatchpointInfo(size_t size, void* retval)
+{
+    allocPatchpointInfoDets.size   = size;
+    allocPatchpointInfoDets.retval = retval;
+}
+void CompileResult::recAllocPatchpointInfoCapture()
+{
+    if (AllocPatchpointInfo == nullptr)
+        AllocPatchpointInfo = new LightWeightMap<DWORD, Agnostic_AllocPatchpointInfo>();
+
+    Agnostic_AllocPatchpointInfo value;
+
+    value.size = allocPatchpointInfoDets.size;
+    value.retval_offset =
+        (DWORD)AllocPatchpointInfo->AddBuffer((const unsigned char*)allocPatchpointInfoDets.retval, (DWORD)allocPatchpointInfoDets.size);
+
+    AllocPatchpointInfo->Add(0, value);
+}
+void CompileResult::dmpAllocPatchpointInfo(DWORD key, const Agnostic_AllocPatchpointInfo& value)
+{
+    const unsigned char* buff = AllocPatchpointInfo->GetBuffer(value.retval_offset);
+    printf("AllocPatchpointInfo key 0, ");
+    printf("sz-%llu %p{ ", value.size, buff);
+    for (unsigned int i = 0; i < value.size; i++)
+        printf("%02X ", *(buff + i));
+    printf("}");
+    AllocPatchpointInfo->Unlock();
+}
+void CompileResult::repAllocPatchpointInfo(size_t* size, void** retval)
+{
+    Agnostic_AllocPatchpointInfo value;
+
+    value = AllocPatchpointInfo->Get(0);
+
+    *size = (size_t)value.size;
+    if (*size > 0)
+        *retval = (void*)AllocPatchpointInfo->GetBuffer(value.retval_offset);
 }
 
 void CompileResult::recCompileMethod(BYTE** nativeEntry, ULONG* nativeSizeOfCode, CorJitResult result)

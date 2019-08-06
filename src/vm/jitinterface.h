@@ -1074,6 +1074,10 @@ public:
             size_t                  size        /* IN */
             );
 
+    void * allocPatchpointInfo (
+            size_t                  size        /* IN */
+            );
+
     void yieldExecution();
 
     void setEHcount (
@@ -1288,6 +1292,8 @@ public:
 
     void * allocGCInfo (size_t  size);
 
+    void * allocPatchpointInfo (size_t  size);
+
     void setEHcount (unsigned cEH);
 
     void setEHinfo (
@@ -1451,6 +1457,7 @@ public:
 #endif
           m_GCinfo_len(0),
           m_EHinfo_len(0),
+          m_Patchpointinfo_len(0),
           m_iOffsetMapping(0),
           m_pOffsetMapping(NULL),
           m_iNativeVarInfo(0),
@@ -1544,6 +1551,7 @@ protected :
 
     size_t                  m_GCinfo_len;   // Cached copy of GCinfo_len so we can backout in BackoutJitData()
     size_t                  m_EHinfo_len;   // Cached copy of EHinfo_len so we can backout in BackoutJitData()
+    size_t                  m_Patchpointinfo_len; // Cached copy of Patchpointinfo_len so we can backout in BackoutJitData()
 
     ULONG32                 m_iOffsetMapping;
     ICorDebugInfo::OffsetMapping * m_pOffsetMapping;

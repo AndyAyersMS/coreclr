@@ -11156,7 +11156,7 @@ void CEEJitInfo::BackoutJitData(EEJitManager * jitMgr)
 
     CodeHeader* pCodeHeader = GetCodeHeader();
     if (pCodeHeader)
-        jitMgr->RemoveJitData(pCodeHeader, m_GCinfo_len, m_EHinfo_len);
+        jitMgr->RemoveJitData(pCodeHeader, m_GCinfo_len, m_EHinfo_len, m_Patchpointinfo_len);
 }
 
 /*********************************************************************/
@@ -12190,6 +12190,42 @@ void * CEEJitInfo::allocGCInfo (size_t size)
     }
 
     _ASSERTE(m_CodeHeader->GetGCInfo() != 0 && block == m_CodeHeader->GetGCInfo());
+
+    EE_TO_JIT_TRANSITION();
+
+    return block;
+}
+
+/*********************************************************************/
+void * CEEJitInfo::allocPatchpointInfo (size_t size)
+{
+    CONTRACTL {
+        THROWS;
+        GC_TRIGGERS;
+        MODE_PREEMPTIVE;
+    } CONTRACTL_END;
+
+    void * block = NULL;
+
+    JIT_TO_EE_TRANSITION();
+
+    _ASSERTE(m_CodeHeader != 0);
+    _ASSERTE(m_CodeHeader->GetPatchpointInfo() == 0);
+
+#ifdef _WIN64
+    if (size & 0xFFFFFFFF80000000LL)
+    {
+        COMPlusThrowHR(CORJIT_OUTOFMEM);
+    }
+#endif // _WIN64
+
+    block = m_jitManager->allocPatchpointInfo(m_CodeHeader,(DWORD)size, &m_Patchpointinfo_len);
+    if (!block)
+    {
+        COMPlusThrowHR(CORJIT_OUTOFMEM);
+    }
+
+    _ASSERTE(m_CodeHeader->GetPatchpointInfo() != 0 && block == m_CodeHeader->GetPatchpointInfo());
 
     EE_TO_JIT_TRANSITION();
 
@@ -13997,6 +14033,14 @@ void CEEInfo::allocUnwindInfo (
 }
 
 void * CEEInfo::allocGCInfo (
+        size_t                  size        /* IN */
+        )
+{
+    LIMITED_METHOD_CONTRACT;
+    UNREACHABLE_RET();      // only called on derived class.
+}
+
+void * CEEInfo::allocPatchpointInfo (
         size_t                  size        /* IN */
         )
 {

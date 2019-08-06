@@ -2851,6 +2851,33 @@ BYTE* EEJitManager::allocGCInfo(CodeHeader* pCodeHeader, DWORD blockSize, size_t
     return(pCodeHeader->GetGCInfo());
 }
 
+BYTE* EEJitManager::allocPatchpointInfo(CodeHeader* pCodeHeader, DWORD blockSize, size_t * pAllocationSize)
+{
+    CONTRACTL {
+        THROWS;
+        GC_NOTRIGGER;
+    } CONTRACTL_END;
+
+    MethodDesc* pMD = pCodeHeader->GetMethodDesc();
+    // sadly for light code gen I need the check in here. We should change GetJitMetaHeap
+    if (pMD->IsLCGMethod()) 
+    {
+        CrstHolder ch(&m_CodeHeapCritSec);
+        pCodeHeader->SetPatchpointInfo((BYTE*)(void*)pMD->AsDynamicMethodDesc()->GetResolver()->GetJitMetaHeap()->New(blockSize));
+    }
+    else
+    {
+        pCodeHeader->SetPatchpointInfo((BYTE*) (void*)GetJitMetaHeap(pMD)->AllocMem(S_SIZE_T(blockSize)));
+    }
+    _ASSERTE(pCodeHeader->GetPatchpointInfo()); // AllocMem throws if there's not enough memory
+    JIT_PERF_UPDATE_X86_CODE_SIZE(blockSize);
+
+    * pAllocationSize = blockSize;  // Store the allocation size so we can backout later.
+    
+    return(pCodeHeader->GetPatchpointInfo());
+}
+
+
 void* EEJitManager::allocEHInfoRaw(CodeHeader* pCodeHeader, DWORD blockSize, size_t * pAllocationSize)
 {
     CONTRACTL {
@@ -3161,7 +3188,7 @@ TypeHandle EEJitManager::ResolveEHClause(EE_ILEXCEPTION_CLAUSE* pEHClause,
     return typeHnd;
 }
 
-void EEJitManager::RemoveJitData (CodeHeader * pCHdr, size_t GCinfo_len, size_t EHinfo_len)
+void EEJitManager::RemoveJitData (CodeHeader * pCHdr, size_t GCinfo_len, size_t EHinfo_len, size_t Patchpointinfo_len)
 {
     CONTRACTL {
         NOTHROW;
@@ -3230,6 +3257,11 @@ void EEJitManager::RemoveJitData (CodeHeader * pCHdr, size_t GCinfo_len, size_t 
 
         _ASSERTE(EHinfo_len>0);
         GetJitMetaHeap(pMD)->BackoutMem(EHInfo, EHinfo_len);
+    }
+
+    // Backout the PatchpointInfo  
+    if (Patchpointinfo_len > 0) {
+        GetJitMetaHeap(pMD)->BackoutMem(pCHdr->GetPatchpointInfo(), Patchpointinfo_len);
     }
 
     // <TODO>

@@ -1734,6 +1734,16 @@ void* MyICJI::allocGCInfo(size_t size /* IN */
     return temp;
 }
 
+void* MyICJI::allocPatchpointInfo(size_t size /* IN */
+                          )
+{
+    jitInstance->mc->cr->AddCall("allocPatchpointInfo");
+    void* temp = (unsigned char*)HeapAlloc(jitInstance->mc->cr->getCodeHeap(), 0, size);
+    jitInstance->mc->cr->recAllocPatchpointInfo(size, temp);
+
+    return temp;
+}
+
 // Only used on x64.
 void MyICJI::yieldExecution()
 {

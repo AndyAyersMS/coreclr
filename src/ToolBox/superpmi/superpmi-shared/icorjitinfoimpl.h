@@ -987,6 +987,8 @@ void allocUnwindInfo(BYTE*          pHotCode,     /* IN */
 void* allocGCInfo(size_t size /* IN */
                   );
 
+void* allocPatchpointInfo(size_t size /* IN */ );
+
 void yieldExecution();
 
 // Indicate how many exception handler blocks are to be returned.

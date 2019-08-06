@@ -298,6 +298,7 @@ public:
             );
 
     void * allocGCInfo(size_t size);
+    void * allocPatchpointInfo(size_t size);
     void yieldExecution();
     void setEHcount(unsigned cEH);
     void setEHinfo(unsigned EHnumber, const CORINFO_EH_CLAUSE *clause);

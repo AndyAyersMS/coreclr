@@ -1173,6 +1173,12 @@ void * ZapInfo::allocGCInfo(size_t size)
     return m_pGCInfo;
 }
 
+void * ZapInfo::allocPatchpointInfo(size_t size)
+{
+    // Prejitting does not support patchpoints, yet.
+    return NULL;
+}
+
 void ZapInfo::yieldExecution()
 {
     // nothing necessary here
