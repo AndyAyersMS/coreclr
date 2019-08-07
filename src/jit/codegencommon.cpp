@@ -6472,44 +6472,58 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         }
     }
 
-    /* Initialize any lvMustOSRInit vars on the stack */
+    /* Initialize args and locals for OSR */
 
-    LclVarDsc* varDsc;
-    unsigned   varNum;
-
-    for (varNum = 0, varDsc = compiler->lvaTable; varNum < compiler->lvaCount; varNum++, varDsc++)
+    if (compiler->opts.IsOSR())
     {
-        // If the local is dead or immediately stored to we don't need to initalize it... (hmm)
-        if (!varDsc->lvMustOSRInit)
-        {
-            continue;
-        }
+        LclVarDsc* varDsc;
+        unsigned   varNum;
+        int*       offsetTable = (int*)compiler->info.compPatchpointInfo;
 
-        // TODO: Frame locals will use their original method locations. Could also clean up
-        // cases where a reg arg is immediately spilled.
-        if (!varDsc->lvIsInReg())
-        {
-            continue;
-        }
+        // basic sanity check
+        assert(offsetTable[0] == (int)(4 + 4 * compiler->info.compILlocalsCount));
+        unsigned offsetTableLen = (offsetTable[0] - 4) / 4;
+        offsetTable++;
 
-        // TODO: Special handing for promoted locals...
+        for (varNum = 0, varDsc = compiler->lvaTable; varNum < offsetTableLen; varNum++, varDsc++)
+        {
+            // If the local is dead or immediately stored to we don't need to initialize it...
+            //
+            // TODO: if not dead, we should zero GC refs for untracked locals
 
-        // TODO: Find original frame offset, and copy from there to reg
-        const unsigned originalLclNum = compiler->compMap2ILvarNum(varNum);
-        const unsigned lclSize        = roundUp(compiler->lvaLclSize(varNum), (unsigned)sizeof(int));
-        JITDUMP("TODO: EMIT proper OSR init offset for arg/local%u\n", originalLclNum);
-        // hack for now
-        int stkOffs = 0;
-        if (varDsc->lvIsParam)
-        {
-            stkOffs = 16 + 8 * originalLclNum;
+            if (varDsc->lvRefCnt() == 0)
+            {
+                JITDUMP("NO OSR Init for unused V%02u\n", varNum);
+                continue;
+            }
+
+            const unsigned lclSize = roundUp(compiler->lvaLclSize(varNum), (unsigned)sizeof(int));
+            const emitAttr movSize = lclSize == 4 ? EA_4BYTE : EA_PTRSIZE;
+
+            assert(varNum < offsetTableLen);
+            const int stkOffs = offsetTable[varNum];
+
+            // TODO: Frame locals should use their original method locations.
+            //
+            // For now we copy, which is suboptimal, and potentially wrong (if local is address
+            // exposed), but it is better than nothing.
+            //
+            // TODO: handle shadow copies
+            // TODO: handle promoted structs
+            // TODO: handle structs
+            // TODO: handle xmm
+            if (!varDsc->lvIsInReg())
+            {
+                getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), movSize, initReg, REG_FPBASE, stkOffs);
+                getEmitter()->emitIns_AR_R(ins_Store(TYP_I_IMPL), movSize, initReg, genFramePointerReg(),
+                                           varDsc->lvStkOffs);
+                *pInitRegZeroed = false;
+            }
+            else
+            {
+                getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), movSize, varDsc->lvRegNum, REG_FPBASE, stkOffs);
+            }
         }
-        else
-        {
-            stkOffs = -4 + -4 * (originalLclNum - compiler->info.compILargsCount);
-        }
-        getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), lclSize == 4 ? EA_4BYTE : EA_PTRSIZE, varDsc->lvRegNum,
-                                   REG_FPBASE, stkOffs);
     }
 }
 
@@ -7724,37 +7738,41 @@ void CodeGen::genFnProlog()
     // Update the arg initial register locations.
     compiler->lvaUpdateArgsWithInitialReg();
 
-    FOREACH_REGISTER_FILE(regState)
+    if (!compiler->opts.IsOSR())
     {
-        if (regState->rsCalleeRegArgMaskLiveIn)
+        // OSR handles this by moving the values from the original frame.
+        FOREACH_REGISTER_FILE(regState)
         {
-            // If we need an extra register to shuffle around the incoming registers
-            // we will use xtraReg (initReg) and set the xtraRegClobbered flag,
-            // if we don't need to use the xtraReg then this flag will stay false
-            //
-            regNumber xtraReg;
-            bool      xtraRegClobbered = false;
-
-            if (genRegMask(initReg) & RBM_ARG_REGS)
+            if (regState->rsCalleeRegArgMaskLiveIn)
             {
-                xtraReg = initReg;
-            }
-            else
-            {
-                xtraReg       = REG_SCRATCH;
-                initRegZeroed = false;
-            }
+                // If we need an extra register to shuffle around the incoming registers
+                // we will use xtraReg (initReg) and set the xtraRegClobbered flag,
+                // if we don't need to use the xtraReg then this flag will stay false
+                //
+                regNumber xtraReg;
+                bool      xtraRegClobbered = false;
 
-            genFnPrologCalleeRegArgs(xtraReg, &xtraRegClobbered, regState);
+                if (genRegMask(initReg) & RBM_ARG_REGS)
+                {
+                    xtraReg = initReg;
+                }
+                else
+                {
+                    xtraReg       = REG_SCRATCH;
+                    initRegZeroed = false;
+                }
 
-            if (xtraRegClobbered)
-            {
-                initRegZeroed = false;
+                genFnPrologCalleeRegArgs(xtraReg, &xtraRegClobbered, regState);
+
+                if (xtraRegClobbered)
+                {
+                    initRegZeroed = false;
+                }
             }
         }
     }
 
-    // Home the incoming arguments
+    // Home the incoming arguments.
     genEnregisterIncomingStackArgs();
 
     /* Initialize any must-init registers variables now */

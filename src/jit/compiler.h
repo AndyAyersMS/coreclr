@@ -410,7 +410,6 @@ public:
     unsigned char lvPinned : 1; // is this a pinned variable?
 
     unsigned char lvMustInit : 1;    // must be initialized
-    unsigned char lvMustOSRInit : 1; // OSR compile, local must be initialized to original method's value
     unsigned char lvAddrExposed : 1; // The address of this variable is "exposed" -- passed as an argument, stored in a
                                      // global location, etc.
                                      // We cannot reason reliably about the value of the variable.

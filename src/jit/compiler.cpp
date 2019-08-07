@@ -4965,8 +4965,30 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
     // Generate PatchpointInfo
     if (doesMethodHavePatchpoints())
     {
-        // Stub
-        void* ppInfo = info.compCompHnd->allocPatchpointInfo(10);
+        assert(codeGen->isFramePointerUsed());
+
+        // Initial cut at patchpoint info. For now, all slots are 4 bytes.
+        //
+        // 0: overall size in bytes
+        // 1-xx: offsets
+        //
+        // We rely on OSR jit setting up its local tab the same way
+        // the original jit did. So enumerating its lvaTable will
+        // give the same locals back again.
+        //
+        unsigned ppSize   = 4 + 4 * info.compILlocalsCount;
+        int*     ppInfo   = (int*)info.compCompHnd->allocPatchpointInfo(ppSize);
+        int      ppIndex  = 0;
+        ppInfo[ppIndex++] = ppSize;
+
+        for (unsigned lclNum = 0; lclNum < info.compILlocalsCount; lclNum++)
+        {
+            // We expect all these to have stack homes
+            LclVarDsc* varDsc = &lvaTable[lclNum];
+
+            // Record FramePtr relative offset (no localloc yet)
+            ppInfo[ppIndex++] = varDsc->lvStkOffs;
+        }
     }
 
     RecordStateAtEndOfCompilation();

@@ -1776,7 +1776,7 @@ void LinearScan::insertZeroInitRefPositions()
 
                 if (compiler->opts.IsOSR() && varDsc->lvIsLocal) // also promoted locals...
                 {
-                    varDsc->lvMustOSRInit = true;
+                    // OSR will handle init
                 }
                 else
                 {
@@ -1896,11 +1896,6 @@ void LinearScan::updateRegStateForArg(LclVarDsc* argDsc)
 #endif // FEATURE_MULTIREG_ARGS
             compiler->raUpdateRegStateForArg(intRegState, argDsc);
         }
-    }
-
-    if (compiler->opts.IsOSR())
-    {
-        argDsc->lvMustOSRInit = true;
     }
 }
 
