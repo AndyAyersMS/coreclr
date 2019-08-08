@@ -2541,11 +2541,6 @@ void Compiler::compInitOptions(JitFlags* jitFlags)
         assert(jitFlags->IsSet(JitFlags::JIT_FLAG_SKIP_VERIFICATION));
     }
 
-    if (!compIsForInlining() && jitFlags->IsSet(JitFlags::JIT_FLAG_OSR))
-    {
-        printf("$$$ Jit sees OSR flag set on root method, version entry point is 0x%x\n", info.compILEntry);
-    }
-
     opts.jitFlags  = jitFlags;
     opts.compFlags = CLFLG_MAXOPT; // Default value is for full optimization
 

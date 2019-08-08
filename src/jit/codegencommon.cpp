@@ -8351,7 +8351,10 @@ void CodeGen::genFnEpilog(BasicBlock* block)
         // will save and restore what it needs.
         if (compiler->opts.IsOSR())
         {
-            getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_FPBASE, 0);
+            int*       offsetTable = (int*)compiler->info.compPatchpointInfo;
+            int        originalFrameSize = offsetTable[2];
+            inst_RV_IV(INS_add, REG_SPBASE, originalFrameSize, EA_PTRSIZE);
+            // getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_FPBASE, 0);
             inst_RV(INS_pop, REG_EBP, TYP_I_IMPL);
         }
     }
