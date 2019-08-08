@@ -5554,7 +5554,7 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
     // TODO-AMD64-CQ: for X64 eventually this should be pushed with all the other
     // calleeregs.  When you fix this, you'll also need to fix
     // the assert at the bottom of this method
-    else if (codeGen->doubleAlignOrFramePointerUsed())
+    if (codeGen->doubleAlignOrFramePointerUsed())
     {
         stkOffs -= REGSIZE_BYTES;
     }

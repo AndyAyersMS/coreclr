@@ -183,6 +183,15 @@ void Compiler::fgTransformPatchpoints()
         return;
     }
 
+    // We currently can't handle OSR in methods with localloc.
+    // Such methods don't have a fixed relationship between frame and stack pointers.
+
+    if (compLocallocUsed)
+    {
+        JITDUMP(" -- unable to handle methods with localloc\n");
+        return;
+    }
+
     // printf("@@@@ Placing patchpoints in %s\n", info.compFullName);
 
     PatchpointTransformer ppTransformer(this);
