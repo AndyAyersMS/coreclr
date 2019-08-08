@@ -4447,6 +4447,12 @@ void CodeGen::genEnregisterIncomingStackArgs()
     }
 #endif
 
+    // OSR handles this specially
+    if (compiler->opts.IsOSR())
+    {
+        return;
+    }
+
     assert(compiler->compGeneratingProlog);
 
     unsigned varNum = 0;
