@@ -4554,7 +4554,7 @@ void CodeGen::genCheckUseBlockInit()
         }
 
         // For OSR, initialization of locals will be handled specially
-        if (compiler->opts.IsOSR() && (compiler->compMap2ILvarNum(varNum) != ICorDebugInfo::UNKNOWN_ILNUM))
+        if (compiler->opts.IsOSR() && (varNum < compiler->info.compLocalsCount))
         {
             continue;
         }
@@ -6490,6 +6490,8 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         assert(offsetTable[0] == (int)(12 + 4 * compiler->info.compLocalsCount));
         assert(offsetTable[1] == (int)compiler->info.compILCodeSize);
 
+        int originalFrameSize = offsetTable[2];
+
         // point at the offsets table
         unsigned offsetTableLen = (offsetTable[0] - 12) / 4;
         offsetTable             = &offsetTable[3];
@@ -6506,19 +6508,39 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
                 continue;
             }
 
-            const unsigned lclSize = roundUp(compiler->lvaLclSize(varNum), (unsigned)sizeof(int));
-            const emitAttr movSize = lclSize == 4 ? EA_4BYTE : EA_PTRSIZE;
-
-            assert(varNum < offsetTableLen);
-            const int stkOffs = offsetTable[varNum];
-
-            // TODO: handle shadow copies
-            // TODO: handle promoted structs
-            // TODO: handle structs
-            // TODO: handle xmm
             if (varDsc->lvIsInReg())
             {
-                getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), movSize, varDsc->lvRegNum, REG_FPBASE, stkOffs);
+                // Note we are always reading from the original frame here
+                var_types lclTyp = genActualType(varDsc->lvType);
+                emitAttr  size   = emitTypeSize(lclTyp);
+
+                assert(varNum < offsetTableLen);
+                const int stkOffs = offsetTable[varNum];
+
+                // stkOffs is the original frame RBP-relative offset
+                // to the var.  We want either an RSP or RBP relative
+                // offset for the current frame.
+                //
+                // If using RSP, we need to add the SP-to-FP delta of
+                // this frame and the SP-to-FP delta of the original
+                // frame... that translates from this frame's RSP to
+                // the old frame RBP. We then add the original frame's
+                // RBP relative offset.
+                //
+                // If using RBP, we need to add the SP-to-FP delta of
+                // the original frame and then add the original
+                // frame's RBP relative offset.
+
+                int offset = originalFrameSize + stkOffs;
+                if (!isFramePointerUsed())
+                {
+                    offset += genSPtoFPdelta();
+                }
+
+                printf("--- V%02u old rbp offset %d old frame %d this frame sp-fp %d new offset %d\n", varNum, stkOffs,
+                       originalFrameSize, genSPtoFPdelta(), offset);
+
+                getEmitter()->emitIns_R_AR(ins_Load(lclTyp), size, varDsc->lvRegNum, genFramePointerReg(), offset);
             }
         }
     }
@@ -8343,18 +8365,18 @@ void CodeGen::genFnEpilog(BasicBlock* block)
         // Extra OSR adjust to get to where RBP was saved by the original frame, and
         // restore RBP.
         //
-        // (Still on the fence as to whether all OSR frames will be official RBP frames
-        //  or not, they are kind of in-between -- here we still expect RBP to be
-        //  the value it had on method entry, which we have yet to guarantee).
-        //
         // Note the other callee saves made in that frame are dead, the current method
         // will save and restore what it needs.
         if (compiler->opts.IsOSR())
         {
-            int*       offsetTable = (int*)compiler->info.compPatchpointInfo;
-            int        originalFrameSize = offsetTable[2];
+            int* offsetTable       = (int*)compiler->info.compPatchpointInfo;
+            int  originalFrameSize = offsetTable[2];
+
+            // Use add since we know the SP-to-FP delta of the original method.
+            //
+            // If we ever allow the original method to have localloc this will
+            // need to change.
             inst_RV_IV(INS_add, REG_SPBASE, originalFrameSize, EA_PTRSIZE);
-            // getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_FPBASE, 0);
             inst_RV(INS_pop, REG_EBP, TYP_I_IMPL);
         }
     }
