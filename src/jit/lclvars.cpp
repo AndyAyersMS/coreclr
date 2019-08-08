@@ -4798,8 +4798,10 @@ void Compiler::lvaFixVirtualFrameOffsets()
             }
 #endif
             // On System V environments the stkOffs could be 0 for params passed in registers.
-            assert(codeGen->isFramePointerUsed() ||
-                   varDsc->lvStkOffs >= 0); // Only EBP relative references can have negative offsets
+            //
+            // For normal methods only EBP relative references can have negative offsets.
+            // For OSR methods, args and on-frame root method locals can have negative offsets.
+            assert(codeGen->isFramePointerUsed() || opts.IsOSR() || varDsc->lvStkOffs >= 0);
         }
     }
 
@@ -5501,7 +5503,9 @@ int Compiler::lvaAssignVirtualFrameOffsetToArg(unsigned lclNum,
  */
 void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
 {
-    int stkOffs = 0;
+    int stkOffs              = 0;
+    int originalFrameStkOffs = 0;
+    int originalFrameSize    = 0;
     // codeGen->isFramePointerUsed is set in regalloc phase. Initialize it to a guess for pre-regalloc layout.
     if (lvaDoneFrameLayout <= PRE_REGALLOC_FRAME_LAYOUT)
     {
@@ -5536,10 +5540,21 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
     // On x86/amd64, the return address has already been pushed by the call instruction in the caller.
     stkOffs -= TARGET_POINTER_SIZE; // return address;
 
+    // If we are an OSR method, we "inherit" the frame of the original method,
+    // and the stack is already double aligned on entry (since the RA push and
+    // any alignment work happend "before").
+    if (opts.IsOSR())
+    {
+        int* ppTable      = (int*)info.compPatchpointInfo;
+        originalFrameSize = ppTable[2];
+
+        originalFrameStkOffs = stkOffs;
+        stkOffs -= originalFrameSize;
+    }
     // TODO-AMD64-CQ: for X64 eventually this should be pushed with all the other
     // calleeregs.  When you fix this, you'll also need to fix
     // the assert at the bottom of this method
-    if (codeGen->doubleAlignOrFramePointerUsed())
+    else if (codeGen->doubleAlignOrFramePointerUsed())
     {
         stkOffs -= REGSIZE_BYTES;
     }
@@ -5860,6 +5875,20 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
                 ((varDsc->TypeGet() != TYP_LONG) || (varDsc->GetOtherReg() != REG_STK)))
             {
                 allocateOnFrame = false;
+            }
+
+            // For OSR args and locals, we use the slots on the orginal frame.
+            if (allocateOnFrame && opts.IsOSR())
+            {
+                if (lclNum < info.compLocalsCount)
+                {
+                    // Find frampointer-relative offset on original frame
+                    int* offsetTable           = (int*)info.compPatchpointInfo;
+                    int  originalOffset        = offsetTable[3 + lclNum];
+                    int  offset                = originalFrameSize + originalOffset + originalFrameStkOffs;
+                    lvaTable[lclNum].lvStkOffs = offset;
+                    continue;
+                }
             }
 
             /* Ignore variables that are not on the stack frame */
@@ -6207,7 +6236,14 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
     pushedCount += 1; // pushed PC (return address)
 #endif
 
-    noway_assert(compLclFrameSize == (unsigned)-(stkOffs + (pushedCount * (int)TARGET_POINTER_SIZE)));
+    if (opts.IsOSR())
+    {
+        printf("--- compLclFrameSize %d, stkOffs %d, pushedSize %d, originalFrameSize %d\n", compLclFrameSize, stkOffs,
+               pushedCount * (int)TARGET_POINTER_SIZE, originalFrameSize);
+    }
+
+    noway_assert(compLclFrameSize + originalFrameSize ==
+                 (unsigned)-(stkOffs + (pushedCount * (int)TARGET_POINTER_SIZE)));
 }
 
 int Compiler::lvaAllocLocalAndSetVirtualOffset(unsigned lclNum, unsigned size, int stkOffs)

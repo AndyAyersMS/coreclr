@@ -5773,14 +5773,24 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         RtlVirtualUnwind(UNW_FLAG_NHANDLER, codeInfo.GetModuleBase(), GetIP(&frameContext), codeInfo.GetFunctionEntry(), 
             &frameContext, &handlerData, &establisherFrame, NULL);
 
-#if _DEBUG
-        printf("### Runtime: patchpoint 0x%p TRANSITION RSP %p RBP %p RIP %p\n", 
-            ip, currentSP, currentFP, osrVariant);
-#endif
-        
-        // Put RSP and RBP back to their old values
+        // Put RSP and RBP back to the values they had just before
+        // this helper was called.
+        //
+        // RSP should be 16-byte aligned, since the original method
+        // is not a leaf.
+        // 
+        // Misalign it by eight so that on entry the OSR method sees
+        // the expected unaligned RSP (because it thinks it is called)
+        _ASSERTE(currentSP % 16 == 0);
+        currentSP -= 8;
+
         SetSP(&frameContext, currentSP);
         frameContext.Rbp = currentFP;
+
+#if _DEBUG
+        printf("### Runtime: patchpoint 0x%p TRANSITION RSP %p RBP %p RIP %p (prev RBP %p)\n", 
+            ip, currentSP, currentFP, osrVariant, *(char**)currentFP);
+#endif
         
         // Install new entry point as IP
         SetIP(&frameContext, osrVariant);

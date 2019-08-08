@@ -6480,10 +6480,13 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         unsigned   varNum;
         int*       offsetTable = (int*)compiler->info.compPatchpointInfo;
 
-        // basic sanity check
-        assert(offsetTable[0] == (int)(4 + 4 * compiler->info.compILlocalsCount));
-        unsigned offsetTableLen = (offsetTable[0] - 4) / 4;
-        offsetTable++;
+        // basic sanity checks
+        assert(offsetTable[0] == (int)(12 + 4 * compiler->info.compLocalsCount));
+        assert(offsetTable[1] == (int)compiler->info.compILCodeSize);
+
+        // point at the offsets table
+        unsigned offsetTableLen = (offsetTable[0] - 12) / 4;
+        offsetTable             = &offsetTable[3];
 
         for (varNum = 0, varDsc = compiler->lvaTable; varNum < offsetTableLen; varNum++, varDsc++)
         {
@@ -6503,23 +6506,11 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
             assert(varNum < offsetTableLen);
             const int stkOffs = offsetTable[varNum];
 
-            // TODO: Frame locals should use their original method locations.
-            //
-            // For now we copy, which is suboptimal, and potentially wrong (if local is address
-            // exposed), but it is better than nothing.
-            //
             // TODO: handle shadow copies
             // TODO: handle promoted structs
             // TODO: handle structs
             // TODO: handle xmm
-            if (!varDsc->lvIsInReg())
-            {
-                getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), movSize, initReg, REG_FPBASE, stkOffs);
-                getEmitter()->emitIns_AR_R(ins_Store(TYP_I_IMPL), movSize, initReg, genFramePointerReg(),
-                                           varDsc->lvStkOffs);
-                *pInitRegZeroed = false;
-            }
-            else
+            if (varDsc->lvIsInReg())
             {
                 getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), movSize, varDsc->lvRegNum, REG_FPBASE, stkOffs);
             }
@@ -8313,7 +8304,7 @@ void CodeGen::genFnEpilog(BasicBlock* block)
 
     /* Compute the size in bytes we've pushed/popped */
 
-    if (!doubleAlignOrFramePointerUsed() && !compiler->opts.IsOSR())
+    if (!doubleAlignOrFramePointerUsed())
     {
         // We have an ESP frame */
 
@@ -8342,10 +8333,28 @@ void CodeGen::genFnEpilog(BasicBlock* block)
         }
 
         genPopCalleeSavedRegisters();
+
+        // Extra OSR adjust to get to where RBP was saved by the original frame, and
+        // restore RBP.
+        //
+        // (Still on the fence as to whether all OSR frames will be official RBP frames
+        //  or not, they are kind of in-between -- here we still expect RBP to be
+        //  the value it had on method entry, which we have yet to guarantee).
+        //
+        // Note the other callee saves made in that frame are dead, the current method
+        // will save and restore what it needs.
+        if (compiler->opts.IsOSR())
+        {
+            getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_FPBASE, 0);
+            inst_RV(INS_pop, REG_EBP, TYP_I_IMPL);
+        }
     }
     else
     {
-        noway_assert(doubleAlignOrFramePointerUsed() || compiler->opts.IsOSR());
+        noway_assert(doubleAlignOrFramePointerUsed());
+
+        // OSR not yet ready for its frame to have a frame ptr.
+        assert(!compiler->opts.IsOSR());
 
         /* Tear down the stack frame */
 
@@ -8376,15 +8385,6 @@ void CodeGen::genFnEpilog(BasicBlock* block)
                 // ESP may be variable if a localloc was actually executed. Reset it.
                 //    lea esp, [ebp - compiler->compCalleeRegsPushed * REGSIZE_BYTES]
 
-                needLea = true;
-            }
-            else if (compiler->opts.IsOSR())
-            {
-                // OSR frames are implicitly always RBP frames
-                //
-                // TODO: after popping any callee saves, a second
-                // adjustment may be needed to get RSP back to pointing
-                // to the old RBP.
                 needLea = true;
             }
             else if (!regSet.rsRegsModified(RBM_CALLEE_SAVED))
@@ -8456,8 +8456,6 @@ void CodeGen::genFnEpilog(BasicBlock* block)
         //
 
         genPopCalleeSavedRegisters();
-
-// TODO: Extra OSR adjust of SP (pop off original frame)
 
 #ifdef _TARGET_AMD64_
         assert(!needMovEspEbp); // "mov esp, ebp" is not allowed in AMD64 epilogs
