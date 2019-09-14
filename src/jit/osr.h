@@ -20,9 +20,18 @@ class OSRInfo
 public:
     OSRInfo* Allocate(ICorJitInfo* jitInterface, int localCount, int ilSize, int fpToSpDelta);
 
-    int ILSize() const { return m_ilSize; }
-    int FpToSpDelta() const { return m_fpToSpDelta; }
-    int NumberOfLocals() const { return m_numberOfLocals; }
+    int ILSize() const
+    {
+        return m_ilSize;
+    }
+    int FpToSpDelta() const
+    {
+        return m_fpToSpDelta;
+    }
+    int NumberOfLocals() const
+    {
+        return m_numberOfLocals;
+    }
     bool IsExpsed(int localNum) const;
     int Offset(int localNum) const;
 
@@ -30,13 +39,11 @@ public:
     void SetOffset(int localNum, int offset);
 
 private:
-
     const int exposureMask = 0x1;
-    int m_ilSize;
-    int m_fpToSpDelta;
-    int m_numberOfLocals;
+    int       m_ilSize;
+    int       m_fpToSpDelta;
+    int       m_numberOfLocals;
     int[] m_offsetAndExposureData;
 };
 
 #endif // _OSR_H_
-

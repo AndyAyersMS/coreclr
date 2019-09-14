@@ -5261,13 +5261,13 @@ public:
 #endif
 
 public:
+<<<<<<< HEAD
     void fgInsertStmtAtEnd(BasicBlock* block, Statement* stmt);
     Statement* fgNewStmtAtEnd(BasicBlock* block, GenTree* tree);
+    Statement* fgNewStmtNearEnd(BasicBlock* block, GenTree* tree);
 
 private:
     void fgInsertStmtNearEnd(BasicBlock* block, Statement* stmt);
-    Statement* fgNewStmtNearEnd(BasicBlock* block, GenTree* tree);
-
     void fgInsertStmtAtBeg(BasicBlock* block, Statement* stmt);
     Statement* fgNewStmtAtBeg(BasicBlock* block, GenTree* tree);
 

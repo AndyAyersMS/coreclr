@@ -11,12 +11,12 @@
 
 OSRInfo* OSRInfo::Allocate(ICorJitInfo* jitInterface, int localCount, int ilSize, int fpToSpDelta)
 {
-    int baseSize = sizeof(OSRInfo);
-    int variableSize = localCount * sizeof(int);
-    OSRInfo* result = jitInterface->allocatePatchpointInfo(baseSize + variableSize);
+    int      baseSize     = sizeof(OSRInfo);
+    int      variableSize = localCount * sizeof(int);
+    OSRInfo* result       = jitInterface->allocatePatchpointInfo(baseSize + variableSize);
 
-    result->m_ilSize = ilSize;
-    result->m_fpToSpDelta = fpToSpDelta;
+    result->m_ilSize         = ilSize;
+    result->m_fpToSpDelta    = fpToSpDelta;
     result->m_numberOfLocals = localCount;
 
     return result;
@@ -25,7 +25,7 @@ OSRInfo* OSRInfo::Allocate(ICorJitInfo* jitInterface, int localCount, int ilSize
 bool OSRInfo::IsExposed(int localNum) const
 {
     assert(localNum >= 0 && localNum < m_numberOfLocals);
-    
+
     return (m_offsetAndExposureData[localNum] & exposureMask);
 }
 
@@ -33,14 +33,14 @@ void OSRInfo::SetIsExposed(int localNum)
 {
     assert(localNum >= 0 && localNum < m_numberOfLocals);
     assert((m_offsetAndExposureData[localNum] & exposureMask) == 0);
-    
+
     m_offsetAndExposureData[localNum] |= exposureMask;
 }
 
 int OSRInfo::Offset(int localNum) const
 {
     assert(localNum >= 0 && localNum < m_numberOfLocals);
-    
+
     return (m_offsetAndExposureData[localNum] & ~exposureMask);
 }
 
@@ -49,9 +49,6 @@ void OSRInfo::SetOffset(int localNum, int offset)
     assert(localNum >= 0 && localNum < m_numberOfLocals);
     assert((m_offsetAndExposureData[localNum] & ~exposureMask) == 0);
     assert(offset & exposureMask == 0);
-    
+
     m_offsetAndExposureData[localNum] |= offset;
 }
-
-
-

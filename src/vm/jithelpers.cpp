@@ -5701,7 +5701,8 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                     // helper that sets up a proper frame?
                     {
                         GCX_PREEMP(); // hmmm, we didn't set up a proper transition frame
-                        osrVariant = pMD->PrepareCode(osrNativeCodeVersion);
+                        PrepareCodeConfig config(osrNativeCodeVersion, FALSE, FALSE);
+                        osrVariant = pMD->PrepareCode(&config);
                         ppInfo->m_existingCode = osrVariant;
                     }
 

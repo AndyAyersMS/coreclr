@@ -144,13 +144,13 @@ private:
 
         // Fill in helper block
         // call PPHelper(&ppCounter, ilOffset)
-        GenTree*        ilOffsetNode  = compiler->gtNewIconNode(ilOffset, TYP_INT);
-        GenTreeArgList* helperArgs1   = compiler->gtNewArgList(ilOffsetNode);
-        GenTree*        ppCounterRef  = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
-        GenTree*        ppCounterAddr = compiler->gtNewOperNode(GT_ADDR, TYP_I_IMPL, ppCounterRef);
-        GenTreeArgList* helperArgs2   = compiler->gtNewListNode(ppCounterAddr, helperArgs1);
-        GenTreeCall*    helperCall    = compiler->gtNewHelperCallNode(CORINFO_HELP_PATCHPOINT, TYP_VOID, helperArgs2);
-        compiler->fgInsertStmtAtEnd(helperBlock, helperCall);
+        GenTree*          ilOffsetNode  = compiler->gtNewIconNode(ilOffset, TYP_INT);
+        GenTree*          ppCounterRef  = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
+        GenTree*          ppCounterAddr = compiler->gtNewOperNode(GT_ADDR, TYP_I_IMPL, ppCounterRef);
+        GenTreeCall::Use* helperArgs    = compiler->gtNewCallArgs(ppCounterAddr, ilOffsetNode);
+        GenTreeCall*      helperCall    = compiler->gtNewHelperCallNode(CORINFO_HELP_PATCHPOINT, TYP_VOID, helperArgs);
+        GenTreeStmt*      helperStmt    = compiler->fgNewStmtFromTree(helperCall);
+        compiler->fgInsertStmtAtEnd(helperBlock, helperStmt);
     }
 
     //  ppCounter = 0 (could set it nonzero to save some cycles)
