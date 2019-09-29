@@ -5595,7 +5595,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         // First time this patchpoint was hit.
         if (hitCount == 0)
         {
-        // printf("### Runtime: patchpoint 0x%p hit:0\n", ip); 
+            printf("### Runtime: patchpoint 0x%p hit:0\n", ip); 
             ppInfo->m_previousTime = currentTime;
         }
         // Subsequent hit.
@@ -5605,7 +5605,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
             ppInfo->m_previousTime = currentTime;
             double milliseconds = 1000;
             double timeDeltaInMilliseconds = (timeDeltaTicks * milliseconds) / PatchpointInfo::s_qpcFrequency.QuadPart;
-            // printf("### Runtime: patchpoint 0x%p hit:%d dt:%0.2f\n", ip, hitCount, timeDeltaInMilliseconds); 
+            printf("### Runtime: patchpoint 0x%p hit:%d dt:%0.2f\n", ip, hitCount, timeDeltaInMilliseconds); 
             
             // Second hit: we now have one data point on recurrence time
             if (hitCount == 1)
@@ -5667,42 +5667,48 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                     // TODO: measure and report on how long jitting actually took... correlate this back to
                     // our guestimate above.
                     
-                    // Find the il method version corresponding to this version of the method.
+                    // Find the il method version corresponding to this version of the method
+                    // and set up a new native code version for it.
                     ReJITID rejitId = ReJitManager::GetReJitId(pMD, codeInfo.GetStartAddress());
                     CodeVersionManager* codeVersionManager = pMD->GetCodeVersionManager();
                     NativeCodeVersion osrNativeCodeVersion;
                     {
+                        printf("### Runtime: adding code version\n");
                         CodeVersionManager::TableLockHolder lock(codeVersionManager);
                         ILCodeVersion ilCodeVersion = codeVersionManager->GetILCodeVersion(pMD, rejitId);
                         
                         // Request a new native version that is optimized. 
-                        ilCodeVersion.AddNativeCodeVersion(pMD, NativeCodeVersion::OptimizationTier1, &osrNativeCodeVersion);
+                        HRESULT hr = ilCodeVersion.AddNativeCodeVersion(pMD, NativeCodeVersion::OptimizationTier1, &osrNativeCodeVersion);
 
-                        // Prepare info for the OSR method
-                        OSRInfo osrInfo;
-
-                        // OSR entry offset
-                        osrInfo.ilOffset = ilOffset;
-
-                        // Patchpoint info from the current method
-                        EEJitManager* jitMgr = ExecutionManager::GetEEJitManager();
-                        CodeHeader* codeHdr = jitMgr->GetCodeHeaderFromStartAddress(codeInfo.GetStartAddress());
-                        osrInfo.patchpointInfo = codeHdr->GetPatchpointInfo();
-
-                        if (osrInfo.patchpointInfo == NULL) printf ("Eh\n");
-
-                        osrNativeCodeVersion.SetOSRInfo(osrInfo);
+                        if (FAILED(hr))
+                        {
+                            // TODO: Deal with failure
+                            printf("### Runtime: unable to add native code version for OSR ??\n");
+                        }
                     }
+
+                    // Prepare info for the OSR method
+                    OSRInfo osrInfo;
                     
-                    // And this will need to invoke the jit specially, passing IL offset,
-                    // current stack frame, etc....
-                    //
-                    // Probably need to delegate this to a slow path
-                    // helper that sets up a proper frame?
+                    // OSR entry offset
+                    osrInfo.ilOffset = ilOffset;
+                    
+                    // Patchpoint info from the current method
+                    EEJitManager* jitMgr = ExecutionManager::GetEEJitManager();
+                    CodeHeader* codeHdr = jitMgr->GetCodeHeaderFromStartAddress(codeInfo.GetStartAddress());
+                    osrInfo.patchpointInfo = codeHdr->GetPatchpointInfo();
+                    
+                    if (osrInfo.patchpointInfo == NULL) printf ("Eh\n");
+                    
+                    osrNativeCodeVersion.SetOSRInfo(osrInfo);
+                    
+                    // Delegate this to a slow path helper that sets up a proper frame?
                     {
+                        printf("### Runtime: preparing code\n");
                         GCX_PREEMP(); // hmmm, we didn't set up a proper transition frame
-                        PrepareCodeConfig config(osrNativeCodeVersion, FALSE, FALSE);
-                        osrVariant = pMD->PrepareCode(&config);
+                        PrepareCodeConfigBuffer configBuffer(osrNativeCodeVersion);
+                        PrepareCodeConfig *config = configBuffer.GetConfig();
+                        osrVariant = pMD->PrepareCode(config);
                         ppInfo->m_existingCode = osrVariant;
                     }
 

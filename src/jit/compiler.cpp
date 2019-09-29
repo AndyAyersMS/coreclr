@@ -5307,6 +5307,7 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
     }
     else if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
     {
+        printf("\nJIT: osr request!\n");
         info.compILEntry        = osrInfo->ilOffset;
         info.compPatchpointInfo = osrInfo->patchpointInfo;
     }
