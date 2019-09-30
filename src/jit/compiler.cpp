@@ -22,6 +22,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #include "lower.h"
 #include "stacklevelsetter.h"
 #include "jittelemetry.h"
+#include "osr.h"
 
 #if defined(DEBUG)
 // Column settings for COMPlus_JitDumpIR.  We could(should) make these programmable.
@@ -4962,26 +4963,9 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
     {
         assert(codeGen->isFramePointerUsed());
 
-        // Initial cut at patchpoint info. For now, all slots are 4 bytes.
-        //
-        // 0: overall size in bytes (for sanity check and SPMI)
-        // 1: IL size (sanity check)
-        // 2: distance between frame & stack pointers that the
-        //    OSR method will see on entry
-        //       (for transition epilog and frame pointer deltas)
-        //       (including extra alignment tweak done by helper)
-        // 3-xx: offsets
-        //
-        // We rely on OSR jit setting up its local tab the same way
-        // the original jit did. So enumerating its lvaTable will
-        // give the same locals back again.
-        //
-        unsigned ppSize   = 4 + 4 + 4 + 4 * info.compLocalsCount;
-        int*     ppInfo   = (int*)info.compCompHnd->allocPatchpointInfo(ppSize);
-        int      ppIndex  = 0;
-        ppInfo[ppIndex++] = ppSize;
-        ppInfo[ppIndex++] = info.compILCodeSize;
-        ppInfo[ppIndex++] = codeGen->genSPtoFPdelta() + TARGET_POINTER_SIZE;
+        PatchpointInfo* patchpointInfo =
+            PatchpointInfo::Allocate(info.compCompHnd, info.compLocalsCount, info.compILCodeSize,
+                                     codeGen->genSPtoFPdelta() + TARGET_POINTER_SIZE);
 
         for (unsigned lclNum = 0; lclNum < info.compILlocalsCount; lclNum++)
         {
@@ -4989,7 +4973,11 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
             LclVarDsc* varDsc = &lvaTable[lclNum];
 
             // Record FramePtr relative offset (no localloc yet)
-            ppInfo[ppIndex++] = varDsc->lvStkOffs;
+            patchpointInfo->SetOffset(lclNum, varDsc->lvStkOffs);
+            if (varDsc->lvAddrExposed)
+            {
+                patchpointInfo->SetIsExposed(lclNum);
+            }
         }
     }
 

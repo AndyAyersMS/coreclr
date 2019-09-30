@@ -23,6 +23,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 #include "gcinfo.h"
 #include "emit.h"
+#include "osr.h"
 
 #ifndef JIT32_GCENCODER
 #include "gcinfoencoder.h"
@@ -6478,30 +6479,25 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         }
     }
 
-    /* Initialize args and locals for OSR */
-
+    // Initialize args and locals for OSR
     if (compiler->opts.IsOSR())
     {
-        LclVarDsc* varDsc;
-        unsigned   varNum;
-        int*       offsetTable = (int*)compiler->info.compPatchpointInfo;
+        PatchpointInfo* patchpointInfo = (PatchpointInfo*)compiler->info.compPatchpointInfo;
 
-        // basic sanity checks
-        assert(offsetTable[0] == (int)(12 + 4 * compiler->info.compLocalsCount));
-        assert(offsetTable[1] == (int)compiler->info.compILCodeSize);
+        // basic sanity checks (make sure we're OSRing the right method)
+        assert(patchpointInfo->NumberOfLocals() == compiler->info.compLocalsCount);
+        assert(patchpointInfo->ILSize() == compiler->info.compILCodeSize);
 
-        int originalFrameSize = offsetTable[2];
+        const int      originalFrameSize = patchpointInfo->FpToSpDelta();
+        const unsigned patchpointInfoLen = patchpointInfo->NumberOfLocals();
 
-        // point at the offsets table
-        unsigned offsetTableLen = (offsetTable[0] - 12) / 4;
-        offsetTable             = &offsetTable[3];
-
-        for (varNum = 0, varDsc = compiler->lvaTable; varNum < offsetTableLen; varNum++, varDsc++)
+        for (unsigned varNum = 0; varNum < patchpointInfoLen; varNum++)
         {
+            LclVarDsc* varDsc = compiler->lvaGetDesc(varNum);
+
             // If the local is dead or immediately stored to we don't need to initialize it...
             //
             // TODO: if not dead, we should zero GC refs for untracked locals
-
             if (varDsc->lvRefCnt() == 0)
             {
                 JITDUMP("NO OSR Init for unused V%02u\n", varNum);
@@ -6514,8 +6510,8 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
                 var_types lclTyp = genActualType(varDsc->lvType);
                 emitAttr  size   = emitTypeSize(lclTyp);
 
-                assert(varNum < offsetTableLen);
-                const int stkOffs = offsetTable[varNum];
+                assert(varNum < patchpointInfoLen);
+                const int stkOffs = patchpointInfo->Offset(varNum);
 
                 // stkOffs is the original frame RBP-relative offset
                 // to the var.  We want either an RSP or RBP relative
@@ -8369,8 +8365,8 @@ void CodeGen::genFnEpilog(BasicBlock* block)
         // will save and restore what it needs.
         if (compiler->opts.IsOSR())
         {
-            int* offsetTable       = (int*)compiler->info.compPatchpointInfo;
-            int  originalFrameSize = offsetTable[2];
+            PatchpointInfo* patchpointInfo    = (PatchpointInfo*)compiler->info.compPatchpointInfo;
+            const int       originalFrameSize = patchpointInfo->FpToSpDelta();
 
             // Use add since we know the SP-to-FP delta of the original method.
             //

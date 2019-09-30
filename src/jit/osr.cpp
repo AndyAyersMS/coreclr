@@ -8,12 +8,33 @@
 #endif
 
 #include "osr.h"
+#include "corjit.h"
 
-OSRInfo* OSRInfo::Allocate(ICorJitInfo* jitInterface, int localCount, int ilSize, int fpToSpDelta)
+//------------------------------------------------------------------------
+// Allocate: ask the VM to allocate a new PatchpointInfo structure
+//
+// Arguments:
+//    jitInterface - callback interface from jit to VM
+//    localCount - number of original method locals to report live
+//    ilSize - ilSize of original method method (for sanity check)
+//    fpToSpDelta - offset of FP to SP for the original method
+//
+// Return Value:
+//    Pointer to newly allocated PatchpointInfo structure.
+//
+// Notes:
+//    The runtime will also associate this structure with the original
+//    method, so that it can be retrieved and passed back to the jit
+//    during an OSR rejit request.
+
+PatchpointInfo* PatchpointInfo::Allocate(ICorJitInfo* jitInterface,
+                                         unsigned     localCount,
+                                         unsigned     ilSize,
+                                         int          fpToSpDelta)
 {
-    int      baseSize     = sizeof(OSRInfo);
-    int      variableSize = localCount * sizeof(int);
-    OSRInfo* result       = jitInterface->allocatePatchpointInfo(baseSize + variableSize);
+    int             baseSize     = sizeof(PatchpointInfo);
+    int             variableSize = localCount * sizeof(int);
+    PatchpointInfo* result       = (PatchpointInfo*)jitInterface->allocPatchpointInfo(baseSize + variableSize);
 
     result->m_ilSize         = ilSize;
     result->m_fpToSpDelta    = fpToSpDelta;
@@ -22,33 +43,65 @@ OSRInfo* OSRInfo::Allocate(ICorJitInfo* jitInterface, int localCount, int ilSize
     return result;
 }
 
-bool OSRInfo::IsExposed(int localNum) const
+//------------------------------------------------------------------------
+// IsExposed: check if a local was address exposed in the original method
+//
+// Arguments:
+//    localNum - number of the local in question (in IL numbering)
+//
+// Return Value:
+//    True if the local was exposed; if so the OSR method must refer to
+//    the local using the original stack location.
+
+bool PatchpointInfo::IsExposed(unsigned localNum) const
 {
-    assert(localNum >= 0 && localNum < m_numberOfLocals);
+    assert(localNum < m_numberOfLocals);
 
     return (m_offsetAndExposureData[localNum] & exposureMask);
 }
 
-void OSRInfo::SetIsExposed(int localNum)
+//------------------------------------------------------------------------
+// SetIsExposed: mark a local as address exposed in the original method
+//
+// Arguments:
+//    localNum - number of the local in question (in IL numbering)
+
+void PatchpointInfo::SetIsExposed(unsigned localNum)
 {
-    assert(localNum >= 0 && localNum < m_numberOfLocals);
+    assert(localNum < m_numberOfLocals);
     assert((m_offsetAndExposureData[localNum] & exposureMask) == 0);
 
     m_offsetAndExposureData[localNum] |= exposureMask;
 }
 
-int OSRInfo::Offset(int localNum) const
+//------------------------------------------------------------------------
+// Offset: get the FP relative offset of a local in the original method
+//
+// Arguments:
+//    localNum - number of the local in question (in IL numbering)
+//
+// Return Value:
+//    Offset from FP, in bytes
+
+int PatchpointInfo::Offset(unsigned localNum) const
 {
-    assert(localNum >= 0 && localNum < m_numberOfLocals);
+    assert(localNum < m_numberOfLocals);
 
     return (m_offsetAndExposureData[localNum] & ~exposureMask);
 }
 
-void OSRInfo::SetOffset(int localNum, int offset)
+//------------------------------------------------------------------------
+// SetOffset: set the FP relative offset for a local in the original method
+//
+// Arguments:
+//    localNum - number of the local in question (in IL numbering)
+//    offset - offset from FP, in bytes
+
+void PatchpointInfo::SetOffset(unsigned localNum, int offset)
 {
-    assert(localNum >= 0 && localNum < m_numberOfLocals);
+    assert(localNum < m_numberOfLocals);
     assert((m_offsetAndExposureData[localNum] & ~exposureMask) == 0);
-    assert(offset & exposureMask == 0);
+    assert((offset & exposureMask) == 0);
 
     m_offsetAndExposureData[localNum] |= offset;
 }

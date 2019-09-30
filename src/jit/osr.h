@@ -1,4 +1,3 @@
-
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
@@ -10,17 +9,20 @@
 
 class ICorJitInfo;
 
-// OSRInfo is created by Tier0 compilations for methods with
-// patchpoints. It is associated with the method and is passed
-// back by the runtime to the jit for OSR requests on the Tier0
+// PatchpointInfo is created by the jit during Tier0 compilations for
+// methods with patchpoints. It is associated with the method and is
+// passed back by the runtime to the jit for OSR requests on the
 // method.
+//
+// This version of the OSRInfo expects that all patchpoints will
+// report the same live set.
 
-class OSRInfo
+class PatchpointInfo
 {
 public:
-    OSRInfo* Allocate(ICorJitInfo* jitInterface, int localCount, int ilSize, int fpToSpDelta);
+    static PatchpointInfo* Allocate(ICorJitInfo* jitInterface, unsigned localCount, unsigned ilSize, int fpToSpDelta);
 
-    int ILSize() const
+    unsigned ILSize() const
     {
         return m_ilSize;
     }
@@ -28,22 +30,22 @@ public:
     {
         return m_fpToSpDelta;
     }
-    int NumberOfLocals() const
+    unsigned NumberOfLocals() const
     {
         return m_numberOfLocals;
     }
-    bool IsExpsed(int localNum) const;
-    int Offset(int localNum) const;
+    bool IsExposed(unsigned localNum) const;
+    int Offset(unsigned localNum) const;
 
-    void SetIsExposed(int localNum);
-    void SetOffset(int localNum, int offset);
+    void SetIsExposed(unsigned localNum);
+    void SetOffset(unsigned localNum, int offset);
 
 private:
     const int exposureMask = 0x1;
-    int       m_ilSize;
+    unsigned  m_ilSize;
+    unsigned  m_numberOfLocals;
     int       m_fpToSpDelta;
-    int       m_numberOfLocals;
-    int[] m_offsetAndExposureData;
+    int       m_offsetAndExposureData[];
 };
 
 #endif // _OSR_H_
