@@ -7,15 +7,17 @@
 #pragma hdrstop
 #endif
 
+// The DelegateInvokeTransformer expands delegate invocations into indirect calls.
+// We do this early now to allow for (eventual) optimization of such sequences.
+//
 class DelegateInvokeTransformer
 {
 public:
-
-    DelegateInvokeTransformer(Compiler* compiler, BasicBlock* block, GenTreeStmt* stmt)
+    DelegateInvokeTransformer(Compiler* compiler, BasicBlock* block, Statement* stmt)
         : compiler(compiler), block(block), stmt(stmt)
-        {
-            // empty
-        }
+    {
+        // empty
+    }
 
     void Run()
     {
@@ -32,7 +34,7 @@ public:
 
         // The "this" feeding into the Invoke is the delegate instance.
         // We will need to fetch two fields from it, so may need a temp.
-        GenTree* thisTree      = call->gtCallObjp;
+        GenTree* thisTree      = call->gtCallThisArg->GetNode();
         GenTree* thisTreeClone = nullptr;
         if (thisTree->OperIsLocal())
         {
@@ -42,39 +44,39 @@ public:
         {
             const unsigned thisTempNum = compiler->lvaGrabTemp(true DEBUGARG("delegate invoke this temp"));
             // lvaSetClass(thisTempNum, ...);
-            GenTree* asgTree = compiler->gtNewTempAssign(thisTempNum, thisTree);
-            GenTree* asgStmt = compiler->fgNewStmtFromTree(asgTree, stmt->gtStmt.gtStmtILoffsx);
+            GenTree*   asgTree = compiler->gtNewTempAssign(thisTempNum, thisTree);
+            Statement* asgStmt = compiler->fgNewStmtFromTree(asgTree, stmt->gtStmtILoffsx);
             compiler->fgInsertStmtBefore(block, stmt, asgStmt);
-            thisTree = compiler->gtNewLclvNode(thisTempNum, TYP_REF);
+            thisTree      = compiler->gtNewLclvNode(thisTempNum, TYP_REF);
             thisTreeClone = compiler->gtNewLclvNode(thisTempNum, TYP_REF);
         }
 
         // Fetch the "this" going into the call from the delegate
         CORINFO_EE_INFO* eeInfo = compiler->eeGetEEInfo();
-        GenTree* newThisAddr =
-            compiler->gtNewOperNode(GT_ADD, TYP_BYREF, thisTree, compiler->gtNewIconNode(eeInfo->offsetOfDelegateInstance, TYP_I_IMPL));
+        GenTree*         newThisAddr =
+            compiler->gtNewOperNode(GT_ADD, TYP_BYREF, thisTree,
+                                    compiler->gtNewIconNode(eeInfo->offsetOfDelegateInstance, TYP_I_IMPL));
         GenTree* newThis = compiler->gtNewOperNode(GT_IND, TYP_REF, newThisAddr);
         // Fetch the method to invoke from the delegate
         GenTree* methodAddr =
-            compiler->gtNewOperNode(GT_ADD, TYP_BYREF, thisTreeClone, compiler->gtNewIconNode(eeInfo->offsetOfDelegateFirstTarget, TYP_I_IMPL));
+            compiler->gtNewOperNode(GT_ADD, TYP_BYREF, thisTreeClone,
+                                    compiler->gtNewIconNode(eeInfo->offsetOfDelegateFirstTarget, TYP_I_IMPL));
         GenTree* method = compiler->gtNewOperNode(GT_IND, TYP_REF, methodAddr);
         // Update operands
         call->gtCallAddr = method;
-        call->gtCallObjp = newThis;
+        call->gtCallThisArg->SetNode(newThis);
         // Update flags, etc...
         call->gtCallMoreFlags &= ~GTF_CALL_M_DELEGATE_INV;
         call->gtCallType   = CT_INDIRECT;
-        call->gtCallCookie = nullptr; // sigh, there goes the inline candidate info
 
         JITDUMP("transformed, result is...\n");
         DISPTREE(call);
     }
 
 private:
-
-    Compiler* compiler;
+    Compiler*   compiler;
     BasicBlock* block;
-    GenTreeStmt* stmt;
+    Statement*  stmt;
 };
 
 // The IndirectCallTransformer transforms indirect calls that involve fat function
@@ -203,6 +205,9 @@ private:
     //
     // Checks fatPointerCandidate in form of call() or lclVar = call().
     //
+    // Arguments:
+    //   stmt - statement to examine
+    //
     // Return Value:
     //    true if contains, false otherwise.
     //
@@ -220,6 +225,9 @@ private:
     // ContainsGuardedDevirtualizationCandidate: check if this statements contain a virtual
     // call that we'd like to guardedly devirtualize.
     //
+    // Arguments:
+    //   stmt - statement to examine
+    //
     // Return Value:
     //    true if contains, false otherwise.
     //
@@ -232,12 +240,15 @@ private:
     }
 
     //------------------------------------------------------------------------
-    // ContainsDelegateInvoke: check if this statement contains a delegate 
+    // ContainsDelegateInvoke: check if this statement contains a delegate
     // invocation that we'd like to expand.
+    //
+    // Arguments:
+    //   stmt - statement to examine
     //
     // Return Value:
     //    true if contains, false otherwise.
-    bool ContainsDelegateInvoke(GenTreeStmt* stmt)
+    bool ContainsDelegateInvoke(Statement* stmt)
     {
         GenTree* candidate = stmt->gtStmtExpr;
         return candidate->IsCall() && candidate->AsCall()->IsDelegateInvoke();

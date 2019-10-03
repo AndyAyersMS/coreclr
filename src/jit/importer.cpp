@@ -214,16 +214,16 @@ bool Compiler::impILConsumesAddr(const BYTE* codeAddr, CORINFO_METHOD_HANDLE fnc
 
     switch (opcode)
     {
-        // case CEE_LDFLDA: We're taking this one out as if you have a sequence
-        // like
-        //
-        //          ldloca.0
-        //          ldflda whatever
-        //
-        // of a primitivelike struct, you end up after morphing with addr of a local
-        // that's not marked as addrtaken, which is wrong. Also ldflda is usually used
-        // for structs that contain other structs, which isnt a case we handle very
-        // well now for other reasons.
+            // case CEE_LDFLDA: We're taking this one out as if you have a sequence
+            // like
+            //
+            //          ldloca.0
+            //          ldflda whatever
+            //
+            // of a primitivelike struct, you end up after morphing with addr of a local
+            // that's not marked as addrtaken, which is wrong. Also ldflda is usually used
+            // for structs that contain other structs, which isnt a case we handle very
+            // well now for other reasons.
 
         case CEE_LDFLD:
         {
@@ -762,7 +762,7 @@ void Compiler::impAssignTempGen(unsigned    tmp,
                                 Statement** pAfterStmt, /* = NULL */
                                 IL_OFFSETX  ilOffset,   /* = BAD_IL_OFFSET */
                                 BasicBlock* block       /* = NULL */
-                                )
+)
 {
     GenTree* asg = gtNewTempAssign(tmp, val);
 
@@ -792,7 +792,7 @@ void Compiler::impAssignTempGen(unsigned             tmpNum,
                                 Statement**          pAfterStmt, /* = NULL */
                                 IL_OFFSETX           ilOffset,   /* = BAD_IL_OFFSET */
                                 BasicBlock*          block       /* = NULL */
-                                )
+)
 {
     GenTree* asg;
 
@@ -1087,7 +1087,7 @@ GenTree* Compiler::impAssignStruct(GenTree*             dest,
                                    Statement**          pAfterStmt, /* = nullptr */
                                    IL_OFFSETX           ilOffset,   /* = BAD_IL_OFFSET */
                                    BasicBlock*          block       /* = nullptr */
-                                   )
+)
 {
     assert(varTypeIsStruct(dest));
 
@@ -1168,7 +1168,7 @@ GenTree* Compiler::impAssignStructPtr(GenTree*             destAddr,
                                       Statement**          pAfterStmt, /* = NULL */
                                       IL_OFFSETX           ilOffset,   /* = BAD_IL_OFFSET */
                                       BasicBlock*          block       /* = NULL */
-                                      )
+)
 {
     var_types destType;
     GenTree*  dest      = nullptr;
@@ -2217,7 +2217,7 @@ bool Compiler::impSpillStackEntry(unsigned level,
                                   bool        bAssertOnRecursion,
                                   const char* reason
 #endif
-                                  )
+)
 {
 
 #ifdef DEBUG
@@ -2555,7 +2555,7 @@ BasicBlock* Compiler::impPushCatchArgOnStack(BasicBlock* hndBlk, CORINFO_CLASS_H
 #if defined(JIT32_GCENCODER)
     const bool forceInsertNewBlock = isSingleBlockFilter || compStressCompile(STRESS_CATCH_ARG, 5);
 #else
-    const bool forceInsertNewBlock                                        = compStressCompile(STRESS_CATCH_ARG, 5);
+    const bool forceInsertNewBlock = compStressCompile(STRESS_CATCH_ARG, 5);
 #endif // defined(JIT32_GCENCODER)
 
     /* Spill GT_CATCH_ARG to a temp if there are jumps to the beginning of the handler */
@@ -3105,7 +3105,7 @@ GenTree* Compiler::impInitializeArrayIntrinsic(CORINFO_SIG_INFO* sig)
         && newArrayCall->gtCall.gtCallMethHnd != eeFindHelper(CORINFO_HELP_NEWARR_1_R2R_DIRECT) &&
         newArrayCall->gtCall.gtCallMethHnd != eeFindHelper(CORINFO_HELP_READYTORUN_NEWARR_1)
 #endif
-            )
+    )
     {
         if (newArrayCall->gtCall.gtCallMethHnd != eeFindHelper(CORINFO_HELP_NEW_MDARR_NONVARARG))
         {
@@ -3881,7 +3881,7 @@ GenTree* Compiler::impIntrinsic(GenTree*                newobjThis,
 #endif // defined(DEBUG)
 
             // We need to use both index and ptr-to-span twice, so clone or spill.
-            index = impCloneExpr(index, &indexClone, NO_CLASS_HANDLE, (unsigned)CHECK_SPILL_ALL,
+            index     = impCloneExpr(index, &indexClone, NO_CLASS_HANDLE, (unsigned)CHECK_SPILL_ALL,
                                  nullptr DEBUGARG("Span.get_Item index"));
             ptrToSpan = impCloneExpr(ptrToSpan, &ptrToSpanClone, NO_CLASS_HANDLE, (unsigned)CHECK_SPILL_ALL,
                                      nullptr DEBUGARG("Span.get_Item ptrToSpan"));
@@ -4966,14 +4966,14 @@ bool Compiler::verIsBoxedValueType(typeInfo ti)
  *  Check if a TailCall is legal.
  */
 
-bool Compiler::verCheckTailCallConstraint(
-    OPCODE                  opcode,
-    CORINFO_RESOLVED_TOKEN* pResolvedToken,
-    CORINFO_RESOLVED_TOKEN* pConstrainedResolvedToken, // Is this a "constrained." call on a type parameter?
-    bool                    speculative                // If true, won't throw if verificatoin fails. Instead it will
-                                                       // return false to the caller.
-                                                       // If false, it will throw.
-    )
+bool Compiler::verCheckTailCallConstraint(OPCODE                  opcode,
+                                          CORINFO_RESOLVED_TOKEN* pResolvedToken,
+                                          CORINFO_RESOLVED_TOKEN* pConstrainedResolvedToken, // Is this a "constrained."
+                                                                                             // call on a type
+                                                                                             // parameter?
+                                          bool speculative // If true, won't throw if verificatoin fails. Instead it
+                                                           // will return false to the caller. If false, it will throw.
+)
 {
     DWORD            mflags;
     CORINFO_SIG_INFO sig;
@@ -5243,7 +5243,7 @@ void Compiler::verVerifyCall(OPCODE                  opcode,
 #ifdef DEBUG
                         && StrictCheckForNonVirtualCallToVirtualMethod()
 #endif
-                            )
+                    )
                     {
                         if (info.compCompHnd->shouldEnforceCallvirtRestriction(info.compScopeHnd))
                         {
@@ -5331,8 +5331,8 @@ DONE_ARGS:
             if (verTrackObjCtorInitState && tiThis.IsThisPtr() &&
                 verIsCallToInitThisPtr(info.compClassHnd, pResolvedToken->hClass))
             {
-                assert(verCurrentState.thisInitialized !=
-                       TIS_Bottom); // This should never be the case just from the logic of the verifier.
+                assert(verCurrentState.thisInitialized != TIS_Bottom); // This should never be the case just from the
+                                                                       // logic of the verifier.
                 VerifyOrReturn(verCurrentState.thisInitialized == TIS_Uninit,
                                "Call to base class constructor when 'this' is possibly initialized");
                 // Otherwise, 'this' is now initialized.
@@ -5406,7 +5406,7 @@ DONE_ARGS:
 #ifdef DEBUG
             && StrictCheckForNonVirtualCallToVirtualMethod()
 #endif
-                )
+        )
         {
             if (info.compCompHnd->shouldEnforceCallvirtRestriction(info.compScopeHnd))
             {
@@ -5622,9 +5622,9 @@ void Compiler::verVerifyCond(const typeInfo& tiOp1, const typeInfo& tiOp2, unsig
 #ifdef _TARGET_64BIT_
         Verify(tiCompatibleWith(tiOp1, tiOp2, true), "Cond type mismatch");
 #else  // _TARGET_64BIT
-        // [10/17/2013] Consider changing this: to put on my verification lawyer hat,
-        // this is non-conforming to the ECMA Spec: types don't have to be equivalent,
-        // but compatible, since we can coalesce native int with int32 (see section III.1.5).
+       // [10/17/2013] Consider changing this: to put on my verification lawyer hat,
+       // this is non-conforming to the ECMA Spec: types don't have to be equivalent,
+       // but compatible, since we can coalesce native int with int32 (see section III.1.5).
         Verify(typeInfo::AreEquivalent(tiOp1, tiOp2), "Cond type mismatch");
 #endif // !_TARGET_64BIT_
     }
@@ -6153,7 +6153,7 @@ void Compiler::impImportNewObjArray(CORINFO_RESOLVED_TOKEN* pResolvedToken, CORI
             dest          = gtNewOperNode(GT_ADDR, TYP_I_IMPL, dest);
             dest          = gtNewOperNode(GT_ADD, TYP_I_IMPL, dest,
                                  new (this, GT_CNS_INT) GenTreeIntCon(TYP_I_IMPL, sizeof(INT32) * i));
-            dest = gtNewOperNode(GT_IND, TYP_INT, dest);
+            dest          = gtNewOperNode(GT_IND, TYP_INT, dest);
 
             node = gtNewOperNode(GT_COMMA, node->TypeGet(), gtNewAssignNode(dest, arg), node);
         }
@@ -7066,8 +7066,8 @@ bool Compiler::impTailCallRetTypeCompatible(var_types            callerRetType,
 enum
 {
     PREFIX_TAILCALL_EXPLICIT = 0x00000001, // call has "tail" IL prefix
-    PREFIX_TAILCALL_IMPLICIT =
-        0x00000010, // call is treated as having "tail" prefix even though there is no "tail" IL prefix
+    PREFIX_TAILCALL_IMPLICIT = 0x00000010, // call is treated as having "tail" prefix even though there is no "tail" IL
+                                           // prefix
     PREFIX_TAILCALL    = (PREFIX_TAILCALL_EXPLICIT | PREFIX_TAILCALL_IMPLICIT),
     PREFIX_VOLATILE    = 0x00000100,
     PREFIX_UNALIGNED   = 0x00001000,
@@ -7417,14 +7417,6 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
             if (mflags & CORINFO_FLG_DONT_INLINE_CALLER)
             {
                 compInlineResult->NoteFatal(InlineObservation::CALLEE_STACK_CRAWL_MARK);
-                return TYP_UNDEF;
-            }
-
-            /* For now ignore delegate invoke */
-
-            if (mflags & CORINFO_FLG_DELEGATE_INVOKE)
-            {
-                compInlineResult->NoteFatal(InlineObservation::CALLEE_HAS_DELEGATE_INVOKE);
                 return TYP_UNDEF;
             }
 
@@ -7812,7 +7804,7 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
     {
         setMethodHasDelegateInvoke();
 
-        assert(!compIsForInlining());
+        // assert(!compIsForInlining());
         assert(!(mflags & CORINFO_FLG_STATIC)); // can't call a static method
         assert(mflags & CORINFO_FLG_FINAL);
 
@@ -8372,9 +8364,8 @@ DONE:
         // the calling convention dictates that the caller of a function with
         // a small-typed return value is responsible for normalizing the return val
 
-        if (canTailCall &&
-            !impTailCallRetTypeCompatible(info.compRetType, info.compMethodInfo->args.retTypeClass, callRetTyp,
-                                          callInfo->sig.retTypeClass))
+        if (canTailCall && !impTailCallRetTypeCompatible(info.compRetType, info.compMethodInfo->args.retTypeClass,
+                                                         callRetTyp, callInfo->sig.retTypeClass))
         {
             canTailCall             = false;
             szCanTailCallFailReason = "Return types are not tail call compatible";
@@ -8589,6 +8580,7 @@ DONE_CALL:
             const bool isFatPointerCandidate              = origCall->IsFatPointerCandidate();
             const bool isInlineCandidate                  = origCall->IsInlineCandidate();
             const bool isGuardedDevirtualizationCandidate = origCall->IsGuardedDevirtualizationCandidate();
+            const bool isDelegateInvoke                   = origCall->IsDelegateInvoke();
 
             if (varTypeIsStruct(callRetTyp))
             {
@@ -8596,8 +8588,11 @@ DONE_CALL:
                 call = impFixupCallStructReturn(call->AsCall(), sig->retTypeClass);
             }
 
+            // For calls that may need further transformations, we split the tree so that
+            // the call is call is toplevel in its statement.
+            //
             // TODO: consider handling fatcalli cases this way too...?
-            if (isInlineCandidate || isGuardedDevirtualizationCandidate)
+            if (isInlineCandidate || isGuardedDevirtualizationCandidate || isDelegateInvoke)
             {
                 // We should not have made any adjustments in impFixupCallStructReturn
                 // as we defer those until we know the fate of the call.
@@ -8613,7 +8608,14 @@ DONE_CALL:
                 GenTree* retExpr = gtNewInlineCandidateReturnExpr(call, genActualType(callRetTyp));
 
                 // Link the retExpr to the call so if necessary we can manipulate it later.
-                origCall->gtInlineCandidateInfo->retExpr = retExpr;
+                if (!isDelegateInvoke)
+                {
+                    origCall->gtInlineCandidateInfo->retExpr = retExpr;
+                }
+                else
+                {
+                    assert(origCall->gtInlineCandidateInfo == nullptr);
+                }
 
                 // Propagate retExpr as the placeholder for the call.
                 call = retExpr;
@@ -8759,9 +8761,9 @@ var_types Compiler::impImportJitTestLabelMark(int numArgs)
     if (tlAndN.m_tl == TL_LoopHoist && tlAndN.m_num >= 100)
     {
         // A loop hoist annotation with value >= 100 means that the expression should be a static field access,
-        // a GT_IND of a static field address, which should be the sum of a (hoistable) helper call and possibly some
-        // offset within the the static field block whose address is returned by the helper call.
-        // The annotation is saying that this address calculation, but not the entire access, should be hoisted.
+        // a GT_IND of a static field address, which should be the sum of a (hoistable) helper call and possibly
+        // some offset within the the static field block whose address is returned by the helper call. The
+        // annotation is saying that this address calculation, but not the entire access, should be hoisted.
         GenTree* helperCall = nullptr;
         assert(node->OperGet() == GT_IND);
         tlAndN.m_num -= 100;
@@ -9245,8 +9247,8 @@ void Compiler::impImportLeave(BasicBlock* block)
 
             BasicBlock* callBlock;
 
-            assert(!encFinallies ==
-                   !endLFinStmt); // if we have finallies, we better have an endLFin tree, and vice-versa
+            assert(!encFinallies == !endLFinStmt); // if we have finallies, we better have an endLFin tree, and
+                                                   // vice-versa
 
             if (encFinallies == 0)
             {
@@ -9436,10 +9438,10 @@ void Compiler::impImportLeave(BasicBlock* block)
     }
 #endif // DEBUG
 
-    bool        invalidatePreds = false; // If we create new blocks, invalidate the predecessor lists (if created)
-    unsigned    blkAddr         = block->bbCodeOffs;
-    BasicBlock* leaveTarget     = block->bbJumpDest;
-    unsigned    jmpAddr         = leaveTarget->bbCodeOffs;
+    bool invalidatePreds = false; // If we create new blocks, invalidate the predecessor lists (if created)
+    unsigned blkAddr = block->bbCodeOffs;
+    BasicBlock* leaveTarget = block->bbJumpDest;
+    unsigned jmpAddr = leaveTarget->bbCodeOffs;
 
     // LEAVE clears the stack, spill side effects, and set stack to 0
 
@@ -9463,12 +9465,13 @@ void Compiler::impImportLeave(BasicBlock* block)
         // The step block is a catch return.
         ST_Catch,
 
-        // The step block is in a "try", created as the target for a finally return or the target for a catch return.
+        // The step block is in a "try", created as the target for a finally return or the target for a catch
+        // return.
         ST_Try
     };
     StepType stepType = ST_None;
 
-    unsigned  XTnum;
+    unsigned XTnum;
     EHblkDsc* HBtab;
 
     for (XTnum = 0, HBtab = compHndBBtab; XTnum < compHndBBtabCount; XTnum++, HBtab++)
@@ -9495,9 +9498,9 @@ void Compiler::impImportLeave(BasicBlock* block)
 
             if (step == nullptr)
             {
-                step             = block;
+                step = block;
                 step->bbJumpKind = BBJ_EHCATCHRET; // convert the BBJ_LEAVE to BBJ_EHCATCHRET
-                stepType         = ST_Catch;
+                stepType = ST_Catch;
 
 #ifdef DEBUG
                 if (verbose)
@@ -9518,8 +9521,8 @@ void Compiler::impImportLeave(BasicBlock* block)
                 exitBlock = fgNewBBinRegion(BBJ_EHCATCHRET, 0, XTnum + 1, step);
 
                 assert(step->bbJumpKind == BBJ_ALWAYS || step->bbJumpKind == BBJ_EHCATCHRET);
-                step->bbJumpDest = exitBlock; // the previous step (maybe a call to a nested finally, or a nested catch
-                                              // exit) returns to this block
+                step->bbJumpDest = exitBlock; // the previous step (maybe a call to a nested finally, or a nested
+                                              // catch exit) returns to this block
                 step->bbJumpDest->bbRefs++;
 
 #if defined(_TARGET_ARM_)
@@ -9536,7 +9539,7 @@ void Compiler::impImportLeave(BasicBlock* block)
                 exitBlock->bbFlags |= (block->bbFlags & BBF_RUN_RARELY) | BBF_IMPORTED;
 
                 /* This exit block is the new step */
-                step     = exitBlock;
+                step = exitBlock;
                 stepType = ST_Catch;
 
                 invalidatePreds = true;
@@ -9610,20 +9613,20 @@ void Compiler::impImportLeave(BasicBlock* block)
             else
             {
                 // Calling the finally block. We already have a step block that is either the call-to-finally from a
-                // more nested try/finally (thus we are jumping out of multiple nested 'try' blocks, each protected by
-                // a 'finally'), or the step block is the return from a catch.
+                // more nested try/finally (thus we are jumping out of multiple nested 'try' blocks, each protected
+                // by a 'finally'), or the step block is the return from a catch.
                 //
                 // Due to ThreadAbortException, we can't have the catch return target the call-to-finally block
                 // directly. Note that if a 'catch' ends without resetting the ThreadAbortException, the VM will
                 // automatically re-raise the exception, using the return address of the catch (that is, the target
-                // block of the BBJ_EHCATCHRET) as the re-raise address. If this address is in a finally, the VM will
-                // refuse to do the re-raise, and the ThreadAbortException will get eaten (and lost). On AMD64/ARM64,
-                // we put the call-to-finally thunk in a special "cloned finally" EH region that does look like a
-                // finally clause to the VM. Thus, on these platforms, we can't have BBJ_EHCATCHRET target a
-                // BBJ_CALLFINALLY directly. (Note that on ARM32, we don't mark the thunk specially -- it lives directly
-                // within the 'try' region protected by the finally, since we generate code in such a way that execution
-                // never returns to the call-to-finally call, and the finally-protected 'try' region doesn't appear on
-                // stack walks.)
+                // block of the BBJ_EHCATCHRET) as the re-raise address. If this address is in a finally, the VM
+                // will refuse to do the re-raise, and the ThreadAbortException will get eaten (and lost). On
+                // AMD64/ARM64, we put the call-to-finally thunk in a special "cloned finally" EH region that does
+                // look like a finally clause to the VM. Thus, on these platforms, we can't have BBJ_EHCATCHRET
+                // target a BBJ_CALLFINALLY directly. (Note that on ARM32, we don't mark the thunk specially -- it
+                // lives directly within the 'try' region protected by the finally, since we generate code in such a
+                // way that execution never returns to the call-to-finally call, and the finally-protected 'try'
+                // region doesn't appear on stack walks.)
 
                 assert(step->bbJumpKind == BBJ_ALWAYS || step->bbJumpKind == BBJ_EHCATCHRET);
 
@@ -9633,7 +9636,7 @@ void Compiler::impImportLeave(BasicBlock* block)
                     // Need to create another step block in the 'try' region that will actually branch to the
                     // call-to-finally thunk.
                     BasicBlock* step2 = fgNewBBinRegion(BBJ_ALWAYS, XTnum + 1, 0, step);
-                    step->bbJumpDest  = step2;
+                    step->bbJumpDest = step2;
                     step->bbJumpDest->bbRefs++;
                     step2->setBBWeight(block->bbWeight);
                     step2->bbFlags |= (block->bbFlags & BBF_RUN_RARELY) | BBF_IMPORTED;
@@ -9662,7 +9665,7 @@ void Compiler::impImportLeave(BasicBlock* block)
                 unsigned callFinallyHndIndex = 0; // don't care
 #endif // !FEATURE_EH_CALLFINALLY_THUNKS
 
-                callBlock        = fgNewBBinRegion(BBJ_CALLFINALLY, callFinallyTryIndex, callFinallyHndIndex, step);
+                callBlock = fgNewBBinRegion(BBJ_CALLFINALLY, callFinallyTryIndex, callFinallyHndIndex, step);
                 step->bbJumpDest = callBlock; // the previous call to a finally returns to this call (to the next
                                               // finally in the chain)
                 step->bbJumpDest->bbRefs++;
@@ -9690,7 +9693,7 @@ void Compiler::impImportLeave(BasicBlock* block)
 #endif
             }
 
-            step     = fgNewBBafter(BBJ_ALWAYS, callBlock, true);
+            step = fgNewBBafter(BBJ_ALWAYS, callBlock, true);
             stepType = ST_FinallyReturn;
 
             /* The new block will inherit this block's weight */
@@ -9717,24 +9720,25 @@ void Compiler::impImportLeave(BasicBlock* block)
             //
             // If we are returning from a call to a finally, then we must have a step block within a try
             // that is protected by a catch. This is so when unwinding from that finally (e.g., if code within the
-            // finally raises an exception), the VM will find this step block, notice that it is in a protected region,
-            // and invoke the appropriate catch.
+            // finally raises an exception), the VM will find this step block, notice that it is in a protected
+            // region, and invoke the appropriate catch.
             //
             // We also need to handle a special case with the handling of ThreadAbortException. If a try/catch
             // catches a ThreadAbortException (which might be because it catches a parent, e.g. System.Exception),
-            // and the catch doesn't call System.Threading.Thread::ResetAbort(), then when the catch returns to the VM,
-            // the VM will automatically re-raise the ThreadAbortException. When it does this, it uses the target
-            // address of the catch return as the new exception address. That is, the re-raised exception appears to
-            // occur at the catch return address. If this exception return address skips an enclosing try/catch that
-            // catches ThreadAbortException, then the enclosing try/catch will not catch the exception, as it should.
-            // For example:
+            // and the catch doesn't call System.Threading.Thread::ResetAbort(), then when the catch returns to the
+            // VM, the VM will automatically re-raise the ThreadAbortException. When it does this, it uses the
+            // target address of the catch return as the new exception address. That is, the re-raised exception
+            // appears to occur at the catch return address. If this exception return address skips an enclosing
+            // try/catch that catches ThreadAbortException, then the enclosing try/catch will not catch the
+            // exception, as it should. For example:
             //
             // try {
             //    try {
             //       // something here raises ThreadAbortException
             //       LEAVE LABEL_1; // no need to stop at LABEL_2
             //    } catch (Exception) {
-            //       // This catches ThreadAbortException, but doesn't call System.Threading.Thread::ResetAbort(), so
+            //       // This catches ThreadAbortException, but doesn't call System.Threading.Thread::ResetAbort(),
+            //       so
             //       // ThreadAbortException is re-raised by the VM at the address specified by the LEAVE opcode.
             //       // This is bad, since it means the outer try/catch won't get a chance to catch the re-raised
             //       // ThreadAbortException. So, instead, create step block LABEL_2 and LEAVE to that. We only
@@ -9768,7 +9772,7 @@ void Compiler::impImportLeave(BasicBlock* block)
                 }
 
                 /* Create a new exit block in the try region for the existing step block to jump to in this scope */
-                catchStep        = fgNewBBinRegion(BBJ_ALWAYS, XTnum + 1, 0, step);
+                catchStep = fgNewBBinRegion(BBJ_ALWAYS, XTnum + 1, 0, step);
                 step->bbJumpDest = catchStep;
                 step->bbJumpDest->bbRefs++;
 
@@ -9789,7 +9793,8 @@ void Compiler::impImportLeave(BasicBlock* block)
                 {
                     if (stepType == ST_FinallyReturn)
                     {
-                        printf("impImportLeave - return from finally jumping out of a catch-protected try (EH#%u), new "
+                        printf("impImportLeave - return from finally jumping out of a catch-protected try (EH#%u), "
+                               "new "
                                "BBJ_ALWAYS block " FMT_BB "\n",
                                XTnum, catchStep->bbNum);
                     }
@@ -9804,7 +9809,7 @@ void Compiler::impImportLeave(BasicBlock* block)
 #endif // DEBUG
 
                 /* This block is the new step */
-                step     = catchStep;
+                step = catchStep;
                 stepType = ST_Try;
 
                 invalidatePreds = true;
@@ -9894,11 +9899,11 @@ void Compiler::impResetLeaveBlock(BasicBlock* block, unsigned jmpAddr)
     //  OUTSIDE:
     //
     // In the above nested try-finally example, we create a step block (call it Bstep) which in branches to a block
-    // where a finally would branch to (and such block is marked as finally target).  Block B1 branches to step block.
-    // Because of re-import of B0, Bstep is also orphaned. Since Bstep is a finally target it cannot be removed.  To
-    // work around this we will duplicate B0 (call it B0Dup) before reseting. B0Dup is marked as BBJ_CALLFINALLY and
-    // only serves to pair up with B1 (BBJ_ALWAYS) that got orphaned. Now during orphan block deletion B0Dup and B1
-    // will be treated as pair and handled correctly.
+    // where a finally would branch to (and such block is marked as finally target).  Block B1 branches to step
+    // block. Because of re-import of B0, Bstep is also orphaned. Since Bstep is a finally target it cannot be
+    // removed.  To work around this we will duplicate B0 (call it B0Dup) before reseting. B0Dup is marked as
+    // BBJ_CALLFINALLY and only serves to pair up with B1 (BBJ_ALWAYS) that got orphaned. Now during orphan block
+    // deletion B0Dup and B1 will be treated as pair and handled correctly.
     if (block->bbJumpKind == BBJ_CALLFINALLY)
     {
         BasicBlock* dupBlock = bbNewBasicBlock(block->bbJumpKind);
@@ -11714,7 +11719,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     }
                     else
                     {
-                        // If ldElemClass is precisely a primitive type, use that, otherwise, preserve the struct type.
+                        // If ldElemClass is precisely a primitive type, use that, otherwise, preserve the struct
+                        // type.
                         if (info.compCompHnd->getTypeForPrimitiveValueClass(ldelemClsHnd) == CORINFO_TYPE_UNDEF)
                         {
                             op1->gtIndex.gtStructElemClass = ldelemClsHnd;
@@ -12008,7 +12014,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 oper = GT_MUL;
                 goto MATH_MAYBE_CALL_OVF;
 
-            // Other binary math operations
+                // Other binary math operations
 
             case CEE_DIV:
                 oper = GT_DIV;
@@ -12333,7 +12339,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     op1  = gtNewOperNode(oper, TYP_INT, op1, op2);
                 }
 
-            // fall through
+                // fall through
 
             COND_JUMP:
 
@@ -12352,8 +12358,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                     BBjumpKinds foldedJumpKind = (BBjumpKinds)(op1->gtIntCon.gtIconVal ? BBJ_ALWAYS : BBJ_NONE);
                     assertImp((block->bbJumpKind == BBJ_COND)            // normal case
-                              || (block->bbJumpKind == foldedJumpKind)); // this can happen if we are reimporting the
-                                                                         // block for the second time
+                              || (block->bbJumpKind == foldedJumpKind)); // this can happen if we are reimporting
+                                                                         // the block for the second time
 
                     block->bbJumpKind = foldedJumpKind;
 #ifdef DEBUG
@@ -12618,7 +12624,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 goto SPILL_APPEND;
 
-            /************************** Casting OPCODES ***************************/
+                /************************** Casting OPCODES ***************************/
 
             case CEE_CONV_OVF_I1:
                 lclTyp = TYP_BYTE;
@@ -12793,12 +12799,13 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                 if (varTypeIsFloating(lclTyp))
                 {
-                    callNode = varTypeIsLong(impStackTop().val) || uns // uint->dbl gets turned into uint->long->dbl
+                    callNode = varTypeIsLong(impStackTop().val) ||
+                               uns // uint->dbl gets turned into uint->long->dbl
 #ifdef _TARGET_64BIT_
-                               // TODO-ARM64-Bug?: This was AMD64; I enabled it for ARM64 also. OK?
-                               // TYP_BYREF could be used as TYP_I_IMPL which is long.
-                               // TODO-CQ: remove this when we lower casts long/ulong --> float/double
-                               // and generate SSE2 code instead of going through helper calls.
+                                   // TODO-ARM64-Bug?: This was AMD64; I enabled it for ARM64 also. OK?
+                                   // TYP_BYREF could be used as TYP_I_IMPL which is long.
+                                   // TODO-CQ: remove this when we lower casts long/ulong --> float/double
+                                   // and generate SSE2 code instead of going through helper calls.
                                || (impStackTop().val->TypeGet() == TYP_BYREF)
 #endif
                         ;
@@ -13658,8 +13665,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                         else
                         {
                             // The local variable itself is the allocated space.
-                            // Here we need unsafe value cls check, since the address of struct is taken for further use
-                            // and potentially exploitable.
+                            // Here we need unsafe value cls check, since the address of struct is taken for further
+                            // use and potentially exploitable.
                             lvaSetStruct(lclNum, resolvedToken.hClass, true /* unsafe value cls check */);
                         }
                         if (compIsForInlining() || fgStructTempNeedsExplicitZeroInit(lvaTable + lclNum, block))
@@ -13728,7 +13735,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     }
                 }
 
-            // fall through
+                // fall through
 
             case CEE_CALLVIRT:
             case CEE_CALL:
@@ -13792,8 +13799,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                         // is already checking that there is an opcode following call and hence it is
                         // safe here to read next opcode without bounds check.
                         newBBcreatedForTailcallStress =
-                            impOpcodeIsCallOpcode(opcode) && // Current opcode is a CALL, (not a CEE_NEWOBJ). So, don't
-                                                             // make it jump to RET.
+                            impOpcodeIsCallOpcode(opcode) && // Current opcode is a CALL, (not a CEE_NEWOBJ). So,
+                                                             // don't make it jump to RET.
                             (OPCODE)getU1LittleEndian(codeAddr + sz) == CEE_RET; // Next opcode is a CEE_RET
 
                         bool hasTailPrefix = (prefixFlags & PREFIX_TAILCALL_EXPLICIT);
@@ -13902,8 +13909,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     return;
                 }
 
-                if (explicitTailCall || newBBcreatedForTailcallStress) // If newBBcreatedForTailcallStress is true, we
-                                                                       // have created a new BB after the "call"
+                if (explicitTailCall || newBBcreatedForTailcallStress) // If newBBcreatedForTailcallStress is true,
+                                                                       // we have created a new BB after the "call"
                 // instruction in fgMakeBasicBlocks(). So we need to jump to RET regardless.
                 {
                     assert(!compIsForInlining());
@@ -14038,8 +14045,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     // then the result is a safe byref too
                     if (isLoadAddress) // load address
                     {
-                        if (fieldInfo.fieldFlags &
-                            CORINFO_FLG_FIELD_STATIC) // statics marked as safe will have permanent home
+                        if (fieldInfo.fieldFlags & CORINFO_FLG_FIELD_STATIC) // statics marked as safe will have
+                                                                             // permanent home
                         {
                             if (fieldInfo.fieldFlags & CORINFO_FLG_FIELD_SAFESTATIC_BYREF_RETURN)
                             {
@@ -14235,7 +14242,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 #if BIGENDIAN
                         op1 = gtNewIconNode(0, lclTyp);
 #else
-                        op1                     = gtNewIconNode(1, lclTyp);
+                        op1 = gtNewIconNode(1, lclTyp);
 #endif
                         goto FIELD_DONE;
                     }
@@ -14510,15 +14517,15 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                         op1->gtFlags |= GTF_IND_UNALIGNED;
                     }
 
-                    /* V4.0 allows assignment of i4 constant values to i8 type vars when IL verifier is bypassed (full
-                       trust apps). The reason this works is that JIT stores an i4 constant in Gentree union during
-                       importation and reads from the union as if it were a long during code generation. Though this
-                       can potentially read garbage, one can get lucky to have this working correctly.
+                    /* V4.0 allows assignment of i4 constant values to i8 type vars when IL verifier is bypassed
+                       (full trust apps). The reason this works is that JIT stores an i4 constant in Gentree union
+                       during importation and reads from the union as if it were a long during code generation.
+                       Though this can potentially read garbage, one can get lucky to have this working correctly.
 
-                       This code pattern is generated by Dev10 MC++ compiler while storing to fields when compiled with
-                       /O2 switch (default when compiling retail configs in Dev10) and a customer app has taken a
-                       dependency on it. To be backward compatible, we will explicitly add an upward cast here so that
-                       it works correctly always.
+                       This code pattern is generated by Dev10 MC++ compiler while storing to fields when compiled
+                       with /O2 switch (default when compiling retail configs in Dev10) and a customer app has taken
+                       a dependency on it. To be backward compatible, we will explicitly add an upward cast here so
+                       that it works correctly always.
 
                        Note that this is limited to x86 alone as there is no back compat to be addressed for Arm JIT
                        for V4.0.
@@ -14699,8 +14706,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                         // TODO: ReadyToRun: When generic dictionary lookups are necessary, replace the lookup call
                         // and the newarr call with a single call to a dynamic R2R cell that will:
                         //      1) Load the context
-                        //      2) Perform the generic dictionary lookup and caching, and generate the appropriate stub
-                        //      3) Allocate the new array
+                        //      2) Perform the generic dictionary lookup and caching, and generate the appropriate
+                        //      stub 3) Allocate the new array
                         // Reason: performance (today, we'll always use the slow helper for the R2R generics case)
 
                         // Need to restore array classes before creating array objects on the heap
@@ -14900,13 +14907,14 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                         if (!usingReadyToRunHelper)
                         {
-                            // TODO: ReadyToRun: When generic dictionary lookups are necessary, replace the lookup call
-                            // and the isinstanceof_any call with a single call to a dynamic R2R cell that will:
+                            // TODO: ReadyToRun: When generic dictionary lookups are necessary, replace the lookup
+                            // call and the isinstanceof_any call with a single call to a dynamic R2R cell that
+                            // will:
                             //      1) Load the context
-                            //      2) Perform the generic dictionary lookup and caching, and generate the appropriate
-                            //      stub
-                            //      3) Perform the 'is instance' check on the input object
-                            // Reason: performance (today, we'll always use the slow helper for the R2R generics case)
+                            //      2) Perform the generic dictionary lookup and caching, and generate the
+                            //      appropriate stub 3) Perform the 'is instance' check on the input object
+                            // Reason: performance (today, we'll always use the slow helper for the R2R generics
+                            // case)
 
                             op2 = impTokenToHandle(&resolvedToken, nullptr, FALSE);
                             if (op2 == nullptr)
@@ -15142,7 +15150,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                             JITDUMP("\nOptimizing %s (%s) -- type test will succeed\n",
                                     opcode == CEE_UNBOX ? "UNBOX" : "UNBOX.ANY", eeGetClassName(clsHnd));
 
-                            // For UNBOX, null check (if necessary), and then leave the box payload byref on the stack.
+                            // For UNBOX, null check (if necessary), and then leave the box payload byref on the
+                            // stack.
                             if (opcode == CEE_UNBOX)
                             {
                                 GenTree* cloneOperand;
@@ -15229,18 +15238,17 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                                               gtNewCallArgs(op2, op1));
                 }
 
-                assert(helper == CORINFO_HELP_UNBOX && op1->gtType == TYP_BYREF || // Unbox helper returns a byref.
-                       helper == CORINFO_HELP_UNBOX_NULLABLE &&
-                           varTypeIsStruct(op1) // UnboxNullable helper returns a struct.
-                       );
+                assert(helper == CORINFO_HELP_UNBOX && op1->gtType == TYP_BYREF ||   // Unbox helper returns a byref.
+                       helper == CORINFO_HELP_UNBOX_NULLABLE && varTypeIsStruct(op1) // UnboxNullable helper returns
+                                                                                     // a struct.
+                );
 
                 /*
                   ----------------------------------------------------------------------
                   | \ helper  |                         |                              |
                   |   \       |                         |                              |
                   |     \     | CORINFO_HELP_UNBOX      | CORINFO_HELP_UNBOX_NULLABLE  |
-                  |       \   | (which returns a BYREF) | (which returns a STRUCT)     |                              |
-                  | opcode  \ |                         |                              |
+                  |       \   | (which returns a BYREF) | (which returns a STRUCT)     | | | opcode  \ | | |
                   |---------------------------------------------------------------------
                   | UNBOX     | push the BYREF          | spill the STRUCT to a local, |
                   |           |                         | push the BYREF to this local |
@@ -15368,7 +15376,8 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                     // Push the result back on the stack,
                     // even if clsHnd is a value class we want the TI_REF
-                    // we call back to the EE to get find out what hte type we should push (for nullable<T> we push T)
+                    // we call back to the EE to get find out what hte type we should push (for nullable<T> we push
+                    // T)
                     tiRetVal = typeInfo(TI_REF, info.compCompHnd->getTypeForBox(resolvedToken.hClass));
                 }
 
@@ -15479,13 +15488,13 @@ void Compiler::impImportBlockCode(BasicBlock* block)
 
                         if (!usingReadyToRunHelper)
                         {
-                            // TODO: ReadyToRun: When generic dictionary lookups are necessary, replace the lookup call
-                            // and the chkcastany call with a single call to a dynamic R2R cell that will:
+                            // TODO: ReadyToRun: When generic dictionary lookups are necessary, replace the lookup
+                            // call and the chkcastany call with a single call to a dynamic R2R cell that will:
                             //      1) Load the context
-                            //      2) Perform the generic dictionary lookup and caching, and generate the appropriate
-                            //      stub
-                            //      3) Check the object on the stack for the type-cast
-                            // Reason: performance (today, we'll always use the slow helper for the R2R generics case)
+                            //      2) Perform the generic dictionary lookup and caching, and generate the
+                            //      appropriate stub 3) Check the object on the stack for the type-cast
+                            // Reason: performance (today, we'll always use the slow helper for the R2R generics
+                            // case)
 
                             op2 = impTokenToHandle(&resolvedToken, nullptr, FALSE);
                             if (op2 == nullptr)
@@ -15967,7 +15976,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                 }
                 break;
 
-            /******************************** NYI *******************************/
+                /******************************** NYI *******************************/
 
             case 0xCC:
                 OutputDebugStringA("CLR: Invalid x86 breakpoint in IL stream\n");
@@ -16404,8 +16413,8 @@ bool Compiler::impReturnInstruction(BasicBlock* block, int prefixFlags, OPCODE& 
                     //      object&, class System.Func`1<!!0>)
                     //      ret
                     //
-                    // In the code above, when we call impFixupStructReturnType(), we will change the op2 return type
-                    // of the inlinee return node, but we don't do that for GT_CALL nodes, which we delay until
+                    // In the code above, when we call impFixupStructReturnType(), we will change the op2 return
+                    // type of the inlinee return node, but we don't do that for GT_CALL nodes, which we delay until
                     // morphing when we call fgFixupStructReturn(). We do this, apparently, to handle nested
                     // inlining properly by leaving the correct type on the GT_CALL node through importing.
                     //
@@ -16444,8 +16453,8 @@ bool Compiler::impReturnInstruction(BasicBlock* block, int prefixFlags, OPCODE& 
 #endif
                 }
 
-                // If we are inlining a method that returns a struct byref, check whether we are "reinterpreting" the
-                // struct.
+                // If we are inlining a method that returns a struct byref, check whether we are "reinterpreting"
+                // the struct.
                 GenTree* effectiveRetVal = op2->gtEffectiveVal();
                 if ((returnType == TYP_BYREF) && (info.compRetType == TYP_BYREF) &&
                     (effectiveRetVal->OperGet() == GT_ADDR))
@@ -16464,14 +16473,13 @@ bool Compiler::impReturnInstruction(BasicBlock* block, int prefixFlags, OPCODE& 
                             if (varTypeIsStruct(JITtype2varType(referentType)) &&
                                 (varDsc->lvVerTypeInfo.GetClassHandle() != referentClassHandle))
                             {
-                                // We are returning a byref to struct1; the method signature specifies return type as
-                                // byref
-                                // to struct2. struct1 and struct2 are different so we are "reinterpreting" the struct.
-                                // This may happen in, for example, System.Runtime.CompilerServices.Unsafe.As<TFrom,
-                                // TTo>.
-                                // We need to mark the source struct variable as having overlapping fields because its
-                                // fields may be accessed using field handles of a different type, which may confuse
-                                // optimizations, in particular, value numbering.
+                                // We are returning a byref to struct1; the method signature specifies return type
+                                // as byref to struct2. struct1 and struct2 are different so we are "reinterpreting"
+                                // the struct. This may happen in, for example,
+                                // System.Runtime.CompilerServices.Unsafe.As<TFrom, TTo>. We need to mark the source
+                                // struct variable as having overlapping fields because its fields may be accessed
+                                // using field handles of a different type, which may confuse optimizations, in
+                                // particular, value numbering.
 
                                 JITDUMP("\nSetting lvOverlappingFields to true on V%02u because of struct "
                                         "reinterpretation\n",
@@ -16529,9 +16537,9 @@ bool Compiler::impReturnInstruction(BasicBlock* block, int prefixFlags, OPCODE& 
 
                 if (retRegCount != 0)
                 {
-                    // If single eightbyte, the return type would have been normalized and there won't be a temp var.
-                    // This code will be called only if the struct return has not been normalized (i.e. 2 eightbytes -
-                    // max allowed.)
+                    // If single eightbyte, the return type would have been normalized and there won't be a temp
+                    // var. This code will be called only if the struct return has not been normalized (i.e. 2
+                    // eightbytes - max allowed.)
                     assert(retRegCount == MAX_RET_REG_COUNT);
                     // Same as !structDesc.passedInRegisters but just don't bother with impAssignStructPtr.
                     CLANG_FORMAT_COMMENT_ANCHOR;
@@ -16544,7 +16552,7 @@ bool Compiler::impReturnInstruction(BasicBlock* block, int prefixFlags, OPCODE& 
 #if defined(_TARGET_ARM_)
                             impInlineInfo->retExpr = gtNewLclvNode(lvaInlineeReturnSpillTemp, info.compRetType);
 #else  // defined(UNIX_AMD64_ABI)
-                            // The inlinee compiler has figured out the type of the temp already. Use it here.
+       // The inlinee compiler has figured out the type of the temp already. Use it here.
                             impInlineInfo->retExpr =
                                 gtNewLclvNode(lvaInlineeReturnSpillTemp, lvaTable[lvaInlineeReturnSpillTemp].lvType);
 #endif // defined(UNIX_AMD64_ABI)
@@ -16632,9 +16640,9 @@ bool Compiler::impReturnInstruction(BasicBlock* block, int prefixFlags, OPCODE& 
         // Change the return type to be BYREF.
         op1 = gtNewOperNode(GT_RETURN, TYP_BYREF, gtNewLclvNode(info.compRetBuffArg, TYP_BYREF));
 #else  // !defined(_TARGET_AMD64_)
-        // In case of non-AMD64 targets the profiler hook requires to return the implicit RetBuf explicitly (in RAX).
-        // In such case the return value of the function is changed to BYREF.
-        // If profiler hook is not needed the return type of the function is TYP_VOID.
+       // In case of non-AMD64 targets the profiler hook requires to return the implicit RetBuf explicitly (in RAX).
+       // In such case the return value of the function is changed to BYREF.
+       // If profiler hook is not needed the return type of the function is TYP_VOID.
         if (compIsProfilerHookNeeded())
         {
             op1 = gtNewOperNode(GT_RETURN, TYP_BYREF, gtNewLclvNode(info.compRetBuffArg, TYP_BYREF));
@@ -16779,8 +16787,8 @@ void Compiler::impVerifyEHBlock(BasicBlock* block, bool isTryStart)
                 //
                 if (HBtab->HasCatchHandler() || HBtab->HasFinallyHandler() || HBtab->HasFilter())
                 {
-                    BADCODE(
-                        "The 'this' pointer of an instance constructor is not intialized upon entry to a try region");
+                    BADCODE("The 'this' pointer of an instance constructor is not intialized upon entry to a try "
+                            "region");
                 }
                 else
                 {
@@ -17716,7 +17724,7 @@ unsigned Compiler::impGetSpillTmpBase(BasicBlock* block)
 
     // Otherwise, choose one, and propagate to all members of the spill clique.
     // Grab enough temps for the whole stack.
-    unsigned baseTmp = lvaGrabTemps(verCurrentState.esStackDepth DEBUGARG("IL Stack Entries"));
+    unsigned          baseTmp = lvaGrabTemps(verCurrentState.esStackDepth DEBUGARG("IL Stack Entries"));
     SetSpillTempsBase callback(baseTmp);
 
     // We do *NOT* need to reset the SpillClique*Members because a block can only be the predecessor
@@ -17981,8 +17989,8 @@ void Compiler::impImport(BasicBlock* method)
 
     // Skip leading internal blocks. There can be one as a leading scratch BB, and more
     // from EH normalization.
-    // NOTE: It might be possible to always just put fgFirstBB on the pending list, and let everything else just fall
-    // out.
+    // NOTE: It might be possible to always just put fgFirstBB on the pending list, and let everything else just
+    // fall out.
     for (; method->bbFlags & BBF_INTERNAL; method = method->bbNext)
     {
         // Treat these as imported.
@@ -18143,7 +18151,7 @@ void Compiler::impMakeDiscretionaryInlineObservations(InlineInfo* pInlineInfo, I
 {
     assert((pInlineInfo != nullptr && compIsForInlining()) || // Perform the actual inlining.
            (pInlineInfo == nullptr && !compIsForInlining())   // Calculate the static inlining hint for ngen.
-           );
+    );
 
     // If we're really inlining, we should just have one result in play.
     assert((pInlineInfo == nullptr) || (inlineResult == pInlineInfo->inlineResult));
@@ -18412,18 +18420,18 @@ void Compiler::impCheckCanInline(GenTreeCall*           call,
                 pParam->result->NoteFatal(InlineObservation::CALLEE_NO_METHOD_INFO);
                 goto _exit;
             }
-            
+
             bool forceInline;
             forceInline = !!(pParam->methAttr & CORINFO_FLG_FORCEINLINE);
-            
+
             pParam->pThis->impCanInlineIL(pParam->fncHandle, &methInfo, forceInline, pParam->result);
-            
+
             if (pParam->result->IsFailure())
             {
                 assert(pParam->result->IsNever());
                 goto _exit;
             }
-                
+
             // Speculatively check if initClass() can be done.
             // If it can be done, we will try to inline the method. If inlining
             // succeeds, then we will do the non-speculative initClass() and commit it.
@@ -19316,7 +19324,7 @@ GenTree* Compiler::impInlineFetchArg(unsigned lclNum, InlArgInfo* inlArgInfo, In
             assert(!argInfo.argIsUsed);
 
             /* Reserve a temp for the expression.
-            * Use a large size node as we may change it later */
+             * Use a large size node as we may change it later */
 
             const unsigned tmpNum = lvaGrabTemp(true DEBUGARG("Inlining Arg"));
 
@@ -19655,6 +19663,13 @@ void Compiler::impMarkInlineCandidateHelper(GenTreeCall*           call,
         return;
     }
 
+    /* Ignore delegate invokes */
+    if (call->IsDelegateInvoke())
+    {
+        inlineResult.NoteFatal(InlineObservation::CALLSITE_IS_NOT_DIRECT_MANAGED);
+        return;
+    }
+
     /* I removed the check for BBJ_THROW.  BBJ_THROW is usually marked as rarely run.  This more or less
      * restricts the inliner to non-expanding inlines.  I removed the check to allow for non-expanding
      * inlining in throw blocks.  I should consider the same thing for catch and filter regions. */
@@ -19738,12 +19753,8 @@ void Compiler::impMarkInlineCandidateHelper(GenTreeCall*           call,
 
     if (methAttr & CORINFO_FLG_DONT_INLINE)
     {
-        // Allow delegate invoke to pass through
-        if ((methAttr & CORINFO_FLG_DELEGATE_INVOKE) == 0)
-        {
-            inlineResult.NoteFatal(InlineObservation::CALLEE_IS_NOINLINE);
-            return;
-        }
+        inlineResult.NoteFatal(InlineObservation::CALLEE_IS_NOINLINE);
+        return;
     }
 
     /* Cannot inline synchronized methods */
@@ -20561,9 +20572,7 @@ CORINFO_RESOLVED_TOKEN* Compiler::impAllocateToken(CORINFO_RESOLVED_TOKEN token)
 class SpillRetExprHelper
 {
 public:
-    SpillRetExprHelper(Compiler* comp) : comp(comp)
-    {
-    }
+    SpillRetExprHelper(Compiler* comp) : comp(comp) {}
 
     void StoreRetExprResultsInArgs(GenTreeCall* call)
     {
