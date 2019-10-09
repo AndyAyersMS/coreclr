@@ -25696,19 +25696,21 @@ bool Compiler::fgUseThrowHelperBlocks()
 }
 
 //------------------------------------------------------------------------
-// fgTailMergeThrows: Tail merge no return calls, if possible
+// fgTailMergeThrows: Tail merge throw blocks and blocks with no return calls.
 //
 // Notes:
-//    Scans the flow graph for throw blocks that can be commoned,
-//    and commons them.
-
+//    Scans the flow graph for throw blocks and blocks with no return calls
+//    that can be merged, and opportunistically merges them.
+//
+//    Does not handle throws yet as the analysis is more costly and less
+//    likely to pay off.
 void Compiler::fgTailMergeThrows()
 {
     JITDUMP("\n*************** In fgTailMergeThrows\n");
 
     if (opts.MinOpts())
     {
-        JITDUMP("Method compiled with minOpts, no merging (but...?).\n");
+        JITDUMP("Method compiled with minOpts, no merging.\n");
         return;
     }
 
@@ -25718,31 +25720,48 @@ void Compiler::fgTailMergeThrows()
         return;
     }
 
-    struct CallKeyFuncs
+    struct ThrowHelperKey
+    {
+        BasicBlock*  m_block;
+        GenTreeCall* m_call;
+
+        ThrowHelperKey() : m_block(nullptr), m_call(nullptr)
+        {
+        }
+        ThrowHelperKey(BasicBlock* block, GenTreeCall* call) : m_block(block), m_call(call)
+        {
+        }
+    };
+
+    struct ThrowHelperKeyFuncs
     {
     public:
-        static bool Equals(GenTreeCall* x, GenTreeCall* y)
+        static bool Equals(const ThrowHelperKey& x, const ThrowHelperKey& y)
         {
-            return GenTreeCall::Equals(x, y);
+            return BasicBlock::sameEHRegion(x.m_block, y.m_block) && GenTreeCall::Equals(x.m_call, y.m_call);
         }
 
-        static unsigned GetHashCode(GenTreeCall* call)
+        static unsigned GetHashCode(const ThrowHelperKey& x)
         {
-            return static_cast<unsigned>(reinterpret_cast<uintptr_t>(call->gtCallMethHnd));
+            return static_cast<unsigned>(reinterpret_cast<uintptr_t>(x.m_call->gtCallMethHnd));
         }
     };
 
     CompAllocator allocator(getAllocator(CMK_Generic));
-    typedef JitHashTable<GenTreeCall*, CallKeyFuncs, BasicBlock*> CallToBlockMap;
+    typedef JitHashTable<ThrowHelperKey, ThrowHelperKeyFuncs, BasicBlock*> CallToBlockMap;
     CallToBlockMap*  callMap  = new (allocator) CallToBlockMap(allocator);
     BlockToBlockMap* blockMap = new (allocator) BlockToBlockMap(allocator);
 
     // We will run two passes here, so we can avoid pred lists.
     int numCandidates = 0;
 
-    // Scan for THROW blocks. Note early on throw helpers are not marked as BBJ_THROW,
-    // they are noreturn calls.
-    for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
+    // Scan for THROW blocks. Note early on throw helpers are not
+    // marked as BBJ_THROW, they are noreturn calls.
+    //
+    // Walk blocks from last to first so that any branches we
+    // introduce to the canonical blocks end up lexically forward
+    // and there is less jumbled flow to sort out later.
+    for (BasicBlock* block = fgLastBB; block != nullptr; block = block->bbPrev)
     {
         // Pattern matching explicit throws is more complex as we need
         // to match all the statements in the block, not just the
@@ -25752,7 +25771,8 @@ void Compiler::fgTailMergeThrows()
             continue;
         }
 
-        // For throw helpers the block must have exactly one statement
+        // For throw helpers the block should have exactly one statement....
+        // (this isn't guaranteed, but seems likely)
         Statement* stmt = block->firstStmt();
 
         if ((stmt == nullptr) || stmt->GetNextStmt() != nullptr)
@@ -25776,37 +25796,33 @@ void Compiler::fgTailMergeThrows()
             continue;
         }
 
-        // ...sanity check -- only user funcs should be marked do not return
+        // Sanity check -- only user funcs should be marked do not return
         assert(call->gtCallType == CT_USER_FUNC);
 
+        // Ok, we've found a call. See if this is one we know about already,
+        // or something new.
         BasicBlock* canonicalBlock = nullptr;
 
         JITDUMP("*** Does not return call\n");
         DISPTREE(call);
 
         // Have we found an equivalent call already?
-        if (callMap->Lookup(call, &canonicalBlock))
+        ThrowHelperKey key(block, call);
+        if (callMap->Lookup(key, &canonicalBlock))
         {
+            // Make sure we're not at risk of crossing EH boundaries
+            assert(BasicBlock::sameEHRegion(block, canonicalBlock));
 
-            // Need to verfy all are in the same EH region, sigh
-            if (BasicBlock::sameEHRegion(block, canonicalBlock))
-            {
-                // Yes, this one can be optimized away...
-                JITDUMP("*** in " FMT_BB " can be dup'd to canonical " FMT_BB "\n", block->bbNum,
-                        canonicalBlock->bbNum);
-                blockMap->Set(block, canonicalBlock);
-                numCandidates++;
-            }
-            else
-            {
-                JITDUMP("*** in " FMT_BB " not same EH region as canonical " FMT_BB ", sorry\n", block->bbNum,
-                        canonicalBlock->bbNum);
-            }
+            // Yes, this one can be optimized away...
+            JITDUMP("*** in " FMT_BB " can be dup'd to canonical " FMT_BB "\n", block->bbNum, canonicalBlock->bbNum);
+            blockMap->Set(block, canonicalBlock);
+            numCandidates++;
         }
         else
         {
-            JITDUMP("*** in " FMT_BB " is unique, making it the canonical one\n", block->bbNum);
-            callMap->Set(call, block);
+            // No, add this as the canonical example
+            JITDUMP("*** in " FMT_BB " is unique, marking it as canonical\n", block->bbNum);
+            callMap->Set(key, block);
         }
     }
 
@@ -25819,7 +25835,7 @@ void Compiler::fgTailMergeThrows()
 
     JITDUMP("\n*** found %d merge candidates, rewriting flow\n", numCandidates);
 
-    // Else rewalk block list and make suitable updates.
+    // Rewalk block list and make suitable updates.
     for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
     {
         // Only handle conditional branches to throw helpers for now.
@@ -25857,11 +25873,13 @@ void Compiler::fgTailMergeThrows()
             fallThrough->bbJumpKind = BBJ_ALWAYS;
             fallThrough->bbJumpDest = newDest;
             fgAddRefPred(newDest, fallThrough);
-
-            continue;
         }
 
         // See if this block jumps to a non-canonical throw helper block.
+        //
+        // (Note we check this in addition to the fall-through case
+        // above, in the off case that a branch is choosing between
+        // two possible throw helper calls).
         BasicBlock* jumpDest = block->bbJumpDest;
 
         if (blockMap->Lookup(jumpDest, &newDest))
