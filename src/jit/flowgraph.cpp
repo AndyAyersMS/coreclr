@@ -25694,3 +25694,193 @@ bool Compiler::fgUseThrowHelperBlocks()
 {
     return !opts.compDbgCode;
 }
+
+//------------------------------------------------------------------------
+// fgTailMergeThrows: Tail merge no return calls, if possible
+//
+// Notes:
+//    Scans the flow graph for throw blocks that can be commoned,
+//    and commons them.
+
+void Compiler::fgTailMergeThrows()
+{
+    JITDUMP("\n*************** In fgTailMergeThrows\n");
+
+    if (opts.MinOpts())
+    {
+        JITDUMP("Method compiled with minOpts, no merging (but...?).\n");
+        return;
+    }
+
+    if (opts.compDbgCode)
+    {
+        JITDUMP("Method compiled with debug codegen, no merging.\n");
+        return;
+    }
+
+    struct CallKeyFuncs
+    {
+    public:
+        static bool Equals(GenTreeCall* x, GenTreeCall* y)
+        {
+            return GenTreeCall::Equals(x, y);
+        }
+
+        static unsigned GetHashCode(GenTreeCall* call)
+        {
+            return static_cast<unsigned>(reinterpret_cast<uintptr_t>(call->gtCallMethHnd));
+        }
+    };
+
+    CompAllocator allocator(getAllocator(CMK_Generic));
+    typedef JitHashTable<GenTreeCall*, CallKeyFuncs, BasicBlock*> CallToBlockMap;
+    CallToBlockMap*  callMap  = new (allocator) CallToBlockMap(allocator);
+    BlockToBlockMap* blockMap = new (allocator) BlockToBlockMap(allocator);
+
+    // We will run two passes here, so we can avoid pred lists.
+    int numCandidates = 0;
+
+    // Scan for THROW blocks. Note early on throw helpers are not marked as BBJ_THROW,
+    // they are noreturn calls.
+    for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
+    {
+        // Pattern matching explicit throws is more complex as we need
+        // to match all the statements in the block, not just the
+        // call. Skip for now.
+        if (block->bbJumpKind == BBJ_THROW)
+        {
+            continue;
+        }
+
+        // For throw helpers the block must have exactly one statement
+        Statement* stmt = block->firstStmt();
+
+        if ((stmt == nullptr) || stmt->GetNextStmt() != nullptr)
+        {
+            continue;
+        }
+
+        // ...that is a call
+        GenTree* tree = stmt->gtStmtExpr;
+
+        if (!tree->IsCall())
+        {
+            continue;
+        }
+
+        // ...that does not return
+        GenTreeCall* call = tree->AsCall();
+
+        if (!call->IsNoReturn())
+        {
+            continue;
+        }
+
+        // ...sanity check -- only user funcs should be marked do not return
+        assert(call->gtCallType == CT_USER_FUNC);
+
+        BasicBlock* canonicalBlock = nullptr;
+
+        JITDUMP("*** Does not return call\n");
+        DISPTREE(call);
+
+        // Have we found an equivalent call already?
+        if (callMap->Lookup(call, &canonicalBlock))
+        {
+
+            // Need to verfy all are in the same EH region, sigh
+            if (BasicBlock::sameEHRegion(block, canonicalBlock))
+            {
+                // Yes, this one can be optimized away...
+                JITDUMP("*** in " FMT_BB " can be dup'd to canonical " FMT_BB "\n", block->bbNum,
+                        canonicalBlock->bbNum);
+                blockMap->Set(block, canonicalBlock);
+                numCandidates++;
+            }
+            else
+            {
+                JITDUMP("*** in " FMT_BB " not same EH region as canonical " FMT_BB ", sorry\n", block->bbNum,
+                        canonicalBlock->bbNum);
+            }
+        }
+        else
+        {
+            JITDUMP("*** in " FMT_BB " is unique, making it the canonical one\n", block->bbNum);
+            callMap->Set(call, block);
+        }
+    }
+
+    // Bail if no candidates were found
+    if (numCandidates == 0)
+    {
+        JITDUMP("\n*************** no throws can be tail merged, sorry\n");
+        return;
+    }
+
+    JITDUMP("\n*** found %d merge candidates, rewriting flow\n", numCandidates);
+
+    // Else rewalk block list and make suitable updates.
+    for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
+    {
+        // Only handle conditional branches to throw helpers for now.
+        if (block->bbJumpKind != BBJ_COND)
+        {
+            continue;
+        }
+
+        // See if this block falls through to a non-canonical throw helper block.
+        BasicBlock* fallThrough = block->bbNext;
+        BasicBlock* newDest     = nullptr;
+
+        if (blockMap->Lookup(fallThrough, &newDest))
+        {
+            // Modify the fallThrough to be an empty BBJ_ALWAYS block that
+            // targets the canonical block. Hopefully, later flow opts clean
+            // this up....
+            Statement* stmt = fallThrough->firstStmt();
+
+            // Note we have verified in the first pass that
+            // fallThrough has just one statement.  Assert that's still
+            // the case.
+            assert((stmt != nullptr) && stmt->GetNextStmt() == nullptr);
+
+            // Also the fall through should have a unique successor.
+            assert((fallThrough->bbJumpKind == BBJ_NONE) || (fallThrough->bbJumpKind == BBJ_ALWAYS));
+
+            JITDUMP("*** " FMT_BB " now branching to empty " FMT_BB " and then to " FMT_BB "\n", block->bbNum,
+                    fallThrough->bbNum, newDest->bbNum);
+            fgRemoveStmt(fallThrough, stmt);
+
+            BasicBlock* fallThroughNext =
+                fallThrough->bbJumpKind == BBJ_NONE ? fallThrough->bbNext : fallThrough->bbJumpDest;
+            fgRemoveRefPred(fallThroughNext, fallThrough);
+            fallThrough->bbJumpKind = BBJ_ALWAYS;
+            fallThrough->bbJumpDest = newDest;
+            fgAddRefPred(newDest, fallThrough);
+
+            continue;
+        }
+
+        // See if this block jumps to a non-canonical throw helper block.
+        BasicBlock* jumpDest = block->bbJumpDest;
+
+        if (blockMap->Lookup(jumpDest, &newDest))
+        {
+            // Yes, revise to jump to target the canonical block.
+            JITDUMP("*** " FMT_BB " now branching to " FMT_BB " instead of " FMT_BB "\n", block->bbNum, newDest->bbNum,
+                    jumpDest->bbNum);
+            fgReplaceJumpTarget(block, newDest, jumpDest);
+            fgRemoveRefPred(jumpDest, block);
+            fgAddRefPred(newDest, block);
+            continue;
+        }
+    }
+
+#if DEBUG
+    if (verbose)
+    {
+        printf("\n*************** After fgTailMergeThrows()\n");
+        fgDispBasicBlocks();
+    }
+#endif // DEBUG
+}

@@ -16687,6 +16687,8 @@ void Compiler::fgMorph()
 
     fgUpdateFinallyTargetFlags();
 
+    fgTailMergeThrows();
+
     /* For x64 and ARM64 we need to mark irregular parameters */
     lvaRefCountState = RCS_EARLY;
     fgResetImplicitByRefRefCount();
