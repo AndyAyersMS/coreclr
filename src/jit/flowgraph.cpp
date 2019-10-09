@@ -25724,12 +25724,27 @@ void Compiler::fgTailMergeThrows()
     {
         BasicBlock*  m_block;
         GenTreeCall* m_call;
+        unsigned     m_hash;
 
-        ThrowHelperKey() : m_block(nullptr), m_call(nullptr)
+        ThrowHelperKey() : m_block(nullptr), m_call(nullptr), m_hash(0)
         {
         }
+
         ThrowHelperKey(BasicBlock* block, GenTreeCall* call) : m_block(block), m_call(call)
         {
+            // Base hash on the throw helper handle
+            m_hash = static_cast<unsigned>(reinterpret_cast<uintptr_t>(m_call->gtCallMethHnd));
+
+            // Augment hash with info from the last few opcodes so we
+            // avoid comparing trees in most cases that will prove unequal
+            int i = 0;
+            for (Statement* stmt = m_block->lastStmt(); stmt != nullptr; stmt = stmt->getPrevStmt())
+            {
+                m_hash = (m_hash << 3) ^ (unsigned)stmt->gtStmtExpr->OperGet();
+                i++;
+                if (i > 20)
+                    break;
+            }
         }
     };
 
@@ -25738,12 +25753,66 @@ void Compiler::fgTailMergeThrows()
     public:
         static bool Equals(const ThrowHelperKey& x, const ThrowHelperKey& y)
         {
-            return BasicBlock::sameEHRegion(x.m_block, y.m_block) && GenTreeCall::Equals(x.m_call, y.m_call);
+            JITDUMP("-- comparing " FMT_BB " to " FMT_BB "\n", x.m_block->bbNum, y.m_block->bbNum);
+
+            if (x.m_block == y.m_block)
+            {
+                JITDUMP("-- trivial, yes\n");
+                return true;
+            }
+
+            if (!BasicBlock::sameEHRegion(x.m_block, y.m_block))
+            {
+                JITDUMP("-- incompatible EH, no\n");
+                return false;
+            }
+
+            Statement* const xLastStmt = x.m_block->lastStmt();
+            Statement* const yLastStmt = y.m_block->lastStmt();
+            Statement*       xStmt     = xLastStmt;
+            Statement*       yStmt     = yLastStmt;
+
+            int i = 0;
+
+            // If trees match
+            for (; (xStmt != nullptr) && (yStmt != nullptr); xStmt = xStmt->getPrevStmt(), yStmt = yStmt->getPrevStmt())
+            {
+                // Prev links form circular list, so check if we've cycled back on both sides.
+                if ((i > 0) && (xStmt == xLastStmt) && (yStmt == yLastStmt))
+                {
+                    JITDUMP("-- compare success, all %d statements match\n", i);
+                    return true;
+                }
+
+                if (!GenTree::Compare(xStmt->gtStmtExpr, yStmt->gtStmtExpr, false))
+                {
+                    JITDUMP("-- compare fail [%06u] != [%06u] at %d\n", xStmt->gtStmtExpr->gtTreeID,
+                            yStmt->gtStmtExpr->gtTreeID, i);
+                    return false;
+                }
+
+                JITDUMP("-- compare match [%06u] == [%06u] at %d\n", xStmt->gtStmtExpr->gtTreeID,
+                        yStmt->gtStmtExpr->gtTreeID, i);
+
+                // Bail out for large blocks to save on TP
+                i++;
+                if (i > 20)
+                {
+                    JITDUMP("-- compare fail i > 20\n");
+                    return false;
+                }
+            }
+
+            // Only way to get here is if the number of statements differs.
+            assert((xStmt != nullptr) || (yStmt != nullptr));
+
+            JITDUMP("-- compare fail # statements differs\n");
+            return false;
         }
 
         static unsigned GetHashCode(const ThrowHelperKey& x)
         {
-            return static_cast<unsigned>(reinterpret_cast<uintptr_t>(x.m_call->gtCallMethHnd));
+            return x.m_hash;
         }
     };
 
@@ -25763,24 +25832,14 @@ void Compiler::fgTailMergeThrows()
     // and there is less jumbled flow to sort out later.
     for (BasicBlock* block = fgLastBB; block != nullptr; block = block->bbPrev)
     {
-        // Pattern matching explicit throws is more complex as we need
-        // to match all the statements in the block, not just the
-        // call. Skip for now.
-        if (block->bbJumpKind == BBJ_THROW)
+        // For throws and throw helpers the last stmt will be a call.
+        Statement* stmt = block->lastStmt();
+
+        if (stmt == nullptr)
         {
             continue;
         }
 
-        // For throw helpers the block should have exactly one statement....
-        // (this isn't guaranteed, but seems likely)
-        Statement* stmt = block->firstStmt();
-
-        if ((stmt == nullptr) || stmt->GetNextStmt() != nullptr)
-        {
-            continue;
-        }
-
-        // ...that is a call
         GenTree* tree = stmt->gtStmtExpr;
 
         if (!tree->IsCall())
@@ -25788,16 +25847,16 @@ void Compiler::fgTailMergeThrows()
             continue;
         }
 
-        // ...that does not return
+        // ...that does not return, or is a throw
         GenTreeCall* call = tree->AsCall();
 
-        if (!call->IsNoReturn())
+        if (!call->IsNoReturn() && (block->bbJumpKind != BBJ_THROW))
         {
             continue;
         }
 
         // Sanity check -- only user funcs should be marked do not return
-        assert(call->gtCallType == CT_USER_FUNC);
+        // assert(call->gtCallType == CT_USER_FUNC);
 
         // Ok, we've found a call. See if this is one we know about already,
         // or something new.
@@ -25821,7 +25880,7 @@ void Compiler::fgTailMergeThrows()
         else
         {
             // No, add this as the canonical example
-            JITDUMP("*** in " FMT_BB " is unique, marking it as canonical\n", block->bbNum);
+            JITDUMP("*** in " FMT_BB " is unique (hash 0x%08x), marking it as canonical\n", block->bbNum, key.m_hash);
             callMap->Set(key, block);
         }
     }
@@ -25855,21 +25914,31 @@ void Compiler::fgTailMergeThrows()
             // this up....
             Statement* stmt = fallThrough->firstStmt();
 
-            // Note we have verified in the first pass that
-            // fallThrough has just one statement.  Assert that's still
-            // the case.
-            assert((stmt != nullptr) && stmt->GetNextStmt() == nullptr);
-
-            // Also the fall through should have a unique successor.
-            assert((fallThrough->bbJumpKind == BBJ_NONE) || (fallThrough->bbJumpKind == BBJ_ALWAYS));
-
             JITDUMP("*** " FMT_BB " now branching to empty " FMT_BB " and then to " FMT_BB "\n", block->bbNum,
                     fallThrough->bbNum, newDest->bbNum);
-            fgRemoveStmt(fallThrough, stmt);
 
-            BasicBlock* fallThroughNext =
-                fallThrough->bbJumpKind == BBJ_NONE ? fallThrough->bbNext : fallThrough->bbJumpDest;
-            fgRemoveRefPred(fallThroughNext, fallThrough);
+            // Clean out the fall through block
+            while (stmt != nullptr)
+            {
+                Statement* nextStmt = stmt->GetNextStmt();
+                fgRemoveStmt(fallThrough, stmt);
+                stmt = nextStmt;
+            }
+
+            // Clear out any induced ref count from the fall through
+            if (fallThrough->bbJumpKind == BBJ_NONE)
+            {
+                fgRemoveRefPred(fallThrough->bbNext, fallThrough);
+            }
+            else if (fallThrough->bbJumpKind == BBJ_ALWAYS)
+            {
+                fgRemoveRefPred(fallThrough->bbJumpDest, fallThrough);
+            }
+            else
+            {
+                assert(fallThrough->bbJumpKind == BBJ_THROW);
+            }
+
             fallThrough->bbJumpKind = BBJ_ALWAYS;
             fallThrough->bbJumpDest = newDest;
             fgAddRefPred(newDest, fallThrough);
