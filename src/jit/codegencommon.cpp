@@ -6536,7 +6536,7 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
                 printf("--- V%02u old rbp offset %d old frame %d this frame sp-fp %d new offset %d\n", varNum, stkOffs,
                        originalFrameSize, genSPtoFPdelta(), offset);
 
-                getEmitter()->emitIns_R_AR(ins_Load(lclTyp), size, varDsc->lvRegNum, genFramePointerReg(), offset);
+                GetEmitter()->emitIns_R_AR(ins_Load(lclTyp), size, varDsc->GetRegNum(), genFramePointerReg(), offset);
             }
         }
     }

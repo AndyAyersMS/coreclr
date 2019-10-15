@@ -125,32 +125,34 @@ private:
         helperBlock->inheritWeightPercentage(block, 100 - HIGH_PROBABILITY);
 
         // Fill in test block
+        //
         // --ppCounter;
-        GenTree*     ppCounterBefore = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
-        GenTree*     ppCounterAfter  = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
-        GenTree*     one             = compiler->gtNewIconNode(1, TYP_INT);
-        GenTree*     ppCounterSub    = compiler->gtNewOperNode(GT_SUB, TYP_INT, ppCounterBefore, one);
-        GenTree*     ppCounterAsg    = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterAfter, ppCounterSub);
-        GenTreeStmt* asgStmt         = compiler->fgNewStmtFromTree(ppCounterAsg);
-        compiler->fgInsertStmtAtEnd(block, asgStmt);
+        GenTree* ppCounterBefore = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
+        GenTree* ppCounterAfter  = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
+        GenTree* one             = compiler->gtNewIconNode(1, TYP_INT);
+        GenTree* ppCounterSub    = compiler->gtNewOperNode(GT_SUB, TYP_INT, ppCounterBefore, one);
+        GenTree* ppCounterAsg    = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterAfter, ppCounterSub);
+
+        compiler->fgNewStmtAtEnd(block, ppCounterAsg);
 
         // if (ppCounter < 0)
-        GenTree*     ppCounterUpdated = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
-        GenTree*     zero             = compiler->gtNewIconNode(0, TYP_INT);
-        GenTree*     compare          = compiler->gtNewOperNode(GT_GE, TYP_INT, ppCounterUpdated, zero);
-        GenTree*     jmp              = compiler->gtNewOperNode(GT_JTRUE, TYP_VOID, compare);
-        GenTreeStmt* jmpStmt          = compiler->fgNewStmtFromTree(jmp);
-        compiler->fgInsertStmtAtEnd(block, jmpStmt);
+        GenTree* ppCounterUpdated = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
+        GenTree* zero             = compiler->gtNewIconNode(0, TYP_INT);
+        GenTree* compare          = compiler->gtNewOperNode(GT_GE, TYP_INT, ppCounterUpdated, zero);
+        GenTree* jmp              = compiler->gtNewOperNode(GT_JTRUE, TYP_VOID, compare);
+
+        compiler->fgNewStmtAtEnd(block, jmp);
 
         // Fill in helper block
+        //
         // call PPHelper(&ppCounter, ilOffset)
         GenTree*          ilOffsetNode  = compiler->gtNewIconNode(ilOffset, TYP_INT);
         GenTree*          ppCounterRef  = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
         GenTree*          ppCounterAddr = compiler->gtNewOperNode(GT_ADDR, TYP_I_IMPL, ppCounterRef);
         GenTreeCall::Use* helperArgs    = compiler->gtNewCallArgs(ppCounterAddr, ilOffsetNode);
         GenTreeCall*      helperCall    = compiler->gtNewHelperCallNode(CORINFO_HELP_PATCHPOINT, TYP_VOID, helperArgs);
-        GenTreeStmt*      helperStmt    = compiler->fgNewStmtFromTree(helperCall);
-        compiler->fgInsertStmtAtEnd(helperBlock, helperStmt);
+
+        compiler->fgNewStmtAtEnd(helperBlock, helperCall);
     }
 
     //  ppCounter = 0 (could set it nonzero to save some cycles)
@@ -158,11 +160,11 @@ private:
     {
         assert((block->bbFlags & BBF_PATCHPOINT) == 0);
 
-        GenTree*     zero         = compiler->gtNewIconNode(0, TYP_INT);
-        GenTree*     ppCounterRef = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
-        GenTree*     ppCounterAsg = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterRef, zero);
-        GenTreeStmt* asgStmt      = compiler->fgNewStmtFromTree(ppCounterAsg);
-        compiler->fgInsertStmtNearEnd(block, asgStmt);
+        GenTree* zero         = compiler->gtNewIconNode(0, TYP_INT);
+        GenTree* ppCounterRef = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
+        GenTree* ppCounterAsg = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterRef, zero);
+
+        compiler->fgNewStmtNearEnd(block, ppCounterAsg);
     }
 };
 

@@ -10543,7 +10543,7 @@ void Compiler::impImportBlockCode(BasicBlock* block)
     impBeginTreeList();
 
     // Are there any plausible patchpoint locations in this method?
-    if (fgHasBackwardJump)
+    if (compHasBackwardJump)
     {
         // Are patchpoints enabled?
         if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_TIER0) && (JitConfig.JitPatchpoint() > 0))
