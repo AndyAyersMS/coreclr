@@ -2990,11 +2990,15 @@ AssertionIndex Compiler::optGlobalAssertionIsEqualOrNotEqual(ASSERT_VALARG_TP as
     while (iter.NextElem(&index))
     {
         AssertionIndex assertionIndex = GetAssertionIndex(index);
+
         if (assertionIndex > optAssertionCount)
         {
             break;
+
         }
+
         AssertionDsc* curAssertion = optGetAssertion(assertionIndex);
+
         if ((curAssertion->assertionKind != OAK_EQUAL && curAssertion->assertionKind != OAK_NOT_EQUAL))
         {
             continue;
@@ -3004,6 +3008,31 @@ AssertionIndex Compiler::optGlobalAssertionIsEqualOrNotEqual(ASSERT_VALARG_TP as
             (curAssertion->op2.vn == vnStore->VNConservativeNormalValue(op2->gtVNPair)))
         {
             return assertionIndex;
+        }
+
+        if ((curAssertion->assertionKind == OAK_EQUAL) && (curAssertion->op1.kind == O1K_EXACT_TYPE) && op1->OperIs(GT_IND))
+        {
+            JITDUMP("@@ type equality at [%06u] with #02u?\n", dspTreeID(op1), assertionIndex);
+            GenTreeIndir* indir = op1->AsIndir();
+
+            if (indir->Base()->OperIs(GT_LCL_VAR) && !indir->HasIndex() && (indir->Offset() == 0))
+            {
+                JITDUMP("@@ checking local [%06u]\n", indir->Base());
+
+                if ((curAssertion->op1.vn == vnStore->VNConservativeNormalValue(indir->Base()->gtVNPair)) &&
+                    (curAssertion->op2.vn == vnStore->VNConservativeNormalValue(op2->gtVNPair)))
+                {
+                    return assertionIndex;
+                }
+                else
+                {
+                    JITDUMP("@@ fail\n");
+                }
+            }
+            else
+            {
+                JITDUMP("@@ indir unsuitable\n");
+            }
         }
     }
     return NO_ASSERTION_INDEX;
@@ -3084,6 +3113,7 @@ GenTree* Compiler::optAssertionProp_RelOp(ASSERT_VALARG_TP assertions, GenTree* 
  */
 GenTree* Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions, GenTree* tree, Statement* stmt)
 {
+    JITDUMP("@@ global relop [%06u]\n", dspTreeID(tree));
     GenTree* newTree = tree;
     GenTree* op1     = tree->AsOp()->gtOp1;
     GenTree* op2     = tree->AsOp()->gtOp2;
@@ -3129,13 +3159,13 @@ GenTree* Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions, Gen
         return optAssertionProp_Update(newTree, tree, stmt);
     }
 
-    // Else check if we have an equality check involving a local
+    // Else check if we have an equality check involving a local or an indir
     if (!tree->OperIs(GT_EQ, GT_NE))
     {
         return nullptr;
     }
 
-    if (op1->gtOper != GT_LCL_VAR)
+    if (!op1->OperIs(GT_LCL_VAR, GT_IND))
     {
         return nullptr;
     }
