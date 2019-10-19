@@ -4493,6 +4493,21 @@ ValueNum ValueNumStore::GetArrForLenVn(ValueNum vn)
     return NoVN;
 }
 
+ValueNum ValueNumStore::GetArrForAddrVn(ValueNum vn)
+{
+    if (vn == NoVN)
+    {
+        return NoVN;
+    }
+
+    VNFuncApp funcAttr;
+    if (GetVNFunc(vn, &funcAttr) && (funcAttr.m_func == VNF_PtrToArrElem))
+    {
+        return funcAttr.m_args[1];
+    }
+    return NoVN;
+}
+
 bool ValueNumStore::IsVNNewArr(ValueNum vn, VNFuncApp* funcApp)
 {
     if (vn == NoVN)

@@ -677,6 +677,9 @@ public:
     // If "vn" is VN(a.len) then return VN(a); NoVN if VN(a) can't be determined.
     ValueNum GetArrForLenVn(ValueNum vn);
 
+    // If "vn" is VN(&a[i]) then return VN(a); NoVN if result can't be determined.
+    ValueNum GetArrForAddrVn(ValueNum vn);
+
     // Return true with any Relop except for == and !=  and one operand has to be a 32-bit integer constant.
     bool IsVNConstantBound(ValueNum vn);
 

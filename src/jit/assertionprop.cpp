@@ -3752,6 +3752,134 @@ GenTree* Compiler::optAssertionProp_Call(ASSERT_VALARG_TP assertions, GenTreeCal
                 return optAssertionProp_Update(arg1, call, stmt);
             }
         }
+
+        // Look for covariant store checks that can be optimized to
+        // simple write barriers or even direct stores.
+        if (call->gtCallMethHnd == eeFindHelper(CORINFO_HELP_ARRADDR_ST))
+        {
+            bool           canOptimize   = false;
+            fgArgInfo*     argInfo       = call->fgArgInfo;
+            GenTree* const array         = argInfo->GetArgNode(0);
+            GenTree* const index         = argInfo->GetArgNode(1);
+            GenTree* const originalValue = argInfo->GetArgNode(2);
+            GenTree*       value         = originalValue;
+
+            // We can optimize away the covariant store check, if we can prove one of:
+            //
+            // (1) value is nullptr, or
+            // (2) value being stored came from the same array, or
+            // (3) value being stored came from array of exactly the same type
+            // (4) array is object[]
+            //
+            // We currently look for case (2).
+            //
+            // Case (1) is handled by morph in fgMorphCall.
+            //
+            // Cases (3) and (4) require reliable recovery of array
+            // types from the IR, and so would need enhancements to
+            // gtGetClassHandle, or perhaps seeing if the array VN is
+            // a newarr and obtaining the handle that way...
+            assert(array->TypeGet() == TYP_REF);
+            assert(value->TypeGet() == TYP_REF);
+
+            // Check for store of null. Let morph clean that up.
+            ValueNum valueVn = value->gtVNPair.GetConservative();
+
+            if (valueVn != ValueNumStore::VNForNull())
+            {
+                // See if the value being stored came from an indirection
+                //
+                // We might need to keep looking back through chains of
+                // local assignments.
+                GenTreeIndir* sourceIndir = nullptr;
+                bool          keepLooking = true;
+
+                while (value->IsLocal() && keepLooking)
+                {
+                    keepLooking = false;
+
+                    // Chase ssa def of value.
+                    GenTreeLclVarCommon* lclVar = value->AsLclVarCommon();
+                    const unsigned       ssaNum = lclVar->GetSsaNum();
+                    if (ssaNum != SsaConfig::RESERVED_SSA_NUM)
+                    {
+                        LclSsaVarDsc* ssaData = lvaTable[lclVar->GetLclNum()].GetPerSsaData(ssaNum);
+                        GenTree*      lclDef  = ssaData->m_defLoc.m_tree;
+
+                        if (lclDef != nullptr)
+                        {
+                            // Hack from rangeprop GetSsaDefAsg
+                            // ...oh why does SSA def not point at the ASG?
+                            //
+                            GenTree* asg = lclDef->gtNext;
+
+                            if ((asg != nullptr) && asg->OperIs(GT_ASG))
+                            {
+                                // Look for an the indir tree supplying the value
+                                GenTree* sourceValue = asg->AsOp()->gtOp2->gtEffectiveVal(/*commaOnly*/ true);
+
+                                if (sourceValue->OperGet() == GT_IND)
+                                {
+                                    // Found an indir
+                                    sourceIndir = sourceValue->AsIndir();
+                                    break;
+                                }
+                                else if (sourceValue->IsLocal())
+                                {
+                                    // We should be walking up the dom tree, so no need
+                                    // to protect against looping.
+                                    value       = sourceValue;
+                                    keepLooking = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Might also see direct assignment
+                if ((sourceIndir == nullptr) && value->OperIs(GT_IND))
+                {
+                    sourceIndir = value->AsIndir();
+                }
+
+                // If the value to store came from an indirection, see
+                // if that indirection was for an array element.
+                if (sourceIndir != nullptr)
+                {
+                    GenTree* sourceAddr   = sourceIndir->Base();
+                    ValueNum sourceAddrVn = sourceAddr->gtVNPair.GetConservative();
+
+                    // If sourceAddr has an "address of array element VN", find the
+                    // VN for the containing array.
+                    ValueNum sourceArrayVn = vnStore->GetArrForAddrVn(sourceAddrVn);
+
+                    if (sourceArrayVn != ValueNumStore::NoVN)
+                    {
+                        // Is this the same array?
+                        if (sourceArrayVn == array->gtVNPair.GetConservative())
+                        {
+                            JITDUMP(
+                                "VN based same-array store optimization: [%06u] does not need covariant store check.\n",
+                                dspTreeID(call));
+                            canOptimize = true;
+                        }
+                    }
+                }
+
+                // The helper does a covariance check, bounds check, and write barrier.
+                // We only need the latter two.
+                //
+                // We let fgMorphArrayIndex do the required expansion into jit IR.
+                if (canOptimize)
+                {
+                    GenTree* newIndexTree  = gtNewIndexRef(TYP_REF, array, index);
+                    GenTree* newIndexTree2 = fgMorphArrayIndex(newIndexTree);
+                    GenTree* newAsg        = gtNewAssignNode(newIndexTree2, originalValue);
+
+                    return optAssertionProp_Update(newAsg, call, stmt);
+                }
+            }
+        }
     }
 
     return nullptr;
