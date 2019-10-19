@@ -1334,7 +1334,7 @@ AssertionIndex Compiler::optCreateAssertion(GenTree*         op1,
             else if (optIsTreeKnownIntValue(!optLocalAssertionProp, op2, &cnsValue, &iconFlags))
             {
                 assertion.assertionKind  = assertionKind;
-                assertion.op2.kind       = O2K_IND_CNS_INT;
+                assertion.op2.kind       = O2K_CONST_INT;
                 assertion.op2.u1.iconVal = cnsValue;
                 assertion.op2.vn         = vnStore->VNConservativeNormalValue(op2->gtVNPair);
 
@@ -1978,20 +1978,12 @@ AssertionInfo Compiler::optAssertionGenJtrue(GenTree* tree)
         (call->gtCallMethHnd == eeFindHelper(CORINFO_HELP_ISINSTANCEOFCLASS)) ||
         (call->gtCallMethHnd == eeFindHelper(CORINFO_HELP_ISINSTANCEOFANY)))
     {
-        // TODO-Cleanup: Arg nodes should be retrieved by other means (e.g. GetArgNode)
-        // that do not involve gtCallLateArgs directly. The helper parameter order is
-        // actually (methodTable, object) but the method table tends to end up last in
-        // gtCallLateArgs because it is usually a constant.
-        GenTree* objectNode      = call->gtCallLateArgs->GetNode();
-        GenTree* methodTableNode = call->gtCallLateArgs->GetNext()->GetNode();
-
-        // Swap the nodes if they're not ordered as expected.
-        if (objectNode->TypeGet() == TYP_I_IMPL)
-        {
-            jitstd::swap(objectNode, methodTableNode);
-        }
+        fgArgInfo* const argInfo = call->fgArgInfo;
+        GenTree* objectNode      = argInfo->GetArgNode(1);
+        GenTree* methodTableNode = argInfo->GetArgNode(0);
 
         assert(objectNode->TypeGet() == TYP_REF);
+        assert(methodTableNode->TypeGet() == TYP_I_IMPL);
 
         // Reverse the assertion
         assert((assertionKind == OAK_EQUAL) || (assertionKind == OAK_NOT_EQUAL));
@@ -2296,8 +2288,10 @@ AssertionIndex Compiler::optAssertionIsSubrange(GenTree*         tree,
  */
 AssertionIndex Compiler::optAssertionIsSubtype(GenTree* tree, GenTree* methodTableArg, ASSERT_VALARG_TP assertions)
 {
+    JITDUMP("@@@@ subtype @ [%06u]\n", dspTreeID(tree));
     if (!optLocalAssertionProp && BitVecOps::IsEmpty(apTraits, assertions))
     {
+        JITDUMP("@@@@ no assertions fail\n");
         return NO_ASSERTION_INDEX;
     }
     for (AssertionIndex index = 1; index <= optAssertionCount; index++)
@@ -2311,26 +2305,34 @@ AssertionIndex Compiler::optAssertionIsSubtype(GenTree* tree, GenTree* methodTab
         if (curAssertion->assertionKind != OAK_EQUAL ||
             (curAssertion->op1.kind != O1K_SUBTYPE && curAssertion->op1.kind != O1K_EXACT_TYPE))
         {
+            JITDUMP("@@@@ not interested in assertion %d\n", dspTreeID(tree), index);
             continue;
         }
+
+        JITDUMP("@@@@ subtype @ [%06u] with assertion %d\n", dspTreeID(tree), index);
 
         // If local assertion prop use "lcl" based comparison, if global assertion prop use vn based comparison.
         if ((optLocalAssertionProp) ? (curAssertion->op1.lcl.lclNum != tree->AsLclVarCommon()->GetLclNum())
                                     : (curAssertion->op1.vn != vnStore->VNConservativeNormalValue(tree->gtVNPair)))
         {
+            JITDUMP("@@@@ lcl or vn fail\n");
             continue;
         }
+
+        methodTableArg = methodTableArg->gtEffectiveVal(true);
 
         if (curAssertion->op2.kind == O2K_IND_CNS_INT)
         {
             if (methodTableArg->gtOper != GT_IND)
             {
+                JITDUMP("@@@@ indir fail\n");
                 continue;
             }
             methodTableArg = methodTableArg->AsOp()->gtOp1;
         }
         else if (curAssertion->op2.kind != O2K_CONST_INT)
         {
+            JITDUMP("@@@@ const fail\n");
             continue;
         }
 
@@ -2338,12 +2340,17 @@ AssertionIndex Compiler::optAssertionIsSubtype(GenTree* tree, GenTree* methodTab
         unsigned iconFlags      = 0;
         if (!optIsTreeKnownIntValue(!optLocalAssertionProp, methodTableArg, &methodTableVal, &iconFlags))
         {
+            JITDUMP("@@@@ not const\n");
             continue;
         }
 
         if (curAssertion->op2.u1.iconVal == methodTableVal)
         {
             return index;
+        }
+        else
+        {
+            JITDUMP("@@@@ != const\n");
         }
     }
     return NO_ASSERTION_INDEX;
