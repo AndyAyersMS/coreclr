@@ -1978,9 +1978,9 @@ AssertionInfo Compiler::optAssertionGenJtrue(GenTree* tree)
         (call->gtCallMethHnd == eeFindHelper(CORINFO_HELP_ISINSTANCEOFCLASS)) ||
         (call->gtCallMethHnd == eeFindHelper(CORINFO_HELP_ISINSTANCEOFANY)))
     {
-        fgArgInfo* const argInfo = call->fgArgInfo;
-        GenTree* objectNode      = argInfo->GetArgNode(1);
-        GenTree* methodTableNode = argInfo->GetArgNode(0);
+        fgArgInfo* const argInfo         = call->fgArgInfo;
+        GenTree*         objectNode      = argInfo->GetArgNode(1);
+        GenTree*         methodTableNode = argInfo->GetArgNode(0);
 
         assert(objectNode->TypeGet() == TYP_REF);
         assert(methodTableNode->TypeGet() == TYP_I_IMPL);
@@ -2994,7 +2994,6 @@ AssertionIndex Compiler::optGlobalAssertionIsEqualOrNotEqual(ASSERT_VALARG_TP as
         if (assertionIndex > optAssertionCount)
         {
             break;
-
         }
 
         AssertionDsc* curAssertion = optGetAssertion(assertionIndex);
@@ -3010,14 +3009,15 @@ AssertionIndex Compiler::optGlobalAssertionIsEqualOrNotEqual(ASSERT_VALARG_TP as
             return assertionIndex;
         }
 
-        if ((curAssertion->assertionKind == OAK_EQUAL) && (curAssertion->op1.kind == O1K_EXACT_TYPE) && op1->OperIs(GT_IND))
+        if ((curAssertion->assertionKind == OAK_EQUAL) && (curAssertion->op1.kind == O1K_EXACT_TYPE) &&
+            op1->OperIs(GT_IND))
         {
-            JITDUMP("@@ type equality at [%06u] with #02u?\n", dspTreeID(op1), assertionIndex);
+            JITDUMP("@@ type equality at [%06u] with #%02u?\n", dspTreeID(op1), assertionIndex);
             GenTreeIndir* indir = op1->AsIndir();
 
             if (indir->Base()->OperIs(GT_LCL_VAR) && !indir->HasIndex() && (indir->Offset() == 0))
             {
-                JITDUMP("@@ checking local [%06u]\n", indir->Base());
+                JITDUMP("@@ checking local [%06u]\n", dspTreeID(indir->Base()));
 
                 if ((curAssertion->op1.vn == vnStore->VNConservativeNormalValue(indir->Base()->gtVNPair)) &&
                     (curAssertion->op2.vn == vnStore->VNConservativeNormalValue(op2->gtVNPair)))
@@ -3228,11 +3228,21 @@ GenTree* Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions, Gen
         {
             op1->ChangeOperConst(GT_CNS_INT);
             op1->gtIntCon.gtIconVal = vnStore->ConstantValue<int>(vnCns);
+
+            if (vnStore->IsVNHandle(vnCns))
+            {
+                op1->gtFlags |= (vnStore->GetHandleFlags(vnCns) & GTF_ICON_HDL_MASK);
+            }
         }
         else if (op1->TypeGet() == TYP_LONG)
         {
             op1->ChangeOperConst(GT_CNS_NATIVELONG);
             op1->AsIntConCommon()->SetLngValue(vnStore->ConstantValue<INT64>(vnCns));
+
+            if (vnStore->IsVNHandle(vnCns))
+            {
+                op1->gtFlags |= (vnStore->GetHandleFlags(vnCns) & GTF_ICON_HDL_MASK);
+            }
         }
         else if (op1->TypeGet() == TYP_DOUBLE)
         {
@@ -3267,6 +3277,17 @@ GenTree* Compiler::optAssertionPropGlobal_RelOp(ASSERT_VALARG_TP assertions, Gen
         }
 
         op1->gtVNPair.SetBoth(vnCns); // Preserve the ValueNumPair, as ChangeOperConst/SetOper will clear it.
+
+        // We also can set the VN on the relop.
+        // TODO: do we need to copy over exception info from existing VN...?
+        if (curAssertion->assertionKind == OAK_EQUAL)
+        {
+            tree->gtVNPair.SetBoth(vnStore->VNOneForType(TYP_INT));
+        }
+        else
+        {
+            tree->gtVNPair.SetBoth(vnStore->VNZeroForType(TYP_INT));
+        }
     }
     // If the assertion involves "op2" and "op1" is also a local var, then just morph the tree.
     else if (op2->gtOper == GT_LCL_VAR)
