@@ -17294,8 +17294,8 @@ CORINFO_CLASS_HANDLE Compiler::gtGetHelperCallClassHandle(GenTreeCall* call, boo
 
             if (arrayHnd != NO_CLASS_HANDLE)
             {
-                objClass = arrayHnd;
-                *pIsExact = true;
+                objClass    = arrayHnd;
+                *pIsExact   = true;
                 *pIsNonNull = true;
             }
             break;
