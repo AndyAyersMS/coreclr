@@ -3763,9 +3763,6 @@ GenTree* Compiler::optAssertionProp_Call(ASSERT_VALARG_TP assertions, GenTreeCal
             GenTree* const   index       = argInfo->GetArgNode(1);
             GenTree*         value       = argInfo->GetArgNode(2);
 
-            JITDUMP("*** Covariant array store, array is [%06u], index [%06u], value [%06u]\n", dspTreeID(array),
-                    dspTreeID(index), dspTreeID(value));
-
             // We can optimize away the covariant store check, if we can prove one of:
             //
             // (1) value is nullptr, or
@@ -3773,10 +3770,17 @@ GenTree* Compiler::optAssertionProp_Call(ASSERT_VALARG_TP assertions, GenTreeCal
             // (3) value being stored came from array of exactly the same type
             // (4) array is exactly T[], and value is at least T
             // (5) array is T[] with T final,  and value is at least T
+            //
+            // Case (2) is handled here.
+            //
+            // Case (1) is handled in the importer and in morph.
+            // Cases (4-5) are handled in the importer.
+            // We don't check for case (3).
+            //
             assert(array->TypeGet() == TYP_REF);
             assert(value->TypeGet() == TYP_REF);
 
-            // Look for case (1)
+            // Look for case (1), so we can skip it.
             ValueNum valueVn = value->gtVNPair.GetConservative();
 
             if (valueVn == ValueNumStore::VNForNull())
@@ -3865,83 +3869,6 @@ GenTree* Compiler::optAssertionProp_Call(ASSERT_VALARG_TP assertions, GenTreeCal
                 }
             }
 
-            // Look for cases (3-5)
-            if (!canOptimize)
-            {
-                bool                 isExact     = false;
-                bool                 isNonNull   = false;
-                CORINFO_CLASS_HANDLE arrayHandle = gtGetClassHandle(array, &isExact, &isNonNull);
-
-                if (arrayHandle != NO_CLASS_HANDLE)
-                {
-                    // There are some methods in corelib where we're storing to an array but the IL
-                    // doesn't reflect this (see SZArrayHelper). Avoid for now.
-                    DWORD attribs = info.compCompHnd->getClassAttribs(arrayHandle);
-                    if ((attribs & CORINFO_FLG_ARRAY) != 0)
-                    {
-                        CORINFO_CLASS_HANDLE arrayElementHandle = nullptr;
-                        CorInfoType arrayElemType = info.compCompHnd->getChildType(arrayHandle, &arrayElementHandle);
-
-#ifdef DEBUG
-                        // Verify array type handle is really an array of ref type
-                        assert(arrayElemType == CORINFO_TYPE_CLASS);
-#endif // DEBUG
-
-                        // Do we know the type of the destination array exactly?
-                        if (isExact)
-                        {
-                            // Case (4): if array is exactly object[], all stored values are compatible
-                            if (arrayElementHandle == impGetObjectClass())
-                            {
-                                canOptimize = true;
-                                JITDUMP("VN based object[] array store optimization: [%06u] does not need covariant "
-                                        "store check.\n",
-                                        dspTreeID(call));
-                                printf("VN based object[] array store optimization: [%06u] does not need covariant "
-                                       "store check, in %s.\n",
-                                       dspTreeID(call), info.compFullName);
-                            }
-                            // Case (3): if we know the value being stored came from an array, see what we know about
-                            // that array's type...
-                            else if (sourceIndir != nullptr)
-                            {
-                                // TODO: Need to find actual array operand and check its type,
-                                // so back to ParseArray & friends...
-                            }
-                        }
-                        else
-                        {
-                            // Is the array element type final?
-                            DWORD elementAttribs = info.compCompHnd->getClassAttribs(arrayElementHandle);
-                            DWORD flagsMask = CORINFO_FLG_FINAL | CORINFO_FLG_MARSHAL_BYREF | CORINFO_FLG_CONTEXTFUL |
-                                              CORINFO_FLG_VARIANCE | CORINFO_FLG_ARRAY;
-                            bool elementTypeIsExact = ((elementAttribs & flagsMask) == CORINFO_FLG_FINAL);
-
-                            if (elementTypeIsExact)
-                            {
-                                // Yep. What do we know about the type of value being stored...?
-                                bool                 valueIsExact   = false;
-                                bool                 valueIsNonNull = false;
-                                CORINFO_CLASS_HANDLE valueHandle =
-                                    gtGetClassHandle(value, &valueIsExact, &valueIsNonNull);
-
-                                if (valueHandle == arrayElementHandle)
-                                {
-                                    // Case (5): storing T to a final T[]
-                                    canOptimize = true;
-                                    JITDUMP("VN based T[] (T final) array store optimization: [%06u] does not need "
-                                            "covariant store check.\n",
-                                            dspTreeID(call));
-                                    printf("VN based T[] (T final) array store optimization: [%06u] does not need "
-                                           "covariant store check, in %s.\n",
-                                           dspTreeID(call), info.compFullName);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             // The helper does a covariance check, bounds check, and write barrier.
             // We only need the latter two. The bounds check is explicit in jit IR,
             // and the write barrier still implicit at this stage.
@@ -3963,7 +3890,6 @@ GenTree* Compiler::optAssertionProp_Call(ASSERT_VALARG_TP assertions, GenTreeCal
                     GenTree* earlyArg = use.GetNode();
                     if (earlyArg->IsNothingNode() || earlyArg->IsArgPlaceHolderNode())
                     {
-                        JITDUMP("EarlyArg node [%06u] is nop or placeholder; ignoring\n", dspTreeID(earlyArg));
                         continue;
                     }
 
@@ -3973,14 +3899,11 @@ GenTree* Compiler::optAssertionProp_Call(ASSERT_VALARG_TP assertions, GenTreeCal
                         //
                         // Note assertion prop may have made changes
                         // in the early arg tree, so we also need to
-                        // remorph... if/when we move this to a new phase
-                        // we won't need to worry about this.
+                        // remorph these.
                         Statement* earlyArgStmt = gtNewStmt(earlyArg, callILOffset);
-                        JITDUMP("Early Arg node [%06u] is setup node; hoisting to new stmt\n", dspTreeID(earlyArg));
-                        DISPSTMT(earlyArgStmt);
                         fgInsertStmtBefore(compCurBB, stmt, earlyArgStmt);
-                        fgMorphBlockStmt(compCurBB, earlyArgStmt DEBUGARG("covariant"));
-                        JITDUMP("After remorphing\n");
+                        fgMorphBlockStmt(compCurBB, earlyArgStmt DEBUGARG("covariant array store opt"));
+                        JITDUMP("After remorphing hoisted setup code in call\n");
                         DISPSTMT(earlyArgStmt);
                     }
                     else
@@ -4033,9 +3956,6 @@ GenTree* Compiler::optAssertionProp_Call(ASSERT_VALARG_TP assertions, GenTreeCal
                 assert(arrayNode != nullptr);
                 assert(valueNode != nullptr);
                 assert(indexNode != nullptr);
-
-                JITDUMP("Using array=[%06u], index=[%06u], value=[%06u]\n", dspTreeID(arrayNode), dspTreeID(valueNode),
-                        dspTreeID(indexNode));
 
                 // Build a GT_INDEX for the address, and let morph expand it out.
                 //
