@@ -5025,17 +5025,16 @@ bool Compiler::optIsLoopClonable(unsigned loopInd)
     return true;
 }
 
-/*****************************************************************************
- *
- *  Identify loop cloning opportunities, derive loop cloning conditions,
- *  perform loop cloning, use the derived conditions to choose which
- *  path to take.
- */
+//--------------------------------------------------------------------------------------------------
+// optCloneLoops - Look for loops that can be optimized by doing some checks up front, and then 
+//   branching to either a fast or slow version.
+//
 void Compiler::optCloneLoops()
 {
     JITDUMP("\n*************** In optCloneLoops()\n");
     if (optLoopCount == 0 || !optCanCloneLoops())
     {
+        JITDUMP("No loops to clone, or cloning disabled\n");
         return;
     }
 
@@ -5049,78 +5048,102 @@ void Compiler::optCloneLoops()
 
     LoopCloneContext context(optLoopCount, getAllocator());
 
-    // Obtain array optimization candidates in the context.
-    optObtainLoopCloningOpts(&context);
-
-    // For each loop, derive cloning conditions for the optimization candidates.
-    for (unsigned i = 0; i < optLoopCount; ++i)
+    // We process loops from highest index to lowest, so
+    // that we are processing inner loops before outer loops.
+    //
+    // This allows outerloop cloning decisions to take inner loop
+    // cloning decisions into account.
+    for (unsigned j = 0; j < optLoopCount; ++j)
     {
-        JitExpandArrayStack<LcOptInfo*>* optInfos = context.GetLoopOptInfo(i);
-        if (optInfos == nullptr)
+        unsigned i = optLoopCount - 1 - j;
+        JITDUMP("** Considering cloning loop L%02u\n", i);
+
+        if (!optIsLoopClonable(i))
         {
+            JITDUMP("** loop L%02u not clonable\n", i);
             continue;
         }
 
-        if (!optDeriveLoopCloningConditions(i, &context) || !optComputeDerefConditions(i, &context))
+        if ((optLoopTable[i].lpFlags & LPFLG_REMOVED) != 0)
         {
-            JITDUMP("> Conditions could not be obtained\n");
+            JITDUMP("** loop L%02u was removed\n", i);
+            continue;
+        }
+
+        if ((optLoopTable[i].lpChild != BasicBlock::NOT_IN_LOOP) && (JitConfig.JitCloneOuterLoops() == 0))
+        {
+            JITDUMP("** loop L%02u is a outer loop, and outer loop cloning is disabled\n", i);
+            continue;
+        }
+
+        if (!optIdentifyLoopOptInfo(i, &context))
+        {
+            JITDUMP("** loop L%02u not suitable for cloning\n");
+            continue;
+        }
+
+        optIdentifyLoopOptCandiates(i, &context);
+        JitExpandArrayStack<LcOptInfo*>* optInfos = context.GetLoopOptInfo(i);
+
+        if (optInfos == nullptr)
+        {
+            JITDUMP("** loop L%02u has no optimization candidate trees\n", i);
+            continue;
+        }
+
+        if (!optDeriveLoopCloningConditions(i, &context))
+        {
+            JITDUMP("** loop L%02u cloning conditions could not be derived\n", i);
             context.CancelLoopOptInfo(i);
+            continue;
         }
-        else
+
+        if (!optComputeDerefConditions(i, &context))
         {
-            bool allTrue  = false;
-            bool anyFalse = false;
-            context.EvaluateConditions(i, &allTrue, &anyFalse DEBUGARG(verbose));
-            if (anyFalse)
-            {
-                context.CancelLoopOptInfo(i);
-            }
-            if (allTrue)
-            {
-                // Perform static optimizations on the fast path since we always
-                // have to take the cloned path.
-                optPerformStaticOptimizations(i, &context DEBUGARG(false));
-
-                // No need to clone.
-                context.CancelLoopOptInfo(i);
-            }
+            JITDUMP("** loop L%02u deref conditions could not be derived\n", i);
+            context.CancelLoopOptInfo(i);
+            continue;
         }
-    }
 
-#if 0
-    // The code in this #if has been useful in debugging loop cloning issues, by
-    // enabling selective enablement of the loop cloning optimization according to
-    // method hash.
-#ifdef DEBUG
-    unsigned methHash = info.compMethodHash();
-    char* lostr = getenv("loopclonehashlo");
-    unsigned methHashLo = 0;
-    if (lostr != NULL) 
-    {
-        sscanf_s(lostr, "%x", &methHashLo);
-        // methHashLo = (unsigned(atoi(lostr)) << 2);  // So we don't have to use negative numbers.
-    }
-    char* histr = getenv("loopclonehashhi");
-    unsigned methHashHi = UINT32_MAX;
-    if (histr != NULL) 
-    {
-        sscanf_s(histr, "%x", &methHashHi);
-        // methHashHi = (unsigned(atoi(histr)) << 2);  // So we don't have to use negative numbers.
-    }
-    if (methHash < methHashLo || methHash > methHashHi)
-        return;
-#endif
-#endif
-
-    for (unsigned i = 0; i < optLoopCount; ++i)
-    {
-        if (context.GetLoopOptInfo(i) != nullptr)
+        bool allTrue  = false;
+        bool anyFalse = false;
+        context.EvaluateConditions(i, &allTrue, &anyFalse DEBUGARG(verbose));
+        if (anyFalse)
         {
-            optLoopsCloned++;
-            context.OptimizeConditions(i DEBUGARG(verbose));
-            context.OptimizeBlockConditions(i DEBUGARG(verbose));
-            optCloneLoop(i, &context);
+            JITDUMP("** loop L%02u some conditions were false\n", i);
+            context.CancelLoopOptInfo(i);
+            continue;
         }
+
+        if (allTrue)
+        {
+            JITDUMP("** loop L%02u conditions always true, will directly optimize\n", i);
+            // Perform static optimizations on the fast path since we always
+            // have to take the cloned path.
+            optPerformStaticOptimizations(i, &context DEBUGARG(false));
+
+            // No need to clone.
+            context.CancelLoopOptInfo(i);
+            continue;
+        }
+
+        // Todo: some kind of profitability assessment.
+        //
+        // Rough idea is to compute a loop size cost when doing the tree walks 
+        // looking for candidates ... then a benefit assessment based on weights
+        // and number of candidates, and then see if we like the benefit/cost
+        // tradeoff.
+        JITDUMP("** cloning loop L%02u\n", i);
+
+        optLoopsCloned++;
+        context.OptimizeConditions(i DEBUGARG(verbose));
+        context.OptimizeBlockConditions(i DEBUGARG(verbose));
+        optCloneLoop(i, &context);
+    }
+
+    if (optLoopsCloned > 0)
+    {
+        printf("@@@ %u loops cloned in %s\n", optLoopsCloned, info.compFullName);
     }
 
 #ifdef DEBUG
@@ -8081,32 +8104,6 @@ ssize_t Compiler::optGetArrayRefScaleAndIndex(GenTree* mul, GenTree** pIndex DEB
     return scale;
 }
 
-//------------------------------------------------------------------------------
-// optObtainLoopCloningOpts: Identify optimization candidates and update
-//      the "context" for array optimizations.
-//
-// Arguments:
-//     context     -  data structure where all loop cloning info is kept. The
-//                    optInfo fields of the context are updated with the
-//                    identified optimization candidates.
-//
-void Compiler::optObtainLoopCloningOpts(LoopCloneContext* context)
-{
-    for (unsigned i = 0; i < optLoopCount; i++)
-    {
-        JITDUMP("Considering loop %d to clone for optimizations.\n", i);
-        if (optIsLoopClonable(i))
-        {
-            if (!(optLoopTable[i].lpFlags & LPFLG_REMOVED))
-            {
-                optIdentifyLoopOptInfo(i, context);
-            }
-        }
-        JITDUMP("------------------------------------------------------------\n");
-    }
-    JITDUMP("\n");
-}
-
 //------------------------------------------------------------------------
 // optIdentifyLoopOptInfo: Identify loop optimization candidates an also
 //      check if the loop is suitable for the optimizations performed.
@@ -8190,6 +8187,25 @@ bool Compiler::optIdentifyLoopOptInfo(unsigned loopNum, LoopCloneContext* contex
         return false;
     }
 
+    return true;
+}
+
+//------------------------------------------------------------------------
+// optIdentifyLoopOptCandidates: Identify loop optimization candidates
+//
+// Arguments:
+//     loopNum - the current loop index for which conditions are derived.
+//     context - data structure where information onloop cloning candidates
+//                will be stored
+//
+// Notes:
+//      Identify the optimization candidates and update the "context"
+//      parameter with all the contextual information necessary to perform
+//      the optimization later.
+//
+void Compiler::optIdentifyLoopOptCandidates(unsigned loopNum, LoopCloneContext* context)
+{
+
 #ifdef DEBUG
     GenTree* op1 = pLoop->lpIterator();
     noway_assert((op1->gtOper == GT_LCL_VAR) && (op1->AsLclVarCommon()->GetLclNum() == ivLclNum));
@@ -8211,8 +8227,6 @@ bool Compiler::optIdentifyLoopOptInfo(unsigned loopNum, LoopCloneContext* contex
                           computeStack);
         }
     }
-
-    return true;
 }
 
 //---------------------------------------------------------------------------------------------------------------
