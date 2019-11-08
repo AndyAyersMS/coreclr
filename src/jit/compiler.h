@@ -6799,6 +6799,7 @@ public:
     bool optExtractArrIndex(GenTree* tree, ArrIndex* result, unsigned lhsNum);
     bool optReconstructArrIndex(GenTree* tree, ArrIndex* result, unsigned lhsNum);
     bool optIdentifyLoopOptInfo(unsigned loopNum, LoopCloneContext* context);
+    void optIdentifyLoopOptCandidates(unsigned loopNum, LoopCloneContext* context);
     static fgWalkPreFn optCanOptimizeByLoopCloningVisitor;
     fgWalkResult optCanOptimizeByLoopCloning(GenTree* tree, LoopCloneVisitorInfo* info);
     bool optIsLoopClonable(unsigned loopInd);

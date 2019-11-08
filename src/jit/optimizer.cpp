@@ -5046,6 +5046,12 @@ void Compiler::optCloneLoops()
     }
 #endif
 
+    bool cloneOuterLoops = false;
+
+#ifdef DEBUG
+    cloneOuterLoops = JitConfig.JitCloneOuterLoops();
+#endif
+
     LoopCloneContext context(optLoopCount, getAllocator());
 
     // We process loops from highest index to lowest, so
@@ -5070,7 +5076,7 @@ void Compiler::optCloneLoops()
             continue;
         }
 
-        if ((optLoopTable[i].lpChild != BasicBlock::NOT_IN_LOOP) && (JitConfig.JitCloneOuterLoops() == 0))
+        if (cloneOuterLoops && (optLoopTable[i].lpChild != BasicBlock::NOT_IN_LOOP))
         {
             JITDUMP("** loop L%02u is a outer loop, and outer loop cloning is disabled\n", i);
             continue;
@@ -5082,7 +5088,7 @@ void Compiler::optCloneLoops()
             continue;
         }
 
-        optIdentifyLoopOptCandiates(i, &context);
+        optIdentifyLoopOptCandidates(i, &context);
         JitExpandArrayStack<LcOptInfo*>* optInfos = context.GetLoopOptInfo(i);
 
         if (optInfos == nullptr)
@@ -5141,12 +5147,12 @@ void Compiler::optCloneLoops()
         optCloneLoop(i, &context);
     }
 
+#ifdef DEBUG
     if (optLoopsCloned > 0)
     {
         printf("@@@ %u loops cloned in %s\n", optLoopsCloned, info.compFullName);
     }
 
-#ifdef DEBUG
     if (verbose)
     {
         printf("\nAfter loop cloning:\n");
@@ -8205,6 +8211,13 @@ bool Compiler::optIdentifyLoopOptInfo(unsigned loopNum, LoopCloneContext* contex
 //
 void Compiler::optIdentifyLoopOptCandidates(unsigned loopNum, LoopCloneContext* context)
 {
+    noway_assert(loopNum < optLoopCount);
+
+    LoopDsc* pLoop = &optLoopTable[loopNum];
+    BasicBlock* head = pLoop->lpHead;
+    BasicBlock* end  = pLoop->lpBottom;
+    BasicBlock* beg  = head->bbNext;
+    unsigned ivLclNum = pLoop->lpIterVar();
 
 #ifdef DEBUG
     GenTree* op1 = pLoop->lpIterator();
