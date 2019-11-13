@@ -21,6 +21,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #include "emit.h"
 #include "register_arg_convention.h"
 #include "jitstd/algorithm.h"
+#include "osr.h"
 
 /*****************************************************************************/
 
@@ -277,6 +278,12 @@ void Compiler::lvaInitTypeRef()
         {
             CORINFO_CLASS_HANDLE clsHnd = info.compCompHnd->getArgClass(&info.compMethodInfo->locals, localsSig);
             lvaSetClass(varNum, clsHnd);
+        }
+
+        if (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varNum))
+        {
+            JITDUMP("-- V%02u is osr exposed\n", varNum);
+            lvaSetVarAddrExposed(varNum);
         }
     }
 
@@ -1017,7 +1024,8 @@ void Compiler::lvaInitUserArgs(InitVarDscInfo* varDscInfo)
 #else  // !UNIX_AMD64_ABI
         compArgSize += argSize;
 #endif // !UNIX_AMD64_ABI
-        if (info.compIsVarArgs || isHfaArg || isSoftFPPreSpill)
+        if (info.compIsVarArgs || isHfaArg || isSoftFPPreSpill ||
+            (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varDscInfo->varNum)))
         {
 #if defined(_TARGET_X86_)
             varDsc->lvStkOffs = compArgSize;
@@ -5541,13 +5549,11 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
     stkOffs -= TARGET_POINTER_SIZE; // return address;
 
     // If we are an OSR method, we "inherit" the frame of the original method,
-    // and the stack is already double aligned on entry (since the RA push and
-    // any alignment work happend "before").
+    // and the stack is already double aligned on entry (since the return adddress push
+    // and any special alignment push happend "before").
     if (opts.IsOSR())
     {
-        int* ppTable      = (int*)info.compPatchpointInfo;
-        originalFrameSize = ppTable[2];
-
+        originalFrameSize    = info.compPatchpointInfo->FpToSpDelta();
         originalFrameStkOffs = stkOffs;
         stkOffs -= originalFrameSize;
     }
@@ -5883,9 +5889,12 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
                 if (lclNum < info.compLocalsCount)
                 {
                     // Find frampointer-relative offset on original frame
-                    int* offsetTable           = (int*)info.compPatchpointInfo;
-                    int  originalOffset        = offsetTable[3 + lclNum];
-                    int  offset                = originalFrameSize + originalOffset + originalFrameStkOffs;
+                    int originalOffset = info.compPatchpointInfo->Offset(lclNum);
+                    int offset         = originalFrameSize + originalOffset + originalFrameStkOffs;
+
+                    printf("--- V%02u (stack) old rbp offset %d old frame %d new offset %d (%02xH)\n", lclNum,
+                           originalOffset, originalFrameSize, offset, offset);
+
                     lvaTable[lclNum].lvStkOffs = offset;
                     continue;
                 }

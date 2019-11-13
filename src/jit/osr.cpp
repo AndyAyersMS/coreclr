@@ -57,7 +57,7 @@ bool PatchpointInfo::IsExposed(unsigned localNum) const
 {
     assert(localNum < m_numberOfLocals);
 
-    return (m_offsetAndExposureData[localNum] & exposureMask);
+    return ((m_offsetAndExposureData[localNum] & EXPOSURE_MASK) != 0);
 }
 
 //------------------------------------------------------------------------
@@ -69,9 +69,9 @@ bool PatchpointInfo::IsExposed(unsigned localNum) const
 void PatchpointInfo::SetIsExposed(unsigned localNum)
 {
     assert(localNum < m_numberOfLocals);
-    assert((m_offsetAndExposureData[localNum] & exposureMask) == 0);
+    assert((m_offsetAndExposureData[localNum] & EXPOSURE_MASK) == 0);
 
-    m_offsetAndExposureData[localNum] |= exposureMask;
+    m_offsetAndExposureData[localNum] |= EXPOSURE_MASK;
 }
 
 //------------------------------------------------------------------------
@@ -87,7 +87,7 @@ int PatchpointInfo::Offset(unsigned localNum) const
 {
     assert(localNum < m_numberOfLocals);
 
-    return (m_offsetAndExposureData[localNum] & ~exposureMask);
+    return (m_offsetAndExposureData[localNum] & ~EXPOSURE_MASK);
 }
 
 //------------------------------------------------------------------------
@@ -100,8 +100,8 @@ int PatchpointInfo::Offset(unsigned localNum) const
 void PatchpointInfo::SetOffset(unsigned localNum, int offset)
 {
     assert(localNum < m_numberOfLocals);
-    assert((m_offsetAndExposureData[localNum] & ~exposureMask) == 0);
-    assert((offset & exposureMask) == 0);
+    assert((m_offsetAndExposureData[localNum] & ~EXPOSURE_MASK) == 0);
+    assert((offset & EXPOSURE_MASK) == 0);
 
     m_offsetAndExposureData[localNum] |= offset;
 }

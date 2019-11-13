@@ -4961,6 +4961,8 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
     // Generate PatchpointInfo
     if (doesMethodHavePatchpoints())
     {
+        // Currently we always transition from Tier0 unoptimized code, and
+        // so we expect the method to have a frame pointer.
         assert(codeGen->isFramePointerUsed());
 
         PatchpointInfo* patchpointInfo =
@@ -4976,7 +4978,9 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
             patchpointInfo->SetOffset(lclNum, varDsc->lvStkOffs);
             if (varDsc->lvAddrExposed)
             {
+                printf("-- marking V%02u as exposed in ppinfo\n", lclNum);
                 patchpointInfo->SetIsExposed(lclNum);
+                assert(patchpointInfo->IsExposed(lclNum));
             }
         }
     }
@@ -5297,7 +5301,7 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
     {
         printf("\nJIT: osr request!\n");
         info.compILEntry        = osrInfo->ilOffset;
-        info.compPatchpointInfo = osrInfo->patchpointInfo;
+        info.compPatchpointInfo = (PatchpointInfo*)osrInfo->patchpointInfo;
     }
 
     virtualStubParamInfo = new (this, CMK_Unknown) VirtualStubParamInfo(IsTargetAbi(CORINFO_CORERT_ABI));

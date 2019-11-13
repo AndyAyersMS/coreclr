@@ -76,6 +76,7 @@ class emitter;             // defined in emit.h
 struct ShadowParamVarInfo; // defined in GSChecks.cpp
 struct InitVarDscInfo;     // defined in register_arg_convention.h
 class FgStack;             // defined in flowgraph.cpp
+class PatchpointInfo;      // defined in osr.h
 #if FEATURE_ANYCSE
 class CSE_DataFlow; // defined in OptCSE.cpp
 #endif
@@ -8791,13 +8792,13 @@ public:
         // The following holds the class attributes for the method we're compiling.
         unsigned compClassAttr;
 
-        const BYTE*    compCode;
-        IL_OFFSET      compILCodeSize;     // The IL code size
-        IL_OFFSET      compILImportSize;   // Estimated amount of IL actually imported
-        IL_OFFSET      compILEntry;        // The IL entry point (normally 0)
-        void*          compPatchpointInfo; // Patchpoint data for OSR (normally nullptr)
-        UNATIVE_OFFSET compNativeCodeSize; // The native code size, after instructions are issued. This
-                                           // is less than (compTotalHotCodeSize + compTotalColdCodeSize) only if:
+        const BYTE*     compCode;
+        IL_OFFSET       compILCodeSize;     // The IL code size
+        IL_OFFSET       compILImportSize;   // Estimated amount of IL actually imported
+        IL_OFFSET       compILEntry;        // The IL entry point (normally 0)
+        PatchpointInfo* compPatchpointInfo; // Patchpoint data for OSR (normally nullptr)
+        UNATIVE_OFFSET  compNativeCodeSize; // The native code size, after instructions are issued. This
+                                            // is less than (compTotalHotCodeSize + compTotalColdCodeSize) only if:
         // (1) the code is not hot/cold split, and we issued less code than we expected, or
         // (2) the code is hot/cold split, and we issued less code than we expected
         // in the cold section (the hot section will always be padded out to compTotalHotCodeSize).

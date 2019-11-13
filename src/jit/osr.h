@@ -41,11 +41,15 @@ public:
     void SetOffset(unsigned localNum, int offset);
 
 private:
-    const int exposureMask = 0x1;
-    unsigned  m_ilSize;
-    unsigned  m_numberOfLocals;
-    int       m_fpToSpDelta;
-    int       m_offsetAndExposureData[];
+    enum
+    {
+        EXPOSURE_MASK = 0x1
+    };
+
+    unsigned m_ilSize;
+    unsigned m_numberOfLocals;
+    int      m_fpToSpDelta;
+    int      m_offsetAndExposureData[];
 };
 
 #endif // _OSR_H_

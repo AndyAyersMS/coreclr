@@ -6482,7 +6482,7 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
     // Initialize args and locals for OSR
     if (compiler->opts.IsOSR())
     {
-        PatchpointInfo* patchpointInfo = (PatchpointInfo*)compiler->info.compPatchpointInfo;
+        PatchpointInfo* patchpointInfo = compiler->info.compPatchpointInfo;
 
         // basic sanity checks (make sure we're OSRing the right method)
         assert(patchpointInfo->NumberOfLocals() == compiler->info.compLocalsCount);
@@ -6533,8 +6533,8 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
                     offset += genSPtoFPdelta();
                 }
 
-                printf("--- V%02u old rbp offset %d old frame %d this frame sp-fp %d new offset %d\n", varNum, stkOffs,
-                       originalFrameSize, genSPtoFPdelta(), offset);
+                printf("--- V%02u (reg) old rbp offset %d old frame %d this frame sp-fp %d new offset %d (%02xH)\n",
+                       varNum, stkOffs, originalFrameSize, genSPtoFPdelta(), offset, offset);
 
                 GetEmitter()->emitIns_R_AR(ins_Load(lclTyp), size, varDsc->GetRegNum(), genFramePointerReg(), offset);
             }
@@ -8365,7 +8365,7 @@ void CodeGen::genFnEpilog(BasicBlock* block)
         // will save and restore what it needs.
         if (compiler->opts.IsOSR())
         {
-            PatchpointInfo* patchpointInfo    = (PatchpointInfo*)compiler->info.compPatchpointInfo;
+            PatchpointInfo* patchpointInfo    = compiler->info.compPatchpointInfo;
             const int       originalFrameSize = patchpointInfo->FpToSpDelta();
 
             // Use add since we know the SP-to-FP delta of the original method.
