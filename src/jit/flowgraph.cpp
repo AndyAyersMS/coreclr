@@ -5188,14 +5188,14 @@ void Compiler::fgObserveInlineConstants(OPCODE opcode, const FgStack& stack, boo
 //   IL, from a higher to lower IL offset.
 //
 // Arguments:
-//   startBlock -- target of the jump
-//   endBlock -- source of the jump
+//   targetBlock -- target of the jump
+//   sourceBlock -- source of the jump
 
-void Compiler::fgMarkBackwardJump(BasicBlock* startBlock, BasicBlock* endBlock)
+void Compiler::fgMarkBackwardJump(BasicBlock* targetBlock, BasicBlock* sourceBlock)
 {
-    noway_assert(startBlock->bbNum <= endBlock->bbNum);
+    noway_assert(targetBlock->bbNum <= sourceBlock->bbNum);
 
-    for (BasicBlock* block = startBlock; block != endBlock->bbNext; block = block->bbNext)
+    for (BasicBlock* block = targetBlock; block != sourceBlock->bbNext; block = block->bbNext)
     {
         if ((block->bbFlags & BBF_BACKWARD_JUMP) == 0)
         {
@@ -5204,7 +5204,7 @@ void Compiler::fgMarkBackwardJump(BasicBlock* startBlock, BasicBlock* endBlock)
         }
     }
 
-    startBlock->bbFlags |= BBF_BACKWARD_JUMP_TARGET;
+    targetBlock->bbFlags |= BBF_BACKWARD_JUMP_TARGET;
 }
 
 /*****************************************************************************

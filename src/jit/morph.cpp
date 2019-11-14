@@ -7160,9 +7160,12 @@ GenTree* Compiler::fgMorphPotentialTailCall(GenTreeCall* call)
     // fgMorphRecursiveFastTailCallIntoLoop() is not handling update of generic context while transforming
     // a recursive call into a loop.  Another option is to modify gtIsRecursiveCall() to check that the
     // generic type parameters of both caller and callee generic method are the same.
+    //
+    // TODO-CQ: enable this for OSR. Currently OSR will not import the entry blocks of a method, so there
+    // is no way to do this transformation.
     if (opts.compTailCallLoopOpt && canFastTailCall && gtIsRecursiveCall(call) && !lvaReportParamTypeArg() &&
         !lvaKeepAliveAndReportThis() && !call->IsVirtual() && !hasStructParam && !varTypeIsStruct(call->TypeGet()) &&
-        ((info.compClassAttr & CORINFO_FLG_MARSHAL_BYREF) == 0))
+        ((info.compClassAttr & CORINFO_FLG_MARSHAL_BYREF) == 0) && !opts.IsOSR())
     {
         fastTailCallToLoop = true;
     }
