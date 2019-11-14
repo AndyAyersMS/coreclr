@@ -4978,9 +4978,7 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
             patchpointInfo->SetOffset(lclNum, varDsc->lvStkOffs);
             if (varDsc->lvAddrExposed)
             {
-                printf("-- marking V%02u as exposed in ppinfo\n", lclNum);
                 patchpointInfo->SetIsExposed(lclNum);
-                assert(patchpointInfo->IsExposed(lclNum));
             }
         }
     }

@@ -4711,6 +4711,13 @@ void Compiler::lvaFixVirtualFrameOffsets()
         assert(varDsc->lvFramePointerBased); // We always access it RBP-relative.
         assert(!varDsc->lvMustInit);         // It is never "must init".
         varDsc->lvStkOffs = codeGen->genCallerSPtoInitialSPdelta() + lvaLclSize(lvaOutgoingArgSpaceVar);
+
+        // With OSR the new frame RBP points at the base of the new frame, but the virtual offsets
+        // are from the base of the old frame. Adjust.
+        if (opts.IsOSR())
+        {
+            varDsc->lvStkOffs -= info.compPatchpointInfo->FpToSpDelta();
+        }
     }
 #endif
 
@@ -4744,6 +4751,13 @@ void Compiler::lvaFixVirtualFrameOffsets()
         delta += codeGen->genTotalFrameSize() - codeGen->genSPtoFPdelta();
     }
 #endif //_TARGET_AMD64_
+
+    // For OSR, update the delta to reflect the current policy that
+    // RBP points at the base of the new frame, and RSP is relative to that RBP.
+    if (opts.IsOSR())
+    {
+        delta += info.compPatchpointInfo->FpToSpDelta();
+    }
 
     unsigned lclNum;
     for (lclNum = 0, varDsc = lvaTable; lclNum < lvaCount; lclNum++, varDsc++)
@@ -4808,8 +4822,7 @@ void Compiler::lvaFixVirtualFrameOffsets()
             // On System V environments the stkOffs could be 0 for params passed in registers.
             //
             // For normal methods only EBP relative references can have negative offsets.
-            // For OSR methods, args and on-frame root method locals can have negative offsets.
-            assert(codeGen->isFramePointerUsed() || opts.IsOSR() || varDsc->lvStkOffs >= 0);
+            assert(codeGen->isFramePointerUsed() || varDsc->lvStkOffs >= 0);
         }
     }
 
@@ -5884,16 +5897,21 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
             }
 
             // For OSR args and locals, we use the slots on the orginal frame.
+            //
+            // Todo: can also do this for some other original frame slots, like
+            // * sync object
+            // * generic context
             if (allocateOnFrame && opts.IsOSR())
             {
                 if (lclNum < info.compLocalsCount)
                 {
-                    // Find frampointer-relative offset on original frame
+                    // Add frampointer-relative offset of this OSR live local in the original frame
+                    // to the offset of original frame in our new frame.
                     int originalOffset = info.compPatchpointInfo->Offset(lclNum);
-                    int offset         = originalFrameSize + originalOffset + originalFrameStkOffs;
+                    int offset         = originalFrameStkOffs + originalOffset;
 
-                    printf("--- V%02u (stack) old rbp offset %d old frame %d new offset %d (%02xH)\n", lclNum,
-                           originalOffset, originalFrameSize, offset, offset);
+                    printf("--- V%02u (on old frame) old rbp offset %d old frame offset %d new virt offset %d\n",
+                           lclNum, originalOffset, originalFrameStkOffs, offset);
 
                     lvaTable[lclNum].lvStkOffs = offset;
                     continue;

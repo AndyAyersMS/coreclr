@@ -7394,7 +7394,18 @@ void CodeGen::genFnProlog()
         }
     }
 
-    assert((genInitStkLclCnt > 0) == hasUntrLcl);
+    // With OSR we may have untracked locals that were initialized by the original method.
+    if (hasUntrLcl)
+    {
+        if (compiler->opts.IsOSR())
+        {
+            // todo: suitable assertion here
+        }
+        else
+        {
+            assert(genInitStkLclCnt > 0);
+        }
+    }
 
 #ifdef DEBUG
     if (verbose)
@@ -8380,9 +8391,6 @@ void CodeGen::genFnEpilog(BasicBlock* block)
     {
         noway_assert(doubleAlignOrFramePointerUsed());
 
-        // OSR not yet ready for its frame to have a frame ptr.
-        assert(!compiler->opts.IsOSR());
-
         /* Tear down the stack frame */
 
         bool needMovEspEbp = false;
@@ -8409,9 +8417,11 @@ void CodeGen::genFnEpilog(BasicBlock* block)
 
             if (compiler->compLocallocUsed)
             {
+                // OSR not yet ready for localloc
+                assert(!compiler->opts.IsOSR());
+
                 // ESP may be variable if a localloc was actually executed. Reset it.
                 //    lea esp, [ebp - compiler->compCalleeRegsPushed * REGSIZE_BYTES]
-
                 needLea = true;
             }
             else if (!regSet.rsRegsModified(RBM_CALLEE_SAVED))
@@ -8481,8 +8491,24 @@ void CodeGen::genFnEpilog(BasicBlock* block)
         //
         // Pop the callee-saved registers (if any)
         //
-
         genPopCalleeSavedRegisters();
+
+        // Extra OSR adjust to get to where RBP was saved by the original frame.
+        //
+        // Note the other callee saves made in that frame are dead, the current method
+        // will save and restore what it needs.
+        if (compiler->opts.IsOSR())
+        {
+            PatchpointInfo* patchpointInfo    = compiler->info.compPatchpointInfo;
+            const int       originalFrameSize = patchpointInfo->FpToSpDelta();
+
+            // Use add since we know the SP-to-FP delta of the original method.
+            // We also need to skip over the slot where we pushed RBP.
+            //
+            // If we ever allow the original method to have localloc this will
+            // need to change.
+            inst_RV_IV(INS_add, REG_SPBASE, originalFrameSize + TARGET_POINTER_SIZE, EA_PTRSIZE);
+        }
 
 #ifdef _TARGET_AMD64_
         assert(!needMovEspEbp); // "mov esp, ebp" is not allowed in AMD64 epilogs
