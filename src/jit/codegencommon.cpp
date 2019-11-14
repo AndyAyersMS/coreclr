@@ -6499,7 +6499,7 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
             {
                 if (!VarSetOps::IsMember(compiler, compiler->fgFirstBB->bbLiveIn, varDsc->lvVarIndex))
                 {
-                    printf("--- V%02u (reg) not live at entry\n", varNum);
+                    JITDUMP("---OSR-- V%02u (reg) not live at entry\n", varNum);
                     continue;
                 }
 
@@ -6525,13 +6525,20 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
                 // frame's RBP relative offset.
 
                 int offset = originalFrameSize + stkOffs;
-                if (!isFramePointerUsed())
+
+                if (isFramePointerUsed())
+                {
+                    // ??
+                    offset += TARGET_POINTER_SIZE;
+                }
+                else
                 {
                     offset += genSPtoFPdelta();
                 }
 
-                printf("--- V%02u (reg) old rbp offset %d old frame %d this frame sp-fp %d new offset %d (%02xH)\n",
-                       varNum, stkOffs, originalFrameSize, genSPtoFPdelta(), offset, offset);
+                printf(
+                    "---OSR--- V%02u (reg) old rbp offset %d old frame %d this frame sp-fp %d new offset %d (%02xH)\n",
+                    varNum, stkOffs, originalFrameSize, genSPtoFPdelta(), offset, offset);
 
                 GetEmitter()->emitIns_R_AR(ins_Load(lclTyp), size, varDsc->GetRegNum(), genFramePointerReg(), offset);
             }

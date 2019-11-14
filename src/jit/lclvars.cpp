@@ -5910,8 +5910,8 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
                     int originalOffset = info.compPatchpointInfo->Offset(lclNum);
                     int offset         = originalFrameStkOffs + originalOffset;
 
-                    printf("--- V%02u (on old frame) old rbp offset %d old frame offset %d new virt offset %d\n",
-                           lclNum, originalOffset, originalFrameStkOffs, offset);
+                    JITDUMP("---OSR--- V%02u (on old frame) old rbp offset %d old frame offset %d new virt offset %d\n",
+                            lclNum, originalOffset, originalFrameStkOffs, offset);
 
                     lvaTable[lclNum].lvStkOffs = offset;
                     continue;
@@ -6262,12 +6262,6 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
     }
     pushedCount += 1; // pushed PC (return address)
 #endif
-
-    if (opts.IsOSR())
-    {
-        printf("--- compLclFrameSize %d, stkOffs %d, pushedSize %d, originalFrameSize %d\n", compLclFrameSize, stkOffs,
-               pushedCount * (int)TARGET_POINTER_SIZE, originalFrameSize);
-    }
 
     noway_assert(compLclFrameSize + originalFrameSize ==
                  (unsigned)-(stkOffs + (pushedCount * (int)TARGET_POINTER_SIZE)));

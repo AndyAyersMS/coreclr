@@ -5297,7 +5297,6 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
     }
     else if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
     {
-        printf("\nJIT: osr request!\n");
         info.compILEntry        = osrInfo->ilOffset;
         info.compPatchpointInfo = (PatchpointInfo*)osrInfo->patchpointInfo;
     }
@@ -5397,6 +5396,11 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
 
     info.compFullName  = eeGetMethodFullName(methodHnd);
     info.compPerfScore = 0.0;
+
+    if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
+    {
+        printf("\nJIT: osr request at IL offset %d for %s\n", info.compILEntry, info.compFullName);
+    }
 #endif // defined(DEBUG) || defined(LATE_DISASM)
 
 #ifdef DEBUG

@@ -5578,6 +5578,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
 
     // Do we already have a suitable OSR variant?
     PCODE osrVariant = ppInfo->m_existingCode;
+    BOOL triggerTransition = FALSE;
 
     // No, see if the time has come to make one.
     if (osrVariant == NULL)
@@ -5605,7 +5606,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
             ppInfo->m_previousTime = currentTime;
             double milliseconds = 1000;
             double timeDeltaInMilliseconds = (timeDeltaTicks * milliseconds) / PatchpointInfo::s_qpcFrequency.QuadPart;
-            printf("### Runtime: patchpoint 0x%p hit:%d dt:%0.2f\n", ip, hitCount, timeDeltaInMilliseconds); 
+            // printf("### Runtime: patchpoint 0x%p hit:%d dt:%0.2f\n", ip, hitCount, timeDeltaInMilliseconds); 
             
             // Second hit: we now have one data point on recurrence time
             if (hitCount == 1)
@@ -5625,7 +5626,6 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                 // counting the jit time. Though for syncronous OSR, we won't care.
                 double deltaTimeDelta = timeDeltaInMilliseconds - ppInfo->m_recurrenceTime;
                 ppInfo->m_recurrenceTime += 0.10 * deltaTimeDelta;
-                BOOL triggerTransition = FALSE;
                 
                 // If this is a CPU intensive patchpoint less than (~1us per recurrence)
                 // 1us * 10K = 10ms or less
@@ -5677,7 +5677,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                     CodeVersionManager* codeVersionManager = pMD->GetCodeVersionManager();
                     NativeCodeVersion osrNativeCodeVersion;
                     {
-                        printf("### Runtime: adding code version\n");
+                        // printf("### Runtime: adding code version\n");
                         CodeVersionManager::TableLockHolder lock(codeVersionManager);
                         ILCodeVersion ilCodeVersion = codeVersionManager->GetILCodeVersion(pMD, rejitId);
                         
@@ -5708,7 +5708,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                     
                     // Delegate this to a slow path helper that sets up a proper frame?
                     {
-                        printf("### Runtime: preparing code\n");
+                        // printf("### Runtime: preparing code\n");
                         GCX_PREEMP(); // hmmm, we didn't set up a proper transition frame
                         PrepareCodeConfigBuffer configBuffer(osrNativeCodeVersion);
                         PrepareCodeConfig *config = configBuffer.GetConfig();
@@ -5743,7 +5743,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
 #endif
 
 #if _DEBUG
-        printf("### Runtime: patchpoint 0x%p TRANSITION to code at %p\n", ip, osrVariant);
+        // printf("### Runtime: patchpoint 0x%p TRANSITION to code at %p\n", ip, osrVariant);
 #endif
         
         // Find context for the original method
@@ -5799,8 +5799,11 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         frameContext.Rbp = currentFP;
 
 #if _DEBUG
-        printf("### Runtime: patchpoint 0x%p TRANSITION RSP %p RBP %p RIP %p (prev RBP %p)\n", 
-            ip, currentSP, currentFP, osrVariant, *(char**)currentFP);
+        if (triggerTransition)
+        {
+            printf("### Runtime: patchpoint 0x%p TRANSITION RSP %p RBP %p RIP %p (prev RBP %p)\n", 
+                ip, currentSP, currentFP, osrVariant, *(char**)currentFP);
+        }
 #endif
         
         // Install new entry point as IP
