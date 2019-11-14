@@ -6017,7 +6017,8 @@ void Compiler::fgFindBasicBlocks()
     // Might need to do something special if we're entering try regions?
     if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_OSR))
     {
-        assert(info.compILEntry > 0);
+        // Note: IL offset 0 may be loop head
+        assert(info.compILEntry >= 0);
         BasicBlock* bbTarget = fgLookupBB(info.compILEntry);
 
         fgEnsureFirstBBisScratch();
