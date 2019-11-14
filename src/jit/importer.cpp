@@ -8503,10 +8503,18 @@ DONE:
     // A tail recursive call is a potential loop from the current block to the start of the method.
     if (canTailCall && gtIsRecursiveCall(methHnd))
     {
-        JITDUMP("\nFound tail recursive call in the method. Mark " FMT_BB " to " FMT_BB
-                " as having a backward branch.\n",
-                fgFirstBB->bbNum, compCurBB->bbNum);
-        fgMarkBackwardJump(fgFirstBB, compCurBB);
+        if (opts.IsOSR())
+        {
+            JITDUMP("\nFound tail recursive call in the method, but will treat as normal call because of OSR "
+                    "limitations\n");
+        }
+        else
+        {
+            JITDUMP("\nFound tail recursive call in the method. Mark " FMT_BB " to " FMT_BB
+                    " as having a backward branch.\n",
+                    fgFirstBB->bbNum, compCurBB->bbNum);
+            fgMarkBackwardJump(fgFirstBB, compCurBB);
+        }
     }
 
     // Note: we assume that small return types are already normalized by the managed callee
