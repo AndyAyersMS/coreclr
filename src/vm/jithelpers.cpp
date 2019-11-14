@@ -5631,7 +5631,11 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                 // 1us * 10K = 10ms or less
                 //    AND 
                 // we've hit it a lot (~50,000x), trigger.
-                if ((ppInfo->m_recurrenceTime <= (0.001 * counterBump)) && ((hitCount * counterBump) >= 50000))
+                //
+                // if ((ppInfo->m_recurrenceTime <= (0.001 * counterBump)) && ((hitCount * counterBump) >= 50000))
+
+                // For now just transition on the 10th callback
+                if ((hitCount * counterBump) >= 50000)
                 {
                     triggerTransition = TRUE;
                 }

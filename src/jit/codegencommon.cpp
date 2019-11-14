@@ -6495,17 +6495,14 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         {
             LclVarDsc* varDsc = compiler->lvaGetDesc(varNum);
 
-            // If the local is dead or immediately stored to we don't need to initialize it...
-            //
-            // TODO: if not dead, we should zero GC refs for untracked locals
-            if (varDsc->lvRefCnt() == 0)
-            {
-                JITDUMP("NO OSR Init for unused V%02u\n", varNum);
-                continue;
-            }
-
             if (varDsc->lvIsInReg())
             {
+                if (!VarSetOps::IsMember(compiler, compiler->fgFirstBB->bbLiveIn, varDsc->lvVarIndex))
+                {
+                    printf("--- V%02u (reg) not live at entry\n", varNum);
+                    continue;
+                }
+
                 // Note we are always reading from the original frame here
                 var_types lclTyp = genActualType(varDsc->lvType);
                 emitAttr  size   = emitTypeSize(lclTyp);

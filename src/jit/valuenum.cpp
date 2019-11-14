@@ -5694,9 +5694,16 @@ void Compiler::fgValueNumber()
             // these are variables that are read before being initialized (at least on some control flow paths)
             // if they are not must-init, then they get VNF_InitVal(i), as with the param case.)
 
-            bool      isZeroed = (info.compInitMem || varDsc->lvMustInit);
-            ValueNum  initVal  = ValueNumStore::NoVN; // We must assign a new value to initVal
-            var_types typ      = varDsc->TypeGet();
+            bool isZeroed = (info.compInitMem || varDsc->lvMustInit);
+
+            // For OSR locals we may miss seeing the initial def. Assume they're not zero.
+            if (opts.IsOSR() && varDsc->lvIsLocal)
+            {
+                isZeroed = false;
+            }
+
+            ValueNum  initVal = ValueNumStore::NoVN; // We must assign a new value to initVal
+            var_types typ     = varDsc->TypeGet();
 
             switch (typ)
             {
