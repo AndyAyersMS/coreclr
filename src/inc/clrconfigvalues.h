@@ -640,6 +640,15 @@ RETAIL_CONFIG_DWORD_INFO(INTERNAL_TC_CallCounting, W("TC_CallCounting"), 1, "Ena
 #endif
 
 ///
+/// On-Stack Replacement
+///
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+RETAIL_CONFIG_DWORD_INFO(INTERNAL_OSR_CounterBump, W("OSR_CounterBump"), 5000, "Number of times a patchpoint hits before calling back to the runtime")
+RETAIL_CONFIG_DWORD_INFO(INTERNAL_OSR_HitLimit, W("OSR_HitLimit"), 10, "Number of times a patchpoint must call back to trigger an OSR transition")
+RETAIL_CONFIG_DWORD_INFO(INTERNAL_OSR_Verbose, W("OSR_Verbose"), 0, "Nonzero enables OSR diganostic output")
+#endif
+
+///
 /// Entry point slot backpatch
 ///
 #ifndef CROSSGEN_COMPILE

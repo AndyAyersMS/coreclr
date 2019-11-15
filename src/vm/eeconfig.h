@@ -288,6 +288,13 @@ public:
     DWORD         TieredCompilation_CallCountingDelayMs() const { LIMITED_METHOD_CONTRACT; return tieredCompilation_CallCountingDelayMs; }
 #endif
 
+#if defined(FEATURE_ON_STACK_REPLACEMENT)
+    // OSR Config
+    bool          OSR_Verbose() const { LIMITED_METHOD_CONTRACT; return fOSR_Verbose; }
+    DWORD         OSR_CounterBump() const { LIMITED_METHOD_CONTRACT; return dwOSR_CounterBump; }
+    DWORD         OSR_HitLimit() const { LIMITED_METHOD_CONTRACT; return dwOSR_HitLimit; }
+#endif
+
 #ifndef CROSSGEN_COMPILE
     bool          BackpatchEntryPointSlots() const { LIMITED_METHOD_CONTRACT; return backpatchEntryPointSlots; }
 #endif
@@ -1021,6 +1028,12 @@ private: //----------------------------------------------------------------
     bool fTieredCompilation_CallCounting;
     DWORD tieredCompilation_CallCountThreshold;
     DWORD tieredCompilation_CallCountingDelayMs;
+#endif
+
+#if defined(FEATURE_ON_STACK_REPLACEMENT)
+    bool fOSR_Verbose;
+    DWORD dwOSR_HitLimit;
+    DWORD dwOSR_CounterBump;
 #endif
 
 #ifndef CROSSGEN_COMPILE
