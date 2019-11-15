@@ -7,8 +7,26 @@
 #pragma hdrstop
 #endif
 
-// Likely will/would become a class hierarchy based on strategy
-// For now, uses one counter per frame.
+//------------------------------------------------------------------------
+// PatchpointTransformer
+//
+// Insert patchpoint checks into Tier0 methods, based on locations identified
+// during importation (see impImportBlockCode).
+//
+// Policy decisions implemented here:
+//
+//    * One counter per stack frame, regardless of the number of patchpoints.
+//    * Shared counter value initialized to zero in prolog.
+//    * Patchpoint trees fully expanded into jit IR. Deferring expansion could
+//       lead to more compact code and lessen size overhead for Tier0.
+//
+// Workarounds and limitations:
+//
+//   * no patchpoints in handler regions
+//   * no patchpoints for localloc methods
+//   * no patchpoints in try regions (workaround)
+//   * no patchpoints for synchronized methods (workaround)
+//
 class PatchpointTransformer
 {
     unsigned  ppCounterLclNum;
@@ -168,11 +186,14 @@ private:
     }
 };
 
-// Expansion of patchpoints into control flow.
+//------------------------------------------------------------------------
+// fgTransformPatchpoints: expansion of patchpoints into control flow.
+//
+// Notes:
 //
 // Patchpoints are placed in the JIT IR during importation, and get expanded
 // here into normal JIT IR.
-
+//
 void Compiler::fgTransformPatchpoints()
 {
     JITDUMP("\n*************** in fgTransformPatchpoints\n");
@@ -185,22 +206,28 @@ void Compiler::fgTransformPatchpoints()
         return;
     }
 
-    // We currently can't handle OSR in methods with localloc.
+    // We currently can't do OSR in methods with localloc.
     // Such methods don't have a fixed relationship between frame and stack pointers.
-
+    //
+    // This is true whether or not the localloc was executed in the original method.
     if (compLocallocUsed)
     {
         JITDUMP(" -- unable to handle methods with localloc\n");
         return;
     }
 
-    // printf("@@@@ Placing patchpoints in %s\n", info.compFullName);
+    // We currently can't do OSR in synchronized methods. We need to alter
+    // the logic in fgAddSyncMethodEnterExit for OSR to not try and obtain the
+    // monitor (since the original method will have done so) and set the monitor
+    // obtained flag to true (or reuse the original method slot value).
+    if ((info.compFlags & CORINFO_FLG_SYNCH) != 0)
+    {
+        JITDUMP(" -- unable to handle synchronized methods\n");
+        return;
+    }
 
     PatchpointTransformer ppTransformer(this);
     int                   count = ppTransformer.Run();
-
-    // assert(count > 0);
-
     JITDUMP("\n*************** After fgTransformPatchpoints() [%d patchpoints transformed]\n", count);
     INDEBUG(if (verbose) { fgDispBasicBlocks(true); });
 }
