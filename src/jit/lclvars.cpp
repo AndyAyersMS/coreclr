@@ -5875,7 +5875,7 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
                In other words, we will not calculate the "base" address of the struct local if
                the promotion type is PROMOTION_TYPE_FIELD_DEPENDENT.
             */
-            if (lvaIsFieldOfDependentlyPromotedStruct(varDsc))
+            if (!opts.IsOSR() && lvaIsFieldOfDependentlyPromotedStruct(varDsc))
             {
                 continue;
             }
@@ -5914,6 +5914,26 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
                             lclNum, originalOffset, originalFrameStkOffs, offset);
 
                     lvaTable[lclNum].lvStkOffs = offset;
+                    continue;
+                }
+
+                if (lvaIsFieldOfDependentlyPromotedStruct(varDsc))
+                {
+                    const unsigned parentLclNum = varDsc->lvParentLcl;
+
+                    if (parentLclNum < info.compLocalsCount)
+                    {
+                        LclVarDsc* parentVarDsc         = &lvaTable[parentLclNum];
+                        int        originalParentOffset = info.compPatchpointInfo->Offset(parentLclNum);
+                        int        parentOffset         = originalFrameStkOffs + originalParentOffset;
+                        int        fieldOffset          = parentOffset + varDsc->lvFldOffset;
+
+                        JITDUMP("---OSR--- V%02u (on old frame) (dependent field of V%02u) new virt offset %d\n",
+                                lclNum, parentLclNum, fieldOffset);
+
+                        lvaTable[lclNum].lvStkOffs = fieldOffset;
+                    }
+
                     continue;
                 }
             }

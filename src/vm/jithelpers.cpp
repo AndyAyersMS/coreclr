@@ -5601,7 +5601,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         {
             if (verbose > 0)
             {
-                printf("### Runtime: patchpoint 0x%p hit:0\n", ip); 
+                printf("### Runtime: patchpoint 0x%p hit:0 (limit %d)\n", ip, hitLimit); 
             }
             ppInfo->m_previousTime = currentTime;
             triggerTransition = (hitLimit <= 0);
