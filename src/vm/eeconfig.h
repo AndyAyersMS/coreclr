@@ -290,7 +290,7 @@ public:
 
 #if defined(FEATURE_ON_STACK_REPLACEMENT)
     // OSR Config
-    bool          OSR_Verbose() const { LIMITED_METHOD_CONTRACT; return fOSR_Verbose; }
+    DWORD         OSR_Verbose() const { LIMITED_METHOD_CONTRACT; return dwOSR_Verbose; }
     DWORD         OSR_CounterBump() const { LIMITED_METHOD_CONTRACT; return dwOSR_CounterBump; }
     DWORD         OSR_HitLimit() const { LIMITED_METHOD_CONTRACT; return dwOSR_HitLimit; }
 #endif
@@ -1031,7 +1031,7 @@ private: //----------------------------------------------------------------
 #endif
 
 #if defined(FEATURE_ON_STACK_REPLACEMENT)
-    bool fOSR_Verbose;
+    DWORD dwOSR_Verbose;
     DWORD dwOSR_HitLimit;
     DWORD dwOSR_CounterBump;
 #endif

@@ -6536,7 +6536,7 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
                     offset += genSPtoFPdelta();
                 }
 
-                printf(
+                JITDUMP(
                     "---OSR--- V%02u (reg) old rbp offset %d old frame %d this frame sp-fp %d new offset %d (%02xH)\n",
                     varNum, stkOffs, originalFrameSize, genSPtoFPdelta(), offset, offset);
 

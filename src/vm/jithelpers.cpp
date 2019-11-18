@@ -5665,7 +5665,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
             MethodDesc* pMD = codeInfo.GetMethodDesc();
             
 #if _DEBUG
-            if (verbose > 0)
+            if (verbose > 1)
             {
                 printf("### Runtime: patchpoint 0x%p TRIGGER hit:%d bump:%d recur:%0.3fms native:0x%x il:0x%x in 0x%p %s::%s %s\n",
                     ip, 
@@ -5747,10 +5747,6 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         // undo any hijack, the EE will re-attempt it later.
         pThread->UnhijackThread();
 #endif
-
-#if _DEBUG
-        // printf("### Runtime: patchpoint 0x%p TRANSITION to code at %p\n", ip, osrVariant);
-#endif
         
         // Find context for the original method
         CONTEXT frameContext;
@@ -5807,7 +5803,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
 #if _DEBUG
         // Note we can get here w/o triggering, if there is an existing OSR method and
         // we hit the patchpoint.
-        if (((verbose > 0) && triggerTransition) || (verbose > 1))
+        if ((verbose > 0 && triggerTransition) || (verbose > 1))
         {
             printf("### Runtime: patchpoint 0x%p TRANSITION%s RSP %p RBP %p RIP %p (prev RBP %p)\n", 
                 ip, triggerTransition? "" : " (existing)", currentSP, currentFP, osrVariant, *(char**)currentFP);

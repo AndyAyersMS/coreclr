@@ -340,7 +340,7 @@ HRESULT EEConfig::Init()
 #endif
 
 #if defined(FEATURE_ON_STACK_REPLACEMENT)
-    fOSR_Verbose = false;
+    dwOSR_Verbose = 0;
     dwOSR_HitLimit = 10;
     dwOSR_CounterBump = 5000;
 #endif
@@ -1247,7 +1247,7 @@ fTrackDynamicMethodDebugInfo = CLRConfig::GetConfigValue(CLRConfig::UNSUPPORTED_
 #endif
 
 #if defined(FEATURE_ON_STACK_REPLACEMENT)
-    fOSR_Verbose = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_Verbose) != 0;
+    dwOSR_Verbose = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_Verbose);
     dwOSR_HitLimit = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_HitLimit);
     dwOSR_CounterBump = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_CounterBump);
 #endif
