@@ -1768,20 +1768,33 @@ void LinearScan::insertZeroInitRefPositions()
             Interval* interval = getIntervalForLocalVar(varIndex);
             if (compiler->info.compInitMem || varTypeIsGC(varDsc->TypeGet()))
             {
+                varDsc->lvMustInit = true;
+
+                // OSR will handle init of locals and promoted fields thereof
+                if (compiler->opts.IsOSR())
+                {
+                    if (varDsc->lvIsLocal)
+                    {
+                        JITDUMP(" will be initialized by OSR\n");
+                        varDsc->lvMustInit = false;
+                    }
+                    else if (varDsc->lvIsStructField)
+                    {
+                        LclVarDsc* parentVarDsc = compiler->lvaGetDesc(varDsc->lvParentLcl);
+
+                        if (parentVarDsc->lvIsLocal)
+                        {
+                            JITDUMP(" will be initialized by OSR\n");
+                            varDsc->lvMustInit = false;
+                        }
+                    }
+                }
+
                 JITDUMP(" creating ZeroInit\n");
                 GenTree*     firstNode = getNonEmptyBlock(compiler->fgFirstBB)->firstNode();
                 RefPosition* pos =
                     newRefPosition(interval, MinLocation, RefTypeZeroInit, firstNode, allRegs(interval->registerType));
                 pos->setRegOptional(true);
-
-                if (compiler->opts.IsOSR() && varDsc->lvIsLocal) // also promoted locals...
-                {
-                    // OSR will handle init
-                }
-                else
-                {
-                    varDsc->lvMustInit = true;
-                }
             }
             else
             {

@@ -4555,9 +4555,21 @@ void CodeGen::genCheckUseBlockInit()
         }
 
         // For OSR, initialization of locals will be handled specially
-        if (compiler->opts.IsOSR() && (varNum < compiler->info.compLocalsCount))
+        if (compiler->opts.IsOSR())
         {
-            continue;
+            if (varDsc->lvIsLocal)
+            {
+                continue;
+            }
+            else if (varDsc->lvIsStructField)
+            {
+                LclVarDsc* parentVarDsc = compiler->lvaGetDesc(varDsc->lvParentLcl);
+
+                if (parentVarDsc->lvIsLocal)
+                {
+                    continue;
+                }
+            }
         }
 
         if (!varDsc->lvIsInReg() && !varDsc->lvOnFrame)
@@ -6479,7 +6491,7 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         }
     }
 
-    // Initialize args and locals for OSR
+    // Initialize args and locals for OSR. Note this may include promoted fields.
     if (compiler->opts.IsOSR())
     {
         PatchpointInfo* patchpointInfo = compiler->info.compPatchpointInfo;
@@ -6491,57 +6503,82 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
         const int      originalFrameSize = patchpointInfo->FpToSpDelta();
         const unsigned patchpointInfoLen = patchpointInfo->NumberOfLocals();
 
-        for (unsigned varNum = 0; varNum < patchpointInfoLen; varNum++)
+        for (unsigned varNum = 0; varNum < compiler->lvaCount; varNum++)
         {
-            LclVarDsc* varDsc = compiler->lvaGetDesc(varNum);
+            LclVarDsc* const varDsc      = compiler->lvaGetDesc(varNum);
+            bool             osrMayInit  = false;
+            int              fieldOffset = 0;
+            unsigned         lclNum      = varNum;
 
-            if (varDsc->lvIsInReg())
+            // Screen for the locals that may need initialization
+            if (varDsc->lvIsLocal)
             {
-                if (!VarSetOps::IsMember(compiler, compiler->fgFirstBB->bbLiveIn, varDsc->lvVarIndex))
+                osrMayInit = true;
+            }
+            else if (varDsc->lvIsStructField)
+            {
+                LclVarDsc* parentVarDsc = compiler->lvaGetDesc(varDsc->lvParentLcl);
+
+                if (parentVarDsc->lvIsLocal)
                 {
-                    JITDUMP("---OSR-- V%02u (reg) not live at entry\n", varNum);
-                    continue;
+                    lclNum      = varDsc->lvParentLcl;
+                    fieldOffset = varDsc->lvFldOffset;
+                    osrMayInit  = true;
                 }
+            }
 
-                // Note we are always reading from the original frame here
-                var_types lclTyp = genActualType(varDsc->lvType);
-                emitAttr  size   = emitTypeSize(lclTyp);
+            if (!osrMayInit)
+            {
+                continue;
+            }
 
-                assert(varNum < patchpointInfoLen);
-                const int stkOffs = patchpointInfo->Offset(varNum);
+            if (!varDsc->lvIsInReg())
+            {
+                JITDUMP("---OSR-- V%02u in memory\n", varNum);
+                continue;
+            }
 
-                // stkOffs is the original frame RBP-relative offset
-                // to the var.  We want either an RSP or RBP relative
-                // offset for the current frame.
-                //
-                // If using RSP, we need to add the SP-to-FP delta of
-                // this frame and the SP-to-FP delta of the original
-                // frame... that translates from this frame's RSP to
-                // the old frame RBP. We then add the original frame's
-                // RBP relative offset.
-                //
-                // If using RBP, we need to add the SP-to-FP delta of
-                // the original frame and then add the original
-                // frame's RBP relative offset.
+            if (!VarSetOps::IsMember(compiler, compiler->fgFirstBB->bbLiveIn, varDsc->lvVarIndex))
+            {
+                JITDUMP("---OSR-- V%02u (reg) not live at entry\n", varNum);
+                continue;
+            }
 
-                int offset = originalFrameSize + stkOffs;
+            // Note we are always reading from the original frame here
+            var_types lclTyp = genActualType(varDsc->lvType);
+            emitAttr  size   = emitTypeSize(lclTyp);
 
-                if (isFramePointerUsed())
-                {
-                    // ??
-                    offset += TARGET_POINTER_SIZE;
-                }
-                else
-                {
-                    offset += genSPtoFPdelta();
-                }
+            assert(lclNum < patchpointInfoLen);
+            const int stkOffs = patchpointInfo->Offset(lclNum) + fieldOffset;
 
-                JITDUMP(
-                    "---OSR--- V%02u (reg) old rbp offset %d old frame %d this frame sp-fp %d new offset %d (%02xH)\n",
+            // stkOffs is the original frame RBP-relative offset
+            // to the var.  We want either an RSP or RBP relative
+            // offset for the current frame.
+            //
+            // If using RSP, we need to add the SP-to-FP delta of
+            // this frame and the SP-to-FP delta of the original
+            // frame... that translates from this frame's RSP to
+            // the old frame RBP. We then add the original frame's
+            // RBP relative offset.
+            //
+            // If using RBP, we need to add the SP-to-FP delta of
+            // the original frame and then add the original
+            // frame's RBP relative offset.
+            int offset = originalFrameSize + stkOffs;
+
+            if (isFramePointerUsed())
+            {
+                offset += TARGET_POINTER_SIZE;
+            }
+            else
+            {
+                offset += genSPtoFPdelta();
+            }
+
+            JITDUMP("---OSR--- V%02u (reg) old rbp offset %d old frame %d this frame sp-fp %d new offset %d (%02xH)\n",
                     varNum, stkOffs, originalFrameSize, genSPtoFPdelta(), offset, offset);
 
-                GetEmitter()->emitIns_R_AR(ins_Load(lclTyp), size, varDsc->GetRegNum(), genFramePointerReg(), offset);
-            }
+            GetEmitter()->emitIns_R_AR(ins_Load(lclTyp), size, varDsc->GetRegNum(), genFramePointerReg(), offset);
         }
     }
 }
