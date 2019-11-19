@@ -5497,6 +5497,7 @@ public:
         m_recurrenceTime(0),
         m_existingCode(0),
         m_patchpointCount(0),
+        m_patchpointId(0),
         m_triggered(FALSE)
     {
     }
@@ -5507,6 +5508,7 @@ public:
     double m_recurrenceTime;    
     PCODE m_existingCode;
     int m_patchpointCount;
+    int m_patchpointId;
     BOOL m_triggered;
 };
 
@@ -5514,6 +5516,8 @@ typedef EEPtrHashTable JitPatchpointTable;
 JitPatchpointTable *g_pJitPatchpointTable = NULL;
 CrstStatic g_pJitPatchpointCrst;
 LARGE_INTEGER PatchpointInfo::s_qpcFrequency;
+int s_patchpointId = 0;
+static bool warnedLimitedRange = false;
 
 void JIT_Patchpoint(int* counter, int ilOffset)
 {
@@ -5573,25 +5577,45 @@ void JIT_Patchpoint(int* counter, int ilOffset)
             // Hmmn, where to allocate?
             ppInfo = new (nothrow) PatchpointInfo();
             g_pJitPatchpointTable->InsertValue(ip, (HashDatum)ppInfo);
+            ppInfo->m_patchpointId = ++s_patchpointId;
         }
     }
 
     // Do we already have a suitable OSR variant?
     PCODE osrVariant = ppInfo->m_existingCode;
     bool triggerTransition = false;
-    int verbose = g_pConfig->OSR_Verbose();
+    const int verbose = g_pConfig->OSR_Verbose();
+    const int ppId = ppInfo->m_patchpointId;
 
     // No. See if the time has come to make one.
     if (osrVariant == NULL)
     {
         // Policy variables...
-        int counterBump = g_pConfig->OSR_CounterBump();
-        int hitLimit = g_pConfig->OSR_HitLimit();
+        const int counterBump = g_pConfig->OSR_CounterBump();
+        const int hitLimit = g_pConfig->OSR_HitLimit();
+        const int lowId = g_pConfig->OSR_LowId();
+        const int highId = g_pConfig->OSR_HighId();
+
+        if (!warnedLimitedRange && ((lowId != -1) || (highId != 10000000)))
+        {
+            printf("\n**** PATCHPOINTS LIMITED to range [%d,%d]\n\n", lowId, highId);
+            warnedLimitedRange = true;
+        }
 
         // Fetch current hit count, reload on-frame counter
-        int hitCount = ppInfo->m_patchpointCount;
+        const int hitCount = ppInfo->m_patchpointCount;
         ppInfo->m_patchpointCount++;
         *counter = counterBump;
+
+        // Binary-search assist, opt out of some transitions....
+        if ((ppId < lowId) || (ppId > highId))
+        {
+            if ((verbose > 0) && (hitCount == 0))
+            {
+                printf("### Runtime: IGNORING patchpoint [%d] 0x%p hit:0 (limit %d)\n", ppId, ip, hitLimit);
+            }
+            return;
+        }
         
         LARGE_INTEGER currentTime;
         QueryPerformanceCounter(&currentTime);
@@ -5601,7 +5625,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         {
             if (verbose > 0)
             {
-                printf("### Runtime: patchpoint 0x%p hit:0 (limit %d)\n", ip, hitLimit); 
+                printf("### Runtime: patchpoint [%d] 0x%p hit:0 (limit %d)\n", ppId, ip, hitLimit);
             }
             ppInfo->m_previousTime = currentTime;
             triggerTransition = (hitLimit <= 0);
@@ -5615,7 +5639,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
             double timeDeltaInMilliseconds = (timeDeltaTicks * milliseconds) / PatchpointInfo::s_qpcFrequency.QuadPart;
             if (verbose > 1)
             {
-                printf("### Runtime: patchpoint 0x%p hit:%d dt:%0.2f\n", ip, hitCount, timeDeltaInMilliseconds); 
+                printf("### Runtime: patchpoint [%d] 0x%p hit:%d dt:%0.2f\n", ppId, ip, hitCount, timeDeltaInMilliseconds); 
             }
             
             // Second hit: we now have one data point on recurrence time
@@ -5667,7 +5691,8 @@ void JIT_Patchpoint(int* counter, int ilOffset)
 #if _DEBUG
             if (verbose > 1)
             {
-                printf("### Runtime: patchpoint 0x%p TRIGGER hit:%d bump:%d recur:%0.3fms native:0x%x il:0x%x in 0x%p %s::%s %s\n",
+                printf("### Runtime: patchpoint [%d] 0x%p TRIGGER hit:%d bump:%d recur:%0.3fms native:0x%x il:0x%x in 0x%p %s::%s %s\n",
+                    ppId,
                     ip, 
                     hitCount, counterBump, ppInfo->m_recurrenceTime, 
                     codeInfo.GetRelOffset(), ilOffset, 
@@ -5775,8 +5800,8 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         // We expect to be back at the right IP
         if ((UINT_PTR)ip != GetIP(&frameContext))
         {
-            printf("### Runtime: patchpoint 0x%p TRANSITION -- odd that context has ip %p\n",
-                ip, GetIP(&frameContext));
+            printf("### Runtime: patchpoint [%d] 0x%p TRANSITION -- odd that context has ip %p\n",
+                ppId, ip, GetIP(&frameContext));
         }
 
         // Now unwind back to our caller's caller
@@ -5805,8 +5830,8 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         // we hit the patchpoint.
         if ((verbose > 0 && triggerTransition) || (verbose > 1))
         {
-            printf("### Runtime: patchpoint 0x%p TRANSITION%s RSP %p RBP %p RIP %p (prev RBP %p)\n", 
-                ip, triggerTransition? "" : " (existing)", currentSP, currentFP, osrVariant, *(char**)currentFP);
+            printf("### Runtime: patchpoint [%d] 0x%p TRANSITION%s RSP %p RBP %p RIP %p (prev RBP %p)\n", 
+                ppId, ip, triggerTransition? "" : " (existing)", currentSP, currentFP, osrVariant, *(char**)currentFP);
         }
 #endif
         

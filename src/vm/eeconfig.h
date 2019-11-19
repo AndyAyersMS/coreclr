@@ -293,6 +293,8 @@ public:
     DWORD         OSR_Verbose() const { LIMITED_METHOD_CONTRACT; return dwOSR_Verbose; }
     DWORD         OSR_CounterBump() const { LIMITED_METHOD_CONTRACT; return dwOSR_CounterBump; }
     DWORD         OSR_HitLimit() const { LIMITED_METHOD_CONTRACT; return dwOSR_HitLimit; }
+    DWORD         OSR_LowId() const { LIMITED_METHOD_CONTRACT; return dwOSR_LowId; }
+    DWORD         OSR_HighId() const { LIMITED_METHOD_CONTRACT; return dwOSR_HighId; }
 #endif
 
 #ifndef CROSSGEN_COMPILE
@@ -1034,6 +1036,8 @@ private: //----------------------------------------------------------------
     DWORD dwOSR_Verbose;
     DWORD dwOSR_HitLimit;
     DWORD dwOSR_CounterBump;
+    DWORD dwOSR_LowId;
+    DWORD dwOSR_HighId;
 #endif
 
 #ifndef CROSSGEN_COMPILE

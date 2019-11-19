@@ -4759,6 +4759,8 @@ void Compiler::lvaFixVirtualFrameOffsets()
         delta += info.compPatchpointInfo->FpToSpDelta();
     }
 
+    JITDUMP("--- virtual stack offset to actual stack offset delta is %d\n", delta);
+
     unsigned lclNum;
     for (lclNum = 0, varDsc = lvaTable; lclNum < lvaCount; lclNum++, varDsc++)
     {
@@ -4801,6 +4803,7 @@ void Compiler::lvaFixVirtualFrameOffsets()
 
         if (doAssignStkOffs)
         {
+            JITDUMP("-- V%02u was %d, now %d\n", lclNum, varDsc->lvStkOffs, varDsc->lvStkOffs + delta);
             varDsc->lvStkOffs += delta;
 
 #if DOUBLE_ALIGN

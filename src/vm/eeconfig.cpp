@@ -1250,6 +1250,8 @@ fTrackDynamicMethodDebugInfo = CLRConfig::GetConfigValue(CLRConfig::UNSUPPORTED_
     dwOSR_Verbose = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_Verbose);
     dwOSR_HitLimit = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_HitLimit);
     dwOSR_CounterBump = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_CounterBump);
+    dwOSR_LowId = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_LowId);
+    dwOSR_HighId = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_OSR_HighId);
 #endif
 
 #ifndef CROSSGEN_COMPILE

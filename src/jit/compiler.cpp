@@ -4965,14 +4965,20 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
         // so we expect the method to have a frame pointer.
         assert(codeGen->isFramePointerUsed());
 
+        // We will record offsets for all the "locals" here. Could restrict
+        // this to just the IL locals with some extra logic, and save a bit of space,
+        // but would need to adjust all consumers, too.
         PatchpointInfo* patchpointInfo =
             PatchpointInfo::Allocate(info.compCompHnd, info.compLocalsCount, info.compILCodeSize,
                                      codeGen->genSPtoFPdelta() + TARGET_POINTER_SIZE);
 
-        for (unsigned lclNum = 0; lclNum < info.compILlocalsCount; lclNum++)
+        for (unsigned lclNum = 0; lclNum < info.compLocalsCount; lclNum++)
         {
-            // We expect all these to have stack homes
-            LclVarDsc* varDsc = &lvaTable[lclNum];
+            LclVarDsc* varDsc = lvaGetDesc(lclNum);
+
+            // We expect all these to have stack homes, and be FP relative
+            assert(varDsc->lvOnFrame);
+            assert(varDsc->lvFramePointerBased);
 
             // Record FramePtr relative offset (no localloc yet)
             patchpointInfo->SetOffset(lclNum, varDsc->lvStkOffs);
@@ -4980,6 +4986,9 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
             {
                 patchpointInfo->SetIsExposed(lclNum);
             }
+
+            JITDUMP("--OSR-- V%02u is at offset %d%s\n", lclNum, patchpointInfo->Offset(lclNum),
+                    patchpointInfo->IsExposed(lclNum) ? " (exposed)" : "");
         }
     }
 
