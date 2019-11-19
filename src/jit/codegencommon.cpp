@@ -6511,7 +6511,7 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
             unsigned         lclNum      = varNum;
 
             // Screen for the locals that may need initialization
-            if (varDsc->lvIsLocal)
+            if (varDsc->lvIsLocal || varDsc->lvIsParam)
             {
                 osrMayInit = true;
             }
