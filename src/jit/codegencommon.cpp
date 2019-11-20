@@ -7232,6 +7232,17 @@ void CodeGen::genFnProlog()
 
 #ifdef DEBUG
 
+    // For OSR there is a "phantom prolog" to account for the actions taken
+    // in the original frame that impact RBP and RSP on entry to the OSR method.
+    if (compiler->opts.IsOSR())
+    {
+        PatchpointInfo* patchpointInfo    = compiler->info.compPatchpointInfo;
+        const int       originalFrameSize = patchpointInfo->FpToSpDelta();
+
+        compiler->unwindPush(REG_FPBASE);
+        compiler->unwindAllocStack(originalFrameSize);
+    }
+
     if (compiler->compJitHaltMethod())
     {
         /* put a nop first because the debugger and other tools are likely to

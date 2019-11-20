@@ -4968,13 +4968,14 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
         // We will record offsets for all the "locals" here. Could restrict
         // this to just the IL locals with some extra logic, and save a bit of space,
         // but would need to adjust all consumers, too.
-        PatchpointInfo* patchpointInfo =
+        PatchpointInfo* const patchpointInfo =
             PatchpointInfo::Allocate(info.compCompHnd, info.compLocalsCount, info.compILCodeSize,
                                      codeGen->genSPtoFPdelta() + TARGET_POINTER_SIZE);
+        JITDUMP("--OSR--- FP-SP delta is %d\n", patchpointInfo->FpToSpDelta());
 
         for (unsigned lclNum = 0; lclNum < info.compLocalsCount; lclNum++)
         {
-            LclVarDsc* varDsc = lvaGetDesc(lclNum);
+            LclVarDsc* const varDsc = lvaGetDesc(lclNum);
 
             // We expect all these to have stack homes, and be FP relative
             assert(varDsc->lvOnFrame);
@@ -4997,7 +4998,7 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
         // Also note some special caller-SP relative stack offsets.
         if (lvaReportParamTypeArg() || lvaKeepAliveAndReportThis())
         {
-            int offset = lvaToCallerSPRelativeOffset(lvaCachedGenericContextArgOffset(), true);
+            const int offset = lvaToCallerSPRelativeOffset(lvaCachedGenericContextArgOffset(), true);
             JITDUMP("--OSR-- cached generic context offset is %d\n", offset);
             patchpointInfo->SetGenericContextArgOffset(offset);
         }
