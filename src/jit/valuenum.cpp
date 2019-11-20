@@ -5698,21 +5698,9 @@ void Compiler::fgValueNumber()
 
             // For OSR, locals or promoted fields of locals may be missing the initial def
             // because of partial importation. We can't assume they are zero.
-            if (opts.IsOSR())
+            if (lvaIsOSRLocal(lclNum))
             {
-                if (varDsc->lvIsLocal)
-                {
-                    isZeroed = false;
-                }
-                else if (varDsc->lvIsStructField)
-                {
-                    LclVarDsc* parentVarDsc = lvaGetDesc(varDsc->lvParentLcl);
-
-                    if (parentVarDsc->lvIsLocal)
-                    {
-                        isZeroed = false;
-                    }
-                }
+                isZeroed = false;
             }
 
             ValueNum  initVal = ValueNumStore::NoVN; // We must assign a new value to initVal

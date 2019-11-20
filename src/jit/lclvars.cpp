@@ -272,7 +272,6 @@ void Compiler::lvaInitTypeRef()
         }
 
         varDsc->lvOnFrame = true; // The final home for this local variable might be our local stack frame
-        varDsc->lvIsLocal = true;
 
         if (corInfoType == CORINFO_TYPE_CLASS)
         {
@@ -5900,14 +5899,29 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
             }
 
             // For OSR args and locals, we use the slots on the orginal frame.
-            //
-            // Todo: can also do this for some other original frame slots, like
-            // * sync object
-            // * generic context
-            if (allocateOnFrame && opts.IsOSR())
+            if (allocateOnFrame && lvaIsOSRLocal(lclNum))
             {
-                if (lclNum < info.compLocalsCount)
+                // Todo: verify it's ok to handle independent fields that are live on entry
+                // to the OSR method and in memory at entry this way...
+                if (varDsc->lvIsStructField)
                 {
+                    const unsigned parentLclNum = varDsc->lvParentLcl;
+                    assert(parentLclNum < info.compLocalsCount);
+
+                    LclVarDsc* parentVarDsc         = &lvaTable[parentLclNum];
+                    int        originalParentOffset = info.compPatchpointInfo->Offset(parentLclNum);
+                    int        parentOffset         = originalFrameStkOffs + originalParentOffset;
+                    int        fieldOffset          = parentOffset + varDsc->lvFldOffset;
+
+                    JITDUMP("---OSR--- V%02u (on old frame) (promoted field of V%02u) new virt offset %d\n", lclNum,
+                            parentLclNum, fieldOffset);
+
+                    lvaTable[lclNum].lvStkOffs = fieldOffset;
+                }
+                else
+                {
+                    assert(lclNum < info.compLocalsCount);
+
                     // Add frampointer-relative offset of this OSR live local in the original frame
                     // to the offset of original frame in our new frame.
                     int originalOffset = info.compPatchpointInfo->Offset(lclNum);
@@ -5920,25 +5934,7 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
                     continue;
                 }
 
-                if (lvaIsFieldOfDependentlyPromotedStruct(varDsc))
-                {
-                    const unsigned parentLclNum = varDsc->lvParentLcl;
-
-                    if (parentLclNum < info.compLocalsCount)
-                    {
-                        LclVarDsc* parentVarDsc         = &lvaTable[parentLclNum];
-                        int        originalParentOffset = info.compPatchpointInfo->Offset(parentLclNum);
-                        int        parentOffset         = originalFrameStkOffs + originalParentOffset;
-                        int        fieldOffset          = parentOffset + varDsc->lvFldOffset;
-
-                        JITDUMP("---OSR--- V%02u (on old frame) (dependent field of V%02u) new virt offset %d\n",
-                                lclNum, parentLclNum, fieldOffset);
-
-                        lvaTable[lclNum].lvStkOffs = fieldOffset;
-                    }
-
-                    continue;
-                }
+                continue;
             }
 
             /* Ignore variables that are not on the stack frame */
@@ -6938,6 +6934,7 @@ void Compiler::lvaDumpEntry(unsigned lclNum, FrameLayoutState curState, size_t r
     {
         printf(" EH-live");
     }
+
 #ifndef _TARGET_64BIT_
     if (varDsc->lvStructDoubleAlign)
         printf(" double-align");

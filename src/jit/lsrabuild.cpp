@@ -1771,23 +1771,11 @@ void LinearScan::insertZeroInitRefPositions()
                 varDsc->lvMustInit = true;
 
                 // OSR will handle init of locals and promoted fields thereof
-                if (compiler->opts.IsOSR())
+                if (compiler->lvaIsOSRLocal(compiler->lvaTrackedIndexToLclNum(varIndex)))
                 {
-                    if (varDsc->lvIsLocal)
-                    {
-                        JITDUMP(" will be initialized by OSR\n");
-                        varDsc->lvMustInit = false;
-                    }
-                    else if (varDsc->lvIsStructField)
-                    {
-                        LclVarDsc* parentVarDsc = compiler->lvaGetDesc(varDsc->lvParentLcl);
-
-                        if (parentVarDsc->lvIsLocal)
-                        {
-                            JITDUMP(" will be initialized by OSR\n");
-                            varDsc->lvMustInit = false;
-                        }
-                    }
+                    JITDUMP(" will be initialized by OSR\n");
+                    // setIntervalAsSpilled(interval);
+                    varDsc->lvMustInit = false;
                 }
 
                 JITDUMP(" creating ZeroInit\n");

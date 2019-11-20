@@ -11026,3 +11026,36 @@ bool Compiler::killGCRefs(GenTree* tree)
 
     return false;
 }
+
+//------------------------------------------------------------------------
+// lvaIsOSRLocal: check if this local var is one that requires special
+//     treatment for OSR compilations.
+//
+// Arguments:
+//    varNum     - variable of interest
+//
+// Return Value:
+//    true       - this is an OSR compile and this local requires special treatment
+//    false      - not an OSR compile, or not an interesting local for OSR
+
+bool Compiler::lvaIsOSRLocal(unsigned varNum)
+{
+    if (!opts.IsOSR())
+    {
+        return false;
+    }
+
+    if (varNum < info.compLocalsCount)
+    {
+        return true;
+    }
+
+    LclVarDsc* varDsc = lvaGetDesc(varNum);
+
+    if (varDsc->lvIsStructField)
+    {
+        return (varDsc->lvParentLcl < info.compLocalsCount);
+    }
+
+    return false;
+}

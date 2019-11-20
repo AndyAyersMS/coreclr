@@ -397,7 +397,6 @@ public:
 
     unsigned char lvIsParam : 1;           // is this a parameter?
     unsigned char lvIsRegArg : 1;          // is this an argument that was passed by register?
-    unsigned char lvIsLocal : 1;           // is this a local?
     unsigned char lvFramePointerBased : 1; // 0 = off of REG_SPBASE (e.g., ESP), 1 = off of REG_FPBASE (e.g., EBP)
 
     unsigned char lvOnFrame : 1;  // (part of) the variable lives on the frame
@@ -3170,6 +3169,10 @@ public:
 
     int lvaToInitialSPRelativeOffset(unsigned offset, bool isFpBased);
     int lvaGetInitialSPRelativeOffset(unsigned varNum);
+
+    // True if this is an OSR compilation and this local is potentially
+    // located on the original method stack frame.
+    bool lvaIsOSRLocal(unsigned varNum);
 
     //------------------------ For splitting types ----------------------------
 

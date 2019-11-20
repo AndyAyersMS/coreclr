@@ -4554,22 +4554,10 @@ void CodeGen::genCheckUseBlockInit()
             continue;
         }
 
-        // For OSR, initialization of locals will be handled specially
-        if (compiler->opts.IsOSR())
+        // Initialization of OSR locals must be handled specially
+        if (compiler->lvaIsOSRLocal(varNum))
         {
-            if (varDsc->lvIsLocal)
-            {
-                continue;
-            }
-            else if (varDsc->lvIsStructField)
-            {
-                LclVarDsc* parentVarDsc = compiler->lvaGetDesc(varDsc->lvParentLcl);
-
-                if (parentVarDsc->lvIsLocal)
-                {
-                    continue;
-                }
-            }
+            continue;
         }
 
         if (!varDsc->lvIsInReg() && !varDsc->lvOnFrame)
@@ -6505,51 +6493,41 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
 
         for (unsigned varNum = 0; varNum < compiler->lvaCount; varNum++)
         {
-            LclVarDsc* const varDsc      = compiler->lvaGetDesc(varNum);
-            bool             osrMayInit  = false;
-            int              fieldOffset = 0;
-            unsigned         lclNum      = varNum;
-
-            // Screen for the locals that may need initialization
-            if (varDsc->lvIsLocal || varDsc->lvIsParam)
-            {
-                osrMayInit = true;
-            }
-            else if (varDsc->lvIsStructField)
-            {
-                LclVarDsc* parentVarDsc = compiler->lvaGetDesc(varDsc->lvParentLcl);
-
-                if (parentVarDsc->lvIsLocal)
-                {
-                    lclNum      = varDsc->lvParentLcl;
-                    fieldOffset = varDsc->lvFldOffset;
-                    osrMayInit  = true;
-                }
-            }
-
-            if (!osrMayInit)
+            if (!compiler->lvaIsOSRLocal(varNum))
             {
                 continue;
             }
 
+            LclVarDsc* const varDsc = compiler->lvaGetDesc(varNum);
+
             if (!varDsc->lvIsInReg())
             {
-                JITDUMP("---OSR-- V%02u in memory\n", varNum);
+                JITDUMP("---OSR--- V%02u in memory\n", varNum);
                 continue;
             }
 
             if (!VarSetOps::IsMember(compiler, compiler->fgFirstBB->bbLiveIn, varDsc->lvVarIndex))
             {
-                JITDUMP("---OSR-- V%02u (reg) not live at entry\n", varNum);
+                JITDUMP("---OSR--- V%02u (reg) not live at entry\n", varNum);
                 continue;
             }
 
-            // Note we are always reading from the original frame here
-            var_types lclTyp = genActualType(varDsc->lvType);
-            emitAttr  size   = emitTypeSize(lclTyp);
+            int      fieldOffset = 0;
+            unsigned lclNum      = varNum;
 
-            assert(lclNum < patchpointInfoLen);
-            const int stkOffs = patchpointInfo->Offset(lclNum) + fieldOffset;
+            if (varDsc->lvIsStructField)
+            {
+                lclNum = varDsc->lvParentLcl;
+                assert(lclNum < patchpointInfoLen);
+
+                fieldOffset = varDsc->lvFldOffset;
+                JITDUMP("---OSR--- V%02u is promoted field of V%02u at offset %d\n", varNum, lclNum, fieldOffset);
+            }
+
+            // Note we are always reading from the original frame here
+            const var_types lclTyp  = genActualType(varDsc->lvType);
+            const emitAttr  size    = emitTypeSize(lclTyp);
+            const int       stkOffs = patchpointInfo->Offset(lclNum) + fieldOffset;
 
             // stkOffs is the original frame RBP-relative offset
             // to the var.  We want either an RSP or RBP relative
