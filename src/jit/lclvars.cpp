@@ -1036,6 +1036,7 @@ void Compiler::lvaInitUserArgs(InitVarDscInfo* varDscInfo)
 
         if (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varDscInfo->varNum))
         {
+            JITDUMP("-- V%02u is osr exposed, setting hasLdAddrOp\n", varNum);
             varDsc->lvHasLdAddrOp = 1;
         }
 
