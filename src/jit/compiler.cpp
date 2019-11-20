@@ -4993,6 +4993,14 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
             JITDUMP("--OSR-- V%02u is at offset %d%s\n", lclNum, patchpointInfo->Offset(lclNum),
                     patchpointInfo->IsExposed(lclNum) ? " (exposed)" : "");
         }
+
+        // Also note some special caller-SP relative stack offsets.
+        if (lvaReportParamTypeArg() || lvaKeepAliveAndReportThis())
+        {
+            int offset = lvaToCallerSPRelativeOffset(lvaCachedGenericContextArgOffset(), true);
+            JITDUMP("--OSR-- cached generic context offset is %d\n", offset);
+            patchpointInfo->SetGenericContextArgOffset(offset);
+        }
     }
 
     RecordStateAtEndOfCompilation();

@@ -22,6 +22,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #endif
 
 #include "gcinfotypes.h"
+#include "osr.h"
 
 ReturnKind GCTypeToReturnKind(CorInfoGCType gcType)
 {
@@ -3891,20 +3892,43 @@ void GCInfo::gcInfoBlockHdrSave(GcInfoEncoder* gcInfoEncoder, unsigned methodSiz
                 assert(false);
         }
 
-        gcInfoEncoderWithLog->SetGenericsInstContextStackSlot(
-            compiler->lvaToCallerSPRelativeOffset(compiler->lvaCachedGenericContextArgOffset(),
-                                                  compiler->isFramePointerUsed()),
-            ctxtParamType);
+        int offset = 0;
+
+        if (compiler->opts.IsOSR())
+        {
+            PatchpointInfo* ppInfo = compiler->info.compPatchpointInfo;
+            offset                 = ppInfo->GenericContextArgOffset();
+            assert(offset != -1);
+        }
+        else
+        {
+            offset = compiler->lvaToCallerSPRelativeOffset(compiler->lvaCachedGenericContextArgOffset(),
+                                                           compiler->isFramePointerUsed());
+        }
+
+        gcInfoEncoderWithLog->SetGenericsInstContextStackSlot(offset, ctxtParamType);
     }
     // As discussed above, handle the case where the generics context is obtained via
     // the method table of "this".
     else if (compiler->lvaKeepAliveAndReportThis())
     {
         assert(compiler->info.compThisArg != BAD_VAR_NUM);
-        gcInfoEncoderWithLog->SetGenericsInstContextStackSlot(
-            compiler->lvaToCallerSPRelativeOffset(compiler->lvaCachedGenericContextArgOffset(),
-                                                  compiler->isFramePointerUsed()),
-            GENERIC_CONTEXTPARAM_THIS);
+
+        int offset = 0;
+
+        if (compiler->opts.IsOSR())
+        {
+            PatchpointInfo* ppInfo = compiler->info.compPatchpointInfo;
+            offset                 = ppInfo->GenericContextArgOffset();
+            assert(offset != -1);
+        }
+        else
+        {
+            offset = compiler->lvaToCallerSPRelativeOffset(compiler->lvaCachedGenericContextArgOffset(),
+                                                           compiler->isFramePointerUsed());
+        }
+
+        gcInfoEncoderWithLog->SetGenericsInstContextStackSlot(offset, GENERIC_CONTEXTPARAM_THIS);
     }
 
     if (compiler->getNeedsGSSecurityCookie())

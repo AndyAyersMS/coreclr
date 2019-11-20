@@ -26,18 +26,31 @@ public:
     {
         return m_ilSize;
     }
+
     int FpToSpDelta() const
     {
         return m_fpToSpDelta;
     }
+
     unsigned NumberOfLocals() const
     {
         return m_numberOfLocals;
     }
-    bool IsExposed(unsigned localNum) const;
-    int Offset(unsigned localNum) const;
 
+    int GenericContextArgOffset() const
+    {
+        return m_genericContextArgOffset;
+    }
+
+    void SetGenericContextArgOffset(int offset)
+    {
+        m_genericContextArgOffset = offset;
+    }
+
+    bool IsExposed(unsigned localNum) const;
     void SetIsExposed(unsigned localNum);
+
+    int Offset(unsigned localNum) const;
     void SetOffset(unsigned localNum, int offset);
 
 private:
@@ -49,6 +62,7 @@ private:
     unsigned m_ilSize;
     unsigned m_numberOfLocals;
     int      m_fpToSpDelta;
+    int      m_genericContextArgOffset;
     int      m_offsetAndExposureData[];
 };
 

@@ -1036,7 +1036,7 @@ void Compiler::lvaInitUserArgs(InitVarDscInfo* varDscInfo)
 
         if (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varDscInfo->varNum))
         {
-            JITDUMP("-- V%02u is osr exposed, setting hasLdAddrOp\n", varNum);
+            JITDUMP("-- V%02u is osr exposed, setting hasLdAddrOp\n", varDscInfo->varNum);
             varDsc->lvHasLdAddrOp = 1;
         }
 
@@ -7226,6 +7226,8 @@ int Compiler::lvaGetCallerSPRelativeOffset(unsigned varNum)
 
 int Compiler::lvaToCallerSPRelativeOffset(int offset, bool isFpBased) const
 {
+    // Todo: this should not be called for OSR
+    // methods -- instead we shoud fetch the offsets from the ppInfo
     assert(lvaDoneFrameLayout == FINAL_FRAME_LAYOUT);
 
     if (isFpBased)

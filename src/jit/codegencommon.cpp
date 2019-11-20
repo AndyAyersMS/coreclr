@@ -6572,6 +6572,12 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
 
 void CodeGen::genReportGenericContextArg(regNumber initReg, bool* pInitRegZeroed)
 {
+    // For OSR the original method has set this up for us.
+    if (compiler->opts.IsOSR())
+    {
+        return;
+    }
+
     assert(compiler->compGeneratingProlog);
 
     bool reportArg = compiler->lvaReportParamTypeArg();

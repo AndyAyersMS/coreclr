@@ -8412,12 +8412,12 @@ public:
 #endif
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-        bool IsOSR()
+        bool IsOSR() const
         {
             return jitFlags->IsSet(JitFlags::JIT_FLAG_OSR);
         }
 #else
-        bool IsOSR()
+        bool IsOSR() const
         {
             return false;
         }

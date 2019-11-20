@@ -36,9 +36,10 @@ PatchpointInfo* PatchpointInfo::Allocate(ICorJitInfo* jitInterface,
     int             variableSize = localCount * sizeof(int);
     PatchpointInfo* result       = (PatchpointInfo*)jitInterface->allocPatchpointInfo(baseSize + variableSize);
 
-    result->m_ilSize         = ilSize;
-    result->m_fpToSpDelta    = fpToSpDelta;
-    result->m_numberOfLocals = localCount;
+    result->m_ilSize                  = ilSize;
+    result->m_fpToSpDelta             = fpToSpDelta;
+    result->m_numberOfLocals          = localCount;
+    result->m_genericContextArgOffset = -1;
 
     return result;
 }
