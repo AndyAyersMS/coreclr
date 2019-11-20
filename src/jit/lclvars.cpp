@@ -281,8 +281,8 @@ void Compiler::lvaInitTypeRef()
 
         if (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varNum))
         {
-            JITDUMP("-- V%02u is osr exposed\n", varNum);
-            lvaSetVarAddrExposed(varNum);
+            JITDUMP("-- V%02u is osr exposed, setting hasLdAddrOp\n", varNum);
+            varDsc->lvHasLdAddrOp = 1;
         }
     }
 
@@ -1023,8 +1023,7 @@ void Compiler::lvaInitUserArgs(InitVarDscInfo* varDscInfo)
 #else  // !UNIX_AMD64_ABI
         compArgSize += argSize;
 #endif // !UNIX_AMD64_ABI
-        if (info.compIsVarArgs || isHfaArg || isSoftFPPreSpill ||
-            (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varDscInfo->varNum)))
+        if (info.compIsVarArgs || isHfaArg || isSoftFPPreSpill)
         {
 #if defined(_TARGET_X86_)
             varDsc->lvStkOffs = compArgSize;
@@ -1034,6 +1033,12 @@ void Compiler::lvaInitUserArgs(InitVarDscInfo* varDscInfo)
             lvaSetVarAddrExposed(varDscInfo->varNum);
 #endif // !_TARGET_X86_
         }
+
+        if (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varDscInfo->varNum))
+        {
+            varDsc->lvHasLdAddrOp = 1;
+        }
+
     } // for each user arg
 
 #ifdef _TARGET_ARM_

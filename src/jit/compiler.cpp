@@ -4982,7 +4982,10 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
 
             // Record FramePtr relative offset (no localloc yet)
             patchpointInfo->SetOffset(lclNum, varDsc->lvStkOffs);
-            if (varDsc->lvAddrExposed)
+
+            // Note if IL stream contained an address-of that potentially leads to exposure.
+            // This bit of IL may be skipped by OSR partial importation.
+            if (varDsc->lvHasLdAddrOp)
             {
                 patchpointInfo->SetIsExposed(lclNum);
             }
