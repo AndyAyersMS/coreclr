@@ -4731,9 +4731,11 @@ void Compiler::lvaFixVirtualFrameOffsets()
 
 #ifdef _TARGET_XARCH_
     delta += REGSIZE_BYTES; // pushed PC (return address) for x86/x64
+    JITDUMP("--- delta bump %d for RA\n", REGSIZE_BYTES);
 
     if (codeGen->doubleAlignOrFramePointerUsed())
     {
+        JITDUMP("--- delta bump %d for FP\n", REGSIZE_BYTES);
         delta += REGSIZE_BYTES; // pushed EBP (frame pointer)
     }
 #endif
@@ -4741,6 +4743,7 @@ void Compiler::lvaFixVirtualFrameOffsets()
     if (!codeGen->isFramePointerUsed())
     {
         // pushed registers, return address, and padding
+        JITDUMP("--- delta bump %d for RSP frame\n", codeGen->genTotalFrameSize());
         delta += codeGen->genTotalFrameSize();
     }
 #if defined(_TARGET_ARM_)
@@ -4753,6 +4756,7 @@ void Compiler::lvaFixVirtualFrameOffsets()
     else
     {
         // FP is used.
+        JITDUMP("--- delta bump %d for RBP frame\n", codeGen->genTotalFrameSize() - codeGen->genSPtoFPdelta());
         delta += codeGen->genTotalFrameSize() - codeGen->genSPtoFPdelta();
     }
 #endif //_TARGET_AMD64_
@@ -4761,6 +4765,7 @@ void Compiler::lvaFixVirtualFrameOffsets()
     // RBP points at the base of the new frame, and RSP is relative to that RBP.
     if (opts.IsOSR())
     {
+        JITDUMP("--- delta bump %d for OSR\n", info.compPatchpointInfo->FpToSpDelta());
         delta += info.compPatchpointInfo->FpToSpDelta();
     }
 
@@ -5904,8 +5909,11 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
                 allocateOnFrame = false;
             }
 
-            // For OSR args and locals, we use the slots on the orginal frame.
-            if (allocateOnFrame && lvaIsOSRLocal(lclNum))
+            // For OSR args and locals, we use the slots on the original frame.
+            //
+            // Note we must do this even for "non frame" locals, as we sometimes
+            // will refer to their memory homes.
+            if (lvaIsOSRLocal(lclNum))
             {
                 // Todo: verify it's ok to handle independent fields that are live on entry
                 // to the OSR method and in memory at entry this way...
