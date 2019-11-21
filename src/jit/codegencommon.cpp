@@ -4561,6 +4561,13 @@ void CodeGen::genCheckUseBlockInit()
             continue;
         }
 
+        // Likewise, initialization of the GS cookie is handled specially for OSR.
+        // Could do this for non-OSR too.. (likewise for the dummy)
+        if (compiler->opts.IsOSR() && varNum == compiler->lvaGSSecurityCookie)
+        {
+            continue;
+        }
+
         if (!varDsc->lvIsInReg() && !varDsc->lvOnFrame)
         {
             noway_assert(varDsc->lvRefCnt() == 0);

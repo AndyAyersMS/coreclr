@@ -47,6 +47,21 @@ public:
         m_genericContextArgOffset = offset;
     }
 
+    int SecurityCookieOffset() const
+    {
+        return m_securityCookieOffset;
+    }
+
+    bool HasSecurityCookie() const
+    {
+        return m_securityCookieOffset != -1;
+    }
+
+    void SetSecurityCookieOffset(int offset)
+    {
+        m_securityCookieOffset = offset;
+    }
+
     bool IsExposed(unsigned localNum) const;
     void SetIsExposed(unsigned localNum);
 
@@ -63,6 +78,7 @@ private:
     unsigned m_numberOfLocals;
     int      m_fpToSpDelta;
     int      m_genericContextArgOffset;
+    int      m_securityCookieOffset;
     int      m_offsetAndExposureData[];
 };
 

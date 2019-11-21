@@ -5795,7 +5795,11 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
     if (compGSReorderStackLayout)
     {
         assert(getNeedsGSSecurityCookie());
-        stkOffs = lvaAllocLocalAndSetVirtualOffset(lvaGSSecurityCookie, lvaLclSize(lvaGSSecurityCookie), stkOffs);
+
+        if (!opts.IsOSR() || !info.compPatchpointInfo->HasSecurityCookie())
+        {
+            stkOffs = lvaAllocLocalAndSetVirtualOffset(lvaGSSecurityCookie, lvaLclSize(lvaGSSecurityCookie), stkOffs);
+        }
     }
 
     /*
@@ -5972,7 +5976,21 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
             }
             else if (lvaGSSecurityCookie == lclNum && getNeedsGSSecurityCookie())
             {
-                continue; // This is allocated outside of this loop.
+                // Special case for OSR. If the original method had a cookie,
+                // we use its slot on the original frame.
+                if (opts.IsOSR() && info.compPatchpointInfo->HasSecurityCookie())
+                {
+                    int originalOffset = info.compPatchpointInfo->SecurityCookieOffset();
+                    int offset         = originalFrameStkOffs + originalOffset;
+
+                    JITDUMP("---OSR--- V%02u (on old frame, security cookie) old rbp offset %d old frame offset %d new "
+                            "virt offset %d\n",
+                            lclNum, originalOffset, originalFrameStkOffs, offset);
+
+                    lvaTable[lclNum].lvStkOffs = offset;
+                }
+
+                continue;
             }
 
             // These need to be located as the very first variables (highest memory address)
@@ -6165,8 +6183,11 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
 
     if (getNeedsGSSecurityCookie() && !compGSReorderStackLayout)
     {
-        // LOCALLOC used, but we have no unsafe buffer.  Allocated cookie last, close to localloc buffer.
-        stkOffs = lvaAllocLocalAndSetVirtualOffset(lvaGSSecurityCookie, lvaLclSize(lvaGSSecurityCookie), stkOffs);
+        if (!opts.IsOSR() || !info.compPatchpointInfo->HasSecurityCookie())
+        {
+            // LOCALLOC used, but we have no unsafe buffer.  Allocated cookie last, close to localloc buffer.
+            stkOffs = lvaAllocLocalAndSetVirtualOffset(lvaGSSecurityCookie, lvaLclSize(lvaGSSecurityCookie), stkOffs);
+        }
     }
 
     if (tempsAllocated == false)

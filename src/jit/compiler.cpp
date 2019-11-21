@@ -4995,12 +4995,22 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
                     patchpointInfo->IsExposed(lclNum) ? " (exposed)" : "");
         }
 
-        // Also note some special caller-SP relative stack offsets.
+        // Special offsets
+
         if (lvaReportParamTypeArg() || lvaKeepAliveAndReportThis())
         {
             const int offset = lvaToCallerSPRelativeOffset(lvaCachedGenericContextArgOffset(), true);
-            JITDUMP("--OSR-- cached generic context offset is %d\n", offset);
             patchpointInfo->SetGenericContextArgOffset(offset);
+            JITDUMP("--OSR-- cached generic context offset is %d\n", patchpointInfo->GenericContextArgOffset());
+        }
+
+        if (compGSReorderStackLayout)
+        {
+            assert(lvaGSSecurityCookie != BAD_VAR_NUM);
+            LclVarDsc* const varDsc = lvaGetDesc(lvaGSSecurityCookie);
+            patchpointInfo->SetSecurityCookieOffset(varDsc->lvStkOffs);
+            JITDUMP("--OSR-- security cookie V%02u offset is %d\n", lvaGSSecurityCookie,
+                    patchpointInfo->SecurityCookieOffset());
         }
     }
 
