@@ -4557,6 +4557,7 @@ void CodeGen::genCheckUseBlockInit()
         // Initialization of OSR locals must be handled specially
         if (compiler->lvaIsOSRLocal(varNum))
         {
+            varDsc->lvMustInit = 0;
             continue;
         }
 
