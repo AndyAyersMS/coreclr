@@ -3936,12 +3936,29 @@ void GCInfo::gcInfoBlockHdrSave(GcInfoEncoder* gcInfoEncoder, unsigned methodSiz
         assert(compiler->lvaGSSecurityCookie != BAD_VAR_NUM);
 
         // The lv offset is FP-relative, and the using code expects caller-sp relative, so translate.
+        int offset = compiler->lvaGetCallerSPRelativeOffset(compiler->lvaGSSecurityCookie);
+
+        if (compiler->opts.IsOSR() && !compiler->info.compPatchpointInfo->HasSecurityCookie())
+        {
+            // This is an OSR frame where the original frame did not have a cookie, so the
+            // cookie is in the OSR portion of the frame.
+            //
+            // The offset computed above already includes the pop of the "pseudo0RA" from
+            // the OSR frame.
+            //
+            // To get to caller-SP, we need to subtract off the original frame size and the
+            // pushed RA and RBP for that frame. But ppInfo's FpToSpDelta also accounts for the
+            // pseudo-RA between the original method frame and the OSR frame. So the net adjustment
+            // is simply FpToSpDelta plus one register.
+            PatchpointInfo* ppInfo     = compiler->info.compPatchpointInfo;
+            int             adjustment = ppInfo->FpToSpDelta() + REGSIZE_BYTES;
+            offset -= adjustment;
+        }
+
         // The code offset ranges assume that the GS Cookie slot is initialized in the prolog, and is valid
         // through the remainder of the method.  We will not query for the GS Cookie while we're in an epilog,
         // so the question of where in the epilog it becomes invalid is moot.
-        gcInfoEncoderWithLog->SetGSCookieStackSlot(compiler->lvaGetCallerSPRelativeOffset(
-                                                       compiler->lvaGSSecurityCookie),
-                                                   prologSize, methodSize);
+        gcInfoEncoderWithLog->SetGSCookieStackSlot(offset, prologSize, methodSize);
     }
     else if (compiler->opts.compNeedSecurityCheck || compiler->lvaReportParamTypeArg() ||
              compiler->lvaKeepAliveAndReportThis())
