@@ -281,8 +281,13 @@ void Compiler::lvaInitTypeRef()
 
         if (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varNum))
         {
-            JITDUMP("-- V%02u is osr exposed, setting hasLdAddrOp\n", varNum);
+            JITDUMP("-- V%02u is osr exposed\n", varNum);
             varDsc->lvHasLdAddrOp = 1;
+            
+            if (varDsc->lvType != TYP_STRUCT)
+            {
+                lvaSetVarAddrExposed(varNum);
+            }
         }
     }
 
@@ -1036,8 +1041,9 @@ void Compiler::lvaInitUserArgs(InitVarDscInfo* varDscInfo)
 
         if (opts.IsOSR() && info.compPatchpointInfo->IsExposed(varDscInfo->varNum))
         {
-            JITDUMP("-- V%02u is osr exposed, setting hasLdAddrOp\n", varDscInfo->varNum);
+            JITDUMP("-- V%02u is osr exposed\n", varDscInfo->varNum);
             varDsc->lvHasLdAddrOp = 1;
+            lvaSetVarAddrExposed(varDscInfo->varNum);
         }
 
     } // for each user arg
