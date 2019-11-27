@@ -5656,10 +5656,16 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
     //     boundary we would have to use movups when offset turns out unaligned.  Movaps is more
     //     performant than movups.
     unsigned calleeFPRegsSavedSize = genCountBits(compCalleeFPRegsSavedMask) * XMM_REGSIZE_BYTES;
-    if (calleeFPRegsSavedSize > 0 && ((stkOffs % XMM_REGSIZE_BYTES) != 0))
+
+    // For OSR the alignment pad computation should not take the original frame into account.
+    // Original frame size includes the pseudo-saved RA and so is always = 8 mod 16.
+    const int offsetForAlign = -(stkOffs + originalFrameSize);
+
+    if ((calleeFPRegsSavedSize > 0) && ((offsetForAlign % XMM_REGSIZE_BYTES) != 0))
     {
         // Take care of alignment
-        int alignPad = (int)AlignmentPad((unsigned)-stkOffs, XMM_REGSIZE_BYTES);
+        int alignPad = (int)AlignmentPad((unsigned)offsetForAlign, XMM_REGSIZE_BYTES);
+        assert(alignPad != 0);
         stkOffs -= alignPad;
         lvaIncrementFrameSize(alignPad);
     }

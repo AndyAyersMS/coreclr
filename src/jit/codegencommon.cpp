@@ -7555,7 +7555,9 @@ void CodeGen::genFnProlog()
     // This way, the varargs iterator will be able to retrieve the
     // call arguments properly since both the arg regs and the stack allocated
     // args will be contiguous.
-    if (compiler->info.compIsVarArgs)
+    //
+    // OSR methods can skip this, as the setup is done by the orignal method.
+    if (compiler->info.compIsVarArgs && !compiler->opts.IsOSR())
     {
         GetEmitter()->spillIntArgRegsToShadowSlots();
     }
