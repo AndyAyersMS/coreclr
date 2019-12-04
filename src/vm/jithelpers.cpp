@@ -5519,45 +5519,91 @@ LARGE_INTEGER PatchpointInfo::s_qpcFrequency;
 int s_patchpointId = 0;
 static bool warnedLimitedRange = false;
 
+// Helper method to jit the OSR version and return
+// the address of the jitted code
+static PCODE JitPatchpointWorker(void* ip, int ilOffset)
+{
+    PCODE osrVariant = NULL;
+
+    GCX_PREEMP();
+
+    // Find the method desc for this bit of code
+    EECodeInfo codeInfo((PCODE)ip);
+    MethodDesc* pMD = codeInfo.GetMethodDesc();
+
+    // Find the il method version corresponding to this version of the method
+    // and set up a new native code version for it.
+    ReJITID rejitId = ReJitManager::GetReJitId(pMD, codeInfo.GetStartAddress());
+    CodeVersionManager* codeVersionManager = pMD->GetCodeVersionManager();
+    NativeCodeVersion osrNativeCodeVersion;
+    {
+        // Request a new native version that is optimized.
+        CodeVersionManager::TableLockHolder lock(codeVersionManager);
+        ILCodeVersion ilCodeVersion = codeVersionManager->GetILCodeVersion(pMD, rejitId);
+        HRESULT hr = ilCodeVersion.AddNativeCodeVersion(pMD, NativeCodeVersion::OptimizationTier1, &osrNativeCodeVersion);
+        if (FAILED(hr))
+        {
+            // TODO: Deal with failure
+            printf ("Eh? Failed to add native code version\n");
+        }
+    }
+
+    // Prepare info for the OSR method
+    OSRInfo osrInfo;
+    osrInfo.ilOffset = ilOffset;
+
+    // Patchpoint info from the current method
+    EEJitManager* jitMgr = ExecutionManager::GetEEJitManager();
+    CodeHeader* codeHdr = jitMgr->GetCodeHeaderFromStartAddress(codeInfo.GetStartAddress());
+    osrInfo.patchpointInfo = codeHdr->GetPatchpointInfo();
+
+    if (osrInfo.patchpointInfo == NULL)
+    {
+        // TODO: deal with failure
+        printf ("Eh? Failed to locate patchpoint info\n");
+    }
+
+    osrNativeCodeVersion.SetOSRInfo(osrInfo);
+
+    // Invoke the jit to compile the OSR version
+    PrepareCodeConfigBuffer configBuffer(osrNativeCodeVersion);
+    PrepareCodeConfig *config = configBuffer.GetConfig();
+    osrVariant = pMD->PrepareCode(config);
+
+    return osrVariant;
+}
+
+// Set up a frame so we can invoke methods that might GC
+HCIMPL2(PCODE, JIT_Patchpoint_Framed, void* ip, int ilOffset)
+{
+    PCODE result = NULL;
+
+    HELPER_METHOD_FRAME_BEGIN_RET_0();
+
+    result = JitPatchpointWorker(ip, ilOffset);
+
+    HELPER_METHOD_FRAME_END();
+
+    return result;
+}
+HCIMPLEND
+
+// Jit helper invoked at a patchpoint.
+//
+// Checks to see if this is a known patchpoint, if not,
+// an entry is added to the patchpoint table.
+//
+// If the patchpoint has been hit often enough to trigger
+// a transition, create an OSR variant if necessary,
+// and transition control to it instead.
+
 void JIT_Patchpoint(int* counter, int ilOffset)
 {
+    // This method may not return normally
     STATIC_CONTRACT_GC_NOTRIGGER;
-    STATIC_CONTRACT_MODE_COOPERATIVE
+    STATIC_CONTRACT_MODE_COOPERATIVE;
 
     void* ip = _ReturnAddress();
-
-    // TODO: Sanity check that our caller is the kind of frame
-    // we can handle (RBP frame), and other stuff...
-
-    // Query and update the patchpoint state
-    //
-    // Note we may not need repeated callbacks to trigger
-    // but we might want to use them to gage how frequently
-    // we're hitting the patchpoint. For instance we might
-    // trigger based on some kind of weighted average of 
-    // callback intervals -- lots of callbacks in a short
-    // period of time being the criteria for OSR, not just
-    // some total number of callbacks.
-    //
-    // We'd need more state to do this and we might not want to
-    // allocate that additional state until this patchpoint reaches
-    // some initial hotness threshold.
-    //
-    // So we might use the initial callbacks to filter out
-    // patchpoints that will never be interesting for OSR because
-    // the patchpoint just isn't hit that often over the
-    // lifetime of the process, and the subsequent ones 
-    // to filter out methods where we won't OSR because
-    // while the patchpoing was hit sufficently often, those
-    // hits were spread out over time and so the method
-    // was never truly hot.
-    //
-    // Note relying on actual time measurements as part of the trigger
-    // policy has its downsides, as program behavior may be overly
-    // sensitive to the kind of machine we're running on, what else is
-    // running on the machine, whether we're debugging, etc.
-
-    // Determine current patchpoint invocation time.
     if (PatchpointInfo::s_qpcFrequency.QuadPart == 0)
     {
         QueryPerformanceFrequency(&PatchpointInfo::s_qpcFrequency);
@@ -5606,158 +5652,105 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         const int hitCount = ppInfo->m_patchpointCount;
         ppInfo->m_patchpointCount++;
         *counter = counterBump;
+        bool ignorePatchpoint = false;
 
         // Binary-search assist, opt out of some transitions....
         if ((ppId < lowId) || (ppId > highId))
         {
+            ignorePatchpoint = true;
             if ((verbose > 0) && (hitCount == 0))
             {
                 printf("### Runtime: IGNORING patchpoint [%d] 0x%p hit:0 (limit %d)\n", ppId, ip, hitLimit);
             }
-            return;
         }
-        
-        LARGE_INTEGER currentTime;
-        QueryPerformanceCounter(&currentTime);
-        
-        // First time this patchpoint was hit.
-        if (hitCount == 0)
+
+        if (!ignorePatchpoint)
         {
-            if (verbose > 0)
-            {
-                printf("### Runtime: patchpoint [%d] 0x%p hit:0 (limit %d)\n", ppId, ip, hitLimit);
-            }
-            ppInfo->m_previousTime = currentTime;
-            triggerTransition = (hitLimit <= 0);
-        }
-        // Subsequent hit.
-        else
-        {
-            LONGLONG timeDeltaTicks = currentTime.QuadPart - ppInfo->m_previousTime.QuadPart;
-            ppInfo->m_previousTime = currentTime;
-            double milliseconds = 1000;
-            double timeDeltaInMilliseconds = (timeDeltaTicks * milliseconds) / PatchpointInfo::s_qpcFrequency.QuadPart;
-            if (verbose > 1)
-            {
-                printf("### Runtime: patchpoint [%d] 0x%p hit:%d dt:%0.2f\n", ppId, ip, hitCount, timeDeltaInMilliseconds); 
-            }
+            LARGE_INTEGER currentTime;
+            QueryPerformanceCounter(&currentTime);
             
-            // Second hit: we now have one data point on recurrence time
-            if (hitCount == 1)
+            // First time this patchpoint was hit.
+            if (hitCount == 0)
             {
-                ppInfo->m_recurrenceTime = timeDeltaInMilliseconds;
-                triggerTransition = (hitLimit <= 1);
+                if (verbose > 0)
+                {
+                    printf("### Runtime: patchpoint [%d] 0x%p hit:0 (limit %d)\n", ppId, ip, hitLimit);
+                }
+                ppInfo->m_previousTime = currentTime;
+                triggerTransition = (hitLimit <= 0);
             }
-            // Third or later hit, update exponential weighed moving average recurrence time
+            // Subsequent hit.
             else
             {
-                // Note we can see large outliers in recurrence time (from say a jit request,
-                // from gc, etc). Also, jitter from shared counters.
-                //
-                // So we keep weight parameter here fairly small, meaning we should update
-                // our estimate (relatively) slowly. Think low-pass filter.
-                //
-                // We might want to fudge the recurrence time for the trigger to avoid 
-                // counting the jit time. Though for syncronous OSR, we won't care.
-                double deltaTimeDelta = timeDeltaInMilliseconds - ppInfo->m_recurrenceTime;
-                ppInfo->m_recurrenceTime += 0.10 * deltaTimeDelta;
+                LONGLONG timeDeltaTicks = currentTime.QuadPart - ppInfo->m_previousTime.QuadPart;
+                ppInfo->m_previousTime = currentTime;
+                double milliseconds = 1000;
+                double timeDeltaInMilliseconds = (timeDeltaTicks * milliseconds) / PatchpointInfo::s_qpcFrequency.QuadPart;
+                if (verbose > 1)
+                {
+                    printf("### Runtime: patchpoint [%d] 0x%p hit:%d dt:%0.2f\n", ppId, ip, hitCount, timeDeltaInMilliseconds); 
+                }
                 
-                // If this is a CPU intensive patchpoint less than (~1us per recurrence)
-                // 1us * 10K = 10ms or less
-                //    AND 
-                // we've hit it a lot (~50,000x), trigger.
-                //
-                // if ((ppInfo->m_recurrenceTime <= (0.001 * counterBump)) && ((hitCount * counterBump) >= 50000))
+                // Second hit: we now have one data point on recurrence time
+                if (hitCount == 1)
+                {
+                    ppInfo->m_recurrenceTime = timeDeltaInMilliseconds;
+                    triggerTransition = (hitLimit <= 1);
+                }
+                // Third or later hit, update exponential weighed moving average recurrence time
+                else
+                {
+                    // Note we can see large outliers in recurrence time (from say a jit request,
+                    // from gc, etc). Also, jitter from shared counters.
+                    //
+                    // So we keep weight parameter here fairly small, meaning we should update
+                    // our estimate (relatively) slowly. Think low-pass filter.
+                    //
+                    // We might want to fudge the recurrence time for the trigger to avoid 
+                    // counting the jit time. Though for syncronous OSR, we won't care.
+                    double deltaTimeDelta = timeDeltaInMilliseconds - ppInfo->m_recurrenceTime;
+                    ppInfo->m_recurrenceTime += 0.10 * deltaTimeDelta;
 
-                // For now just transition on the counterCount (+1)'th call to the runtime.
-                if ((hitCount * counterBump) >= hitLimit * counterBump)
-                {
-                    triggerTransition = TRUE;
+                    // If this is a CPU intensive patchpoint less than (~1us per recurrence)
+                    // 1us * 10K = 10ms or less
+                    //    AND
+                    // we've hit it a lot (~50,000x), trigger.
+                    //
+                    // if ((ppInfo->m_recurrenceTime <= (0.001 * counterBump)) && ((hitCount * counterBump) >= 50000))
+
+                    // For now just transition on the counterCount (+1)'th call to the runtime.
+                    if ((hitCount * counterBump) >= hitLimit * counterBump)
+                    {
+                        triggerTransition = TRUE;
+                    }
                 }
             }
-        }
-                
-        // Trigger, if we haven't already done so.
-        //
-        // For sync OSR this will also transition.
-        if (triggerTransition && !ppInfo->m_triggered)
-        {
-            ppInfo->m_triggered = TRUE;
             
-            // Find the method desc for this bit of code
-            EECodeInfo codeInfo((PCODE)ip);
-            MethodDesc* pMD = codeInfo.GetMethodDesc();
-            
+            // Trigger, if we haven't already done so.
+            //
+            // For sync OSR this will also transition.
+            if (triggerTransition && !ppInfo->m_triggered)
+            {
+                ppInfo->m_triggered = TRUE;
+
 #if _DEBUG
-            if (verbose > 1)
-            {
-                printf("### Runtime: patchpoint [%d] 0x%p TRIGGER hit:%d bump:%d recur:%0.3fms native:0x%x il:0x%x in 0x%p %s::%s %s\n",
-                    ppId,
-                    ip, 
-                    hitCount, counterBump, ppInfo->m_recurrenceTime, 
-                    codeInfo.GetRelOffset(), ilOffset, 
-                    pMD,
-                    pMD->m_pszDebugClassName, pMD->m_pszDebugMethodName, pMD->m_pszDebugMethodSignature);
-            }
-#endif
-            
-            // TODO: measure and report on how long jitting actually took... correlate this back to
-            // our guestimate above.
-            
-            // Find the il method version corresponding to this version of the method
-            // and set up a new native code version for it.
-            ReJITID rejitId = ReJitManager::GetReJitId(pMD, codeInfo.GetStartAddress());
-            CodeVersionManager* codeVersionManager = pMD->GetCodeVersionManager();
-            NativeCodeVersion osrNativeCodeVersion;
-            {
-                // printf("### Runtime: adding code version\n");
-                CodeVersionManager::TableLockHolder lock(codeVersionManager);
-                ILCodeVersion ilCodeVersion = codeVersionManager->GetILCodeVersion(pMD, rejitId);
-                
-                // Request a new native version that is optimized. 
-                HRESULT hr = ilCodeVersion.AddNativeCodeVersion(pMD, NativeCodeVersion::OptimizationTier1, &osrNativeCodeVersion);
-                
-                if (FAILED(hr))
+                if (verbose > 1)
                 {
-                    // TODO: Deal with failure
-                    printf("### Runtime: unable to add native code version for OSR ??\n");
+                    EECodeInfo codeInfo((PCODE)ip);
+                    MethodDesc* pMD = codeInfo.GetMethodDesc();
+
+                    printf("### Runtime: patchpoint [%d] 0x%p TRIGGER hit:%d bump:%d recur:%0.3fms native:0x%x il:0x%x in 0x%p %s::%s %s\n",
+                        ppId,
+                        ip,
+                        hitCount, counterBump, ppInfo->m_recurrenceTime,
+                        codeInfo.GetRelOffset(), ilOffset,
+                        pMD,
+                        pMD->m_pszDebugClassName, pMD->m_pszDebugMethodName, pMD->m_pszDebugMethodSignature);
                 }
-            }
-            
-            // Prepare info for the OSR method
-            OSRInfo osrInfo;
-            
-            // OSR entry offset
-            osrInfo.ilOffset = ilOffset;
-            
-            // Patchpoint info from the current method
-            EEJitManager* jitMgr = ExecutionManager::GetEEJitManager();
-            CodeHeader* codeHdr = jitMgr->GetCodeHeaderFromStartAddress(codeInfo.GetStartAddress());
-            osrInfo.patchpointInfo = codeHdr->GetPatchpointInfo();
-            
-            if (osrInfo.patchpointInfo == NULL) printf ("Eh\n");
-            
-            osrNativeCodeVersion.SetOSRInfo(osrInfo);
-            
-            // Delegate this to a slow path helper that sets up a proper frame?
-            {
-                // printf("### Runtime: preparing code\n");
-                GCX_PREEMP(); // hmmm, we didn't set up a proper transition frame
-                PrepareCodeConfigBuffer configBuffer(osrNativeCodeVersion);
-                PrepareCodeConfig *config = configBuffer.GetConfig();
-                osrVariant = pMD->PrepareCode(config);
+#endif
+                osrVariant = HCCALL2(JIT_Patchpoint_Framed, ip, ilOffset);
                 ppInfo->m_existingCode = osrVariant;
             }
-            
-            // Fudge current time to hide the time the jit took...???
-            // QueryPerformanceCounter(&currentTime);
-            // ppInfo->m_previousTime = currentTime;
-            
-            // Deal with potential jit failure (perhaps: disable this patchpoint...?)
-            
-            // We never make this version "active" as it is not a generally callable method.
-            // We don't ever expect it to be called, just transitioned to via this code.
-            // But we might need to do some other notifications ...?
         }
     }
 
@@ -5970,7 +5963,7 @@ void InitJITHelpers2()
         COMPlusThrowOM();
     g_pJitGenericHandleCache = tempGenericHandleCache.Extract();
 
-    g_pJitPatchpointCrst.Init(CrstJitPatchpoint, CRST_DEFAULT);
+    g_pJitPatchpointCrst.Init(CrstJitPatchpoint, CRST_UNSAFE_COOPGC);
 
     // Allocate and initialize the patchpoint table
     NewHolder <JitPatchpointTable> tempJitPatchpointTable (new JitPatchpointTable());
