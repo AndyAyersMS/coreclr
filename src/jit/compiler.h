@@ -9068,8 +9068,7 @@ public:
                     CORINFO_METHOD_INFO*  methodInfo,
                     void**                methodCodePtr,
                     ULONG*                methodCodeSize,
-                    JitFlags*             compileFlags,
-                    OSRInfo*              osrInfo);
+                    JitFlags*             compileFlags);
     void compCompileFinish();
     int compCompileHelper(CORINFO_MODULE_HANDLE            classPtr,
                           COMP_HANDLE                      compHnd,

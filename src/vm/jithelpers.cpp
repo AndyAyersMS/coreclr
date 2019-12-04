@@ -5549,7 +5549,7 @@ static PCODE JitPatchpointWorker(void* ip, int ilOffset)
     }
 
     // Prepare info for the OSR method
-    OSRInfo osrInfo;
+    CORINFO_OSR_INFO osrInfo;
     osrInfo.ilOffset = ilOffset;
 
     // Patchpoint info from the current method
@@ -5563,7 +5563,7 @@ static PCODE JitPatchpointWorker(void* ip, int ilOffset)
         printf ("Eh? Failed to locate patchpoint info\n");
     }
 
-    osrNativeCodeVersion.SetOSRInfo(osrInfo);
+    osrNativeCodeVersion.SetOSRInfo(&osrInfo);
 
     // Invoke the jit to compile the OSR version
     PrepareCodeConfigBuffer configBuffer(osrNativeCodeVersion);

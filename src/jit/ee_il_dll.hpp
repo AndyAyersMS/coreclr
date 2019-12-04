@@ -9,7 +9,6 @@ class CILJit : public ICorJitCompiler
     CorJitResult __stdcall compileMethod(ICorJitInfo*         comp,            /* IN */
                                          CORINFO_METHOD_INFO* methodInfo,      /* IN */
                                          unsigned             flags,           /* IN */
-                                         OSRInfo*             osrInfo,         /* IN, optional */
                                          BYTE**               nativeEntry,     /* OUT */
                                          ULONG*               nativeSizeOfCode /* OUT */
                                          );

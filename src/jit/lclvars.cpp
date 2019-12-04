@@ -283,7 +283,7 @@ void Compiler::lvaInitTypeRef()
         {
             JITDUMP("-- V%02u is osr exposed\n", varNum);
             varDsc->lvHasLdAddrOp = 1;
-            
+
             if (varDsc->lvType != TYP_STRUCT)
             {
                 lvaSetVarAddrExposed(varNum);

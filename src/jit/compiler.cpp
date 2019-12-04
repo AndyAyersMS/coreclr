@@ -5234,8 +5234,7 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
                           CORINFO_METHOD_INFO*  methodInfo,
                           void**                methodCodePtr,
                           ULONG*                methodCodeSize,
-                          JitFlags*             compileFlags,
-                          OSRInfo*              osrInfo)
+                          JitFlags*             compileFlags)
 {
 #ifdef FEATURE_JIT_METHOD_PERF
     static bool checkedForJitTimeLog = false;
@@ -5328,8 +5327,16 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
     }
     else if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
     {
-        info.compILEntry        = osrInfo->ilOffset;
-        info.compPatchpointInfo = (PatchpointInfo*)osrInfo->patchpointInfo;
+        CORINFO_OSR_INFO* osrInfo = methodInfo->osrInfo;
+        info.compILEntry          = osrInfo->ilOffset;
+        info.compPatchpointInfo   = (PatchpointInfo*)osrInfo->patchpointInfo;
+
+        assert(info.compPatchpointInfo != nullptr);
+    }
+    else
+    {
+        // If JIT_FLAG_OSR is not set, we should not be passed OSR info
+        assert(methodInfo->osrInfo == nullptr);
     }
 
     virtualStubParamInfo = new (this, CMK_Unknown) VirtualStubParamInfo(IsTargetAbi(CORINFO_CORERT_ABI));
@@ -6762,8 +6769,7 @@ int jitNativeCode(CORINFO_METHOD_HANDLE methodHnd,
                   void**                methodCodePtr,
                   ULONG*                methodCodeSize,
                   JitFlags*             compileFlags,
-                  void*                 inlineInfoPtr,
-                  OSRInfo*              osrInfo)
+                  void*                 inlineInfoPtr)
 {
     //
     // A non-NULL inlineInfo means we are compiling the inlinee method.
@@ -6808,7 +6814,6 @@ START:
         ULONG*                methodCodeSize;
         JitFlags*             compileFlags;
         InlineInfo*           inlineInfo;
-        OSRInfo*              osrInfo;
 #if MEASURE_CLRAPI_CALLS
         WrapICorJitInfo* wrapCLR;
 #endif
@@ -6826,7 +6831,6 @@ START:
     param.methodCodeSize     = methodCodeSize;
     param.compileFlags       = compileFlags;
     param.inlineInfo         = inlineInfo;
-    param.osrInfo            = osrInfo;
 #if MEASURE_CLRAPI_CALLS
     param.wrapCLR = nullptr;
 #endif
@@ -6879,9 +6883,9 @@ START:
 #endif
 
             // Now generate the code
-            pParam->result = pParam->pComp->compCompile(pParam->methodHnd, pParam->classPtr, pParam->compHnd,
-                                                        pParam->methodInfo, pParam->methodCodePtr,
-                                                        pParam->methodCodeSize, pParam->compileFlags, pParam->osrInfo);
+            pParam->result =
+                pParam->pComp->compCompile(pParam->methodHnd, pParam->classPtr, pParam->compHnd, pParam->methodInfo,
+                                           pParam->methodCodePtr, pParam->methodCodeSize, pParam->compileFlags);
         }
         finallyErrorTrap()
         {

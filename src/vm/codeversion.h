@@ -86,9 +86,9 @@ public:
 #endif // FEATURE_TIERED_COMPILATION
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-    OSRInfo* GetOSRInfo();
+    CORINFO_OSR_INFO * GetOSRInfo();
 #ifndef DACCESS_COMPILE
-    void SetOSRInfo(const OSRInfo& info);
+    void SetOSRInfo(CORINFO_OSR_INFO* info);
 #endif
 #endif // FEATURE_ON_STACK_REPLACEMENT
 
@@ -285,9 +285,9 @@ public:
 #endif
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-    OSRInfo* GetOSRInfo();
+    CORINFO_OSR_INFO* GetOSRInfo();
 #ifndef DACCESS_COMPILE
-    void SetOSRInfo(const OSRInfo& info);
+    void SetOSRInfo(CORINFO_OSR_INFO * info);
 #endif
 #endif
 
@@ -308,7 +308,7 @@ private:
     PTR_GCCoverageInfo m_gcCover;
 #endif
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-    OSRInfo  m_osrInfo;
+    CORINFO_OSR_INFO m_osrInfo;
 #endif
 
     enum NativeCodeVersionNodeFlags

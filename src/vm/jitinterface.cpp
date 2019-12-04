@@ -12342,7 +12342,6 @@ static CorJitResult CompileMethodWithEtwWrapper(EEJitManager *jitMgr,
                                                       CEEInfo *comp,
                                                       struct CORINFO_METHOD_INFO *info,
                                                       unsigned flags,
-                                                      OSRInfo* osrInfo,
                                                       BYTE **nativeEntry,
                                                       ULONG *nativeSizeOfCode)
 {
@@ -12354,7 +12353,7 @@ static CorJitResult CompileMethodWithEtwWrapper(EEJitManager *jitMgr,
     // Fire an ETW event to mark the beginning of JIT'ing
     ETW::MethodLog::MethodJitting(reinterpret_cast<MethodDesc*>(info->ftn), &namespaceOrClassName, &methodName, &methodSignature);
 
-    CorJitResult ret = jitMgr->m_jit->compileMethod(comp, info, flags, osrInfo, nativeEntry, nativeSizeOfCode);
+    CorJitResult ret = jitMgr->m_jit->compileMethod(comp, info, flags, nativeEntry, nativeSizeOfCode);
 
     // Logically, it would seem that the end-of-JITting ETW even should go here, but it must come after the native code has been
     // set for the given method desc, which happens in a caller.
@@ -12370,7 +12369,6 @@ CorJitResult invokeCompileMethodHelper(EEJitManager *jitMgr,
                                  CEEInfo *comp,
                                  struct CORINFO_METHOD_INFO *info,
                                  CORJIT_FLAGS jitFlags,
-                                 OSRInfo* osrInfo,
                                  BYTE **nativeEntry,
                                  ULONG *nativeSizeOfCode)
 {
@@ -12397,7 +12395,6 @@ CorJitResult invokeCompileMethodHelper(EEJitManager *jitMgr,
         ret = jitMgr->m_alternateJit->compileMethod( comp,
                                                      info,
                                                      CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
-                                                     osrInfo,
                                                      nativeEntry,
                                                      nativeSizeOfCode);
 
@@ -12444,7 +12441,6 @@ CorJitResult invokeCompileMethodHelper(EEJitManager *jitMgr,
                                           comp,
                                           info,
                                           CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
-                                          osrInfo,
                                           nativeEntry,
                                           nativeSizeOfCode);
     }
@@ -12467,7 +12463,6 @@ CorJitResult invokeCompileMethodHelper(EEJitManager *jitMgr,
         ret = jitMgr->m_jit->compileMethod( comp,
                                             info,
                                             CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
-                                            osrInfo,
                                             nativeEntry,
                                             nativeSizeOfCode);
     }
@@ -12516,7 +12511,6 @@ CorJitResult invokeCompileMethod(EEJitManager *jitMgr,
                                  CEEInfo *comp,
                                  struct CORINFO_METHOD_INFO *info,
                                  CORJIT_FLAGS jitFlags,
-                                 OSRInfo* osrInfo,
                                  BYTE **nativeEntry,
                                  ULONG *nativeSizeOfCode)
 {
@@ -12531,7 +12525,7 @@ CorJitResult invokeCompileMethod(EEJitManager *jitMgr,
 
     GCX_PREEMP();
 
-    CorJitResult ret = invokeCompileMethodHelper(jitMgr, comp, info, jitFlags, osrInfo, nativeEntry, nativeSizeOfCode);
+    CorJitResult ret = invokeCompileMethodHelper(jitMgr, comp, info, jitFlags, nativeEntry, nativeSizeOfCode);
 
     //
     // Verify that we are still in preemptive mode when we return
@@ -12569,7 +12563,6 @@ CorJitResult CallCompileMethodWithSEHWrapper(EEJitManager *jitMgr,
         ULONG *nativeSizeOfCode;
         MethodDesc *ftn;
         CorJitResult res;
-        OSRInfo* osrInfo;
     }; Param param;
     param.jitMgr = jitMgr;
     param.comp = comp;
@@ -12579,14 +12572,6 @@ CorJitResult CallCompileMethodWithSEHWrapper(EEJitManager *jitMgr,
     param.nativeSizeOfCode = nativeSizeOfCode;
     param.ftn = ftn;
     param.res = CORJIT_INTERNALERROR;
-
-#ifdef FEATURE_ON_STACK_REPLACEMENT
-    // Note we can't just hack the code start address as
-    // control could reach lower IL offsets from this entry
-    param.osrInfo = nativeCodeVersion.GetOSRInfo();
-#else
-    param.osrInfo = NULL;
-#endif 
 
     PAL_TRY(Param *, pParam, &param)
     {
@@ -12598,7 +12583,6 @@ CorJitResult CallCompileMethodWithSEHWrapper(EEJitManager *jitMgr,
                                            pParam->comp,
                                            pParam->info,
                                            pParam->flags,
-                                           pParam->osrInfo,
                                            pParam->nativeEntry,
                                            pParam->nativeSizeOfCode);
     }
@@ -12955,6 +12939,17 @@ PCODE UnsafeJitFunction(NativeCodeVersion nativeCodeVersion, COR_ILMETHOD_DECODE
     CORINFO_METHOD_INFO methodInfo;
 
     getMethodInfoHelper(ftn, ftnHnd, ILHeader, &methodInfo);
+
+    methodInfo.osrInfo = NULL;
+
+#ifdef FEATURE_ON_STACK_REPLACEMENT
+    if (flags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_OSR))
+    {
+        CORINFO_OSR_INFO * osrInfo = nativeCodeVersion.GetOSRInfo();
+        _ASSERTE(osrInfo != NULL);
+        methodInfo.osrInfo = osrInfo;
+    }
+#endif
 
     // If it's generic then we can only enter through an instantiated md (unless we're just verifying it)
     _ASSERTE(flags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_IMPORT_ONLY) || !ftn->IsGenericMethodDefinition());

@@ -289,16 +289,12 @@ void JitTls::SetCompiler(Compiler* compiler)
 // interface. Things really don't get going inside the JIT until the code:Compiler::compCompile#Phases
 // method.  Usually that is where you want to go.
 
-CorJitResult CILJit::compileMethod(ICorJitInfo*         compHnd,
-                                   CORINFO_METHOD_INFO* methodInfo,
-                                   unsigned             flags,
-                                   OSRInfo*             osrInfo,
-                                   BYTE**               entryAddress,
-                                   ULONG*               nativeSizeOfCode)
+CorJitResult CILJit::compileMethod(
+    ICorJitInfo* compHnd, CORINFO_METHOD_INFO* methodInfo, unsigned flags, BYTE** entryAddress, ULONG* nativeSizeOfCode)
 {
     if (g_realJitCompiler != nullptr)
     {
-        return g_realJitCompiler->compileMethod(compHnd, methodInfo, flags, osrInfo, entryAddress, nativeSizeOfCode);
+        return g_realJitCompiler->compileMethod(compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
     }
 
     JitFlags jitFlags;
@@ -318,7 +314,7 @@ CorJitResult CILJit::compileMethod(ICorJitInfo*         compHnd,
     assert(methodInfo->ILCode);
 
     result = jitNativeCode(methodHandle, methodInfo->scope, compHnd, methodInfo, &methodCodePtr, nativeSizeOfCode,
-                           &jitFlags, nullptr, osrInfo);
+                           &jitFlags, nullptr);
 
     if (result == CORJIT_OK)
     {
