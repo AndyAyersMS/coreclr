@@ -5327,16 +5327,15 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
     }
     else if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
     {
-        CORINFO_OSR_INFO* osrInfo = methodInfo->osrInfo;
-        info.compILEntry          = osrInfo->ilOffset;
-        info.compPatchpointInfo   = (PatchpointInfo*)osrInfo->patchpointInfo;
+        info.compILEntry        = methodInfo->osrInfo.ilOffset;
+        info.compPatchpointInfo = (PatchpointInfo*)methodInfo->osrInfo.patchpointInfo;
 
         assert(info.compPatchpointInfo != nullptr);
     }
     else
     {
-        // If JIT_FLAG_OSR is not set, we should not be passed OSR info
-        assert(methodInfo->osrInfo == nullptr);
+        // If JIT_FLAG_OSR is not set, we should not be passed valid OSR info
+        assert(methodInfo->osrInfo.patchpointInfo == nullptr);
     }
 
     virtualStubParamInfo = new (this, CMK_Unknown) VirtualStubParamInfo(IsTargetAbi(CORINFO_CORERT_ABI));

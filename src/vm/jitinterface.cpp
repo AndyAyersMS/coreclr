@@ -12940,14 +12940,14 @@ PCODE UnsafeJitFunction(NativeCodeVersion nativeCodeVersion, COR_ILMETHOD_DECODE
 
     getMethodInfoHelper(ftn, ftnHnd, ILHeader, &methodInfo);
 
-    methodInfo.osrInfo = NULL;
+    methodInfo.osrInfo.ilOffset = 0;
+    methodInfo.osrInfo.patchpointInfo = NULL;
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
     if (flags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_OSR))
     {
-        CORINFO_OSR_INFO * osrInfo = nativeCodeVersion.GetOSRInfo();
-        _ASSERTE(osrInfo != NULL);
-        methodInfo.osrInfo = osrInfo;
+        CORINFO_OSR_INFO *osrInfo = nativeCodeVersion.GetOSRInfo();
+        methodInfo.osrInfo = *osrInfo;
     }
 #endif
 

@@ -447,6 +447,9 @@ namespace Internal.JitInterface
             Get_CORINFO_SIG_INFO(method, &methodInfo->args);
             Get_CORINFO_SIG_INFO(methodIL.GetLocals(), &methodInfo->locals);
 
+            methodInfo->osrInfo.ILOffset = 0;
+            methodInfo->osrInfo.PatchpointInfo = default(void*);
+
             return methodIL;
         }
 
@@ -2815,6 +2818,12 @@ namespace Internal.JitInterface
         {
             _gcInfo = new byte[(int)size];
             return (void*)GetPin(_gcInfo);
+        }
+
+        private void* allocPatchpointInfo(UIntPtr size)
+        {
+            // We don't expect the jit to call this in crossgen (yet)
+            return default(void*);
         }
 
         private void yieldExecution()

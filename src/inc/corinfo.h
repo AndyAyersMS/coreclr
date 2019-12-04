@@ -1246,7 +1246,7 @@ struct CORINFO_METHOD_INFO
     CorInfoRegionKind           regionKind;
     CORINFO_SIG_INFO            args;
     CORINFO_SIG_INFO            locals;
-    CORINFO_OSR_INFO *          osrInfo;
+    CORINFO_OSR_INFO            osrInfo;
 };
 
 //----------------------------------------------------------------------------

@@ -285,7 +285,7 @@ public:
 #endif
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
-    CORINFO_OSR_INFO* GetOSRInfo();
+    CORINFO_OSR_INFO * GetOSRInfo();
 #ifndef DACCESS_COMPILE
     void SetOSRInfo(CORINFO_OSR_INFO * info);
 #endif

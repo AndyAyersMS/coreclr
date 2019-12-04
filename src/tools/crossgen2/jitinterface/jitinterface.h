@@ -175,6 +175,7 @@ struct JitInterfaceCallbacks
     void (* reserveUnwindInfo)(void * thisHandle, CorInfoException** ppException, int isFunclet, int isColdCode, unsigned int unwindSize);
     void (* allocUnwindInfo)(void * thisHandle, CorInfoException** ppException, unsigned char* pHotCode, unsigned char* pColdCode, unsigned int startOffset, unsigned int endOffset, unsigned int unwindSize, unsigned char* pUnwindBlock, int funcKind);
     void* (* allocGCInfo)(void * thisHandle, CorInfoException** ppException, size_t size);
+    void* (* allocPatchpointInfo)(void * thisHandle, CorInfoException** ppException, size_t size);
     void (* yieldExecution)(void * thisHandle, CorInfoException** ppException);
     void (* setEHcount)(void * thisHandle, CorInfoException** ppException, unsigned cEH);
     void (* setEHinfo)(void * thisHandle, CorInfoException** ppException, unsigned EHnumber, void* clause);
@@ -1605,6 +1606,15 @@ public:
     {
         CorInfoException* pException = nullptr;
         void* _ret = _callbacks->allocGCInfo(_thisHandle, &pException, size);
+        if (pException != nullptr)
+            throw pException;
+        return _ret;
+    }
+
+    virtual void* allocPatchpointInfo(size_t size)
+    {
+        CorInfoException* pException = nullptr;
+        void* _ret = _callbacks->allocPatchpointInfo(_thisHandle, &pException, size);
         if (pException != nullptr)
             throw pException;
         return _ret;
