@@ -5001,7 +5001,15 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
         {
             const int offset = lvaToCallerSPRelativeOffset(lvaCachedGenericContextArgOffset(), true);
             patchpointInfo->SetGenericContextArgOffset(offset);
-            JITDUMP("--OSR-- cached generic context offset is %d\n", patchpointInfo->GenericContextArgOffset());
+            JITDUMP("--OSR-- cached generic context offset is CallerSP %d\n",
+                    patchpointInfo->GenericContextArgOffset());
+        }
+
+        if (lvaKeepAliveAndReportThis())
+        {
+            const int offset = lvaCachedGenericContextArgOffset();
+            patchpointInfo->SetKeptAliveThisOffset(offset);
+            JITDUMP("--OSR-- kept-alive this offset is FP %d\n", patchpointInfo->KeptAliveThisOffset());
         }
 
         if (compGSReorderStackLayout)
@@ -5009,7 +5017,7 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
             assert(lvaGSSecurityCookie != BAD_VAR_NUM);
             LclVarDsc* const varDsc = lvaGetDesc(lvaGSSecurityCookie);
             patchpointInfo->SetSecurityCookieOffset(varDsc->lvStkOffs);
-            JITDUMP("--OSR-- security cookie V%02u offset is %d\n", lvaGSSecurityCookie,
+            JITDUMP("--OSR-- security cookie V%02u offset is FP %d\n", lvaGSSecurityCookie,
                     patchpointInfo->SecurityCookieOffset());
         }
     }

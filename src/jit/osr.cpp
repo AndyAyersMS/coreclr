@@ -42,6 +42,7 @@ PatchpointInfo* PatchpointInfo::Allocate(ICorJitInfo* jitInterface,
     result->m_fpToSpDelta             = fpToSpDelta;
     result->m_numberOfLocals          = localCount;
     result->m_genericContextArgOffset = -1;
+    result->m_keptAliveThisOffset     = -1;
     result->m_securityCookieOffset    = -1;
 
     return result;

@@ -5769,7 +5769,19 @@ void Compiler::lvaAssignVirtualFrameOffsetsToLocals()
     }
 #endif // JIT32_GCENCODER
 
-    if (lvaReportParamTypeArg())
+    // OSR methods use the original method slot for the cached kept alive this,
+    // so don't need to allocate  a slot on the new frame.
+    if (opts.IsOSR())
+    {
+        if (lvaKeepAliveAndReportThis())
+        {
+            PatchpointInfo* ppInfo = info.compPatchpointInfo;
+            assert(ppInfo->HasKeptAliveThis());
+            int originalOffset             = ppInfo->KeptAliveThisOffset();
+            lvaCachedGenericContextArgOffs = originalFrameStkOffs + originalOffset;
+        }
+    }
+    else if (lvaReportParamTypeArg())
     {
 #ifdef JIT32_GCENCODER
         noway_assert(codeGen->isFramePointerUsed());

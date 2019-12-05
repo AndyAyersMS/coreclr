@@ -60,7 +60,23 @@ public:
         m_genericContextArgOffset = offset;
     }
 
-    // Original method caller SP offset for security cookie
+    // Original method FP relative offset for kept-alive this
+    int KeptAliveThisOffset() const
+    {
+        return m_keptAliveThisOffset;
+    }
+
+    bool HasKeptAliveThis() const
+    {
+        return m_keptAliveThisOffset != -1;
+    }
+
+    void SetKeptAliveThisOffset(int offset)
+    {
+        m_keptAliveThisOffset = offset;
+    }
+
+    // Original method FP relative offset for security cookie
     int SecurityCookieOffset() const
     {
         return m_securityCookieOffset;
@@ -95,6 +111,7 @@ private:
     unsigned m_numberOfLocals;
     int      m_fpToSpDelta;
     int      m_genericContextArgOffset;
+    int      m_keptAliveThisOffset;
     int      m_securityCookieOffset;
     int      m_offsetAndExposureData[];
 };
