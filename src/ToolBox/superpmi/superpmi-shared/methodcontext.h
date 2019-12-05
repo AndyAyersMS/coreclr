@@ -42,6 +42,11 @@ public:
         DWORDLONG scope;
         DWORD     token;
     };
+    struct Agnostic_CORINFO_OSR_INFO
+    {
+        DWORD     ilOffset;
+        DWORD     patchpointInfo_Index;
+    };
     struct Agnostic_CORINFO_METHOD_INFO
     {
         DWORDLONG                 ftn;
@@ -54,6 +59,7 @@ public:
         DWORD                     regionKind;
         Agnostic_CORINFO_SIG_INFO args;
         Agnostic_CORINFO_SIG_INFO locals;
+        Agnostic_CORINFO_OSR_INFO osrInfo;
     };
     struct Agnostic_CompileMethod
     {

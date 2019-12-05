@@ -15,28 +15,41 @@ class ICorJitInfo;
 // method.
 //
 // This version of the OSRInfo expects that all patchpoints will
-// report the same live set.
+// report the same live set, regardless of IL offset. So just one
+// record covers an entire method, no matter how many patchpoints
+// it might contain.
 
 class PatchpointInfo
 {
 public:
+    // Allocate and initialize runtime storage for a patchpoint info record
     static PatchpointInfo* Allocate(ICorJitInfo* jitInterface, unsigned localCount, unsigned ilSize, int fpToSpDelta);
 
+    // Total size of this patchpoint info record, in bytes
+    unsigned PatchpointInfoSize() const
+    {
+        return m_patchpointInfoSize;
+    }
+
+    // IL Size of the original method
     unsigned ILSize() const
     {
         return m_ilSize;
     }
 
+    // FP to SP delta of the original method
     int FpToSpDelta() const
     {
         return m_fpToSpDelta;
     }
 
+    // Number of locals in the original method (including special locals)
     unsigned NumberOfLocals() const
     {
         return m_numberOfLocals;
     }
 
+    // Original method caller SP offset for generic context arg
     int GenericContextArgOffset() const
     {
         return m_genericContextArgOffset;
@@ -47,6 +60,7 @@ public:
         m_genericContextArgOffset = offset;
     }
 
+    // Original method caller SP offset for security cookie
     int SecurityCookieOffset() const
     {
         return m_securityCookieOffset;
@@ -62,9 +76,11 @@ public:
         m_securityCookieOffset = offset;
     }
 
+    // True if this local was address exposed in the original method
     bool IsExposed(unsigned localNum) const;
     void SetIsExposed(unsigned localNum);
 
+    // FP relative offset of this local in the original method
     int Offset(unsigned localNum) const;
     void SetOffset(unsigned localNum, int offset);
 
@@ -74,6 +90,7 @@ private:
         EXPOSURE_MASK = 0x1
     };
 
+    unsigned m_patchpointInfoSize;
     unsigned m_ilSize;
     unsigned m_numberOfLocals;
     int      m_fpToSpDelta;

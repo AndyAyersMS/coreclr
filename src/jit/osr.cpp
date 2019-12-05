@@ -34,8 +34,10 @@ PatchpointInfo* PatchpointInfo::Allocate(ICorJitInfo* jitInterface,
 {
     int             baseSize     = sizeof(PatchpointInfo);
     int             variableSize = localCount * sizeof(int);
-    PatchpointInfo* result       = (PatchpointInfo*)jitInterface->allocPatchpointInfo(baseSize + variableSize);
+    int             totalSize    = baseSize + variableSize;
+    PatchpointInfo* result       = (PatchpointInfo*)jitInterface->allocPatchpointInfo(totalSize);
 
+    result->m_patchpointInfoSize      = totalSize;
     result->m_ilSize                  = ilSize;
     result->m_fpToSpDelta             = fpToSpDelta;
     result->m_numberOfLocals          = localCount;
@@ -67,6 +69,9 @@ bool PatchpointInfo::IsExposed(unsigned localNum) const
 //
 // Arguments:
 //    localNum - number of the local in question (in IL numbering)
+//
+// Notes:
+//    Call this after calling SetOffset for the local
 
 void PatchpointInfo::SetIsExposed(unsigned localNum)
 {
@@ -102,8 +107,7 @@ int PatchpointInfo::Offset(unsigned localNum) const
 void PatchpointInfo::SetOffset(unsigned localNum, int offset)
 {
     assert(localNum < m_numberOfLocals);
-    assert((m_offsetAndExposureData[localNum] & ~EXPOSURE_MASK) == 0);
     assert((offset & EXPOSURE_MASK) == 0);
 
-    m_offsetAndExposureData[localNum] |= offset;
+    m_offsetAndExposureData[localNum] = offset;
 }

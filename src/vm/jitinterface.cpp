@@ -7804,6 +7804,11 @@ getMethodInfoHelper(
         &methInfo->locals,
         ftn,
         true);
+
+    // Set these to default values. Will overwrite later if actually doing an OSR jit request.
+    methInfo->osrInfo.ilOffset = 0;
+    methInfo->osrInfo.patchpointInfo = NULL;
+
 } // getMethodInfoHelper
 
 //---------------------------------------------------------------------------------------
@@ -12939,9 +12944,6 @@ PCODE UnsafeJitFunction(NativeCodeVersion nativeCodeVersion, COR_ILMETHOD_DECODE
     CORINFO_METHOD_INFO methodInfo;
 
     getMethodInfoHelper(ftn, ftnHnd, ILHeader, &methodInfo);
-
-    methodInfo.osrInfo.ilOffset = 0;
-    methodInfo.osrInfo.patchpointInfo = NULL;
 
 #ifdef FEATURE_ON_STACK_REPLACEMENT
     if (flags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_OSR))
