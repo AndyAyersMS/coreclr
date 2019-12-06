@@ -7238,6 +7238,7 @@ void CodeGen::genFnProlog()
         psiBegProlog();
     }
 
+#if defined(_TARGET_XARCH_)
     // For OSR there is a "phantom prolog" to account for the actions taken
     // in the original frame that impact RBP and RSP on entry to the OSR method.
     if (compiler->opts.IsOSR())
@@ -7248,6 +7249,7 @@ void CodeGen::genFnProlog()
         compiler->unwindPush(REG_FPBASE);
         compiler->unwindAllocStack(originalFrameSize);
     }
+#endif
 
 #ifdef DEBUG
 
