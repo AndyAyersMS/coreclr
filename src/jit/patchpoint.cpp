@@ -173,14 +173,15 @@ private:
         compiler->fgNewStmtAtEnd(helperBlock, helperCall);
     }
 
-    //  ppCounter = 0 (could set it nonzero to save some cycles)
+    //  ppCounter = <initial value>
     void TransformEntry(BasicBlock* block)
     {
         assert((block->bbFlags & BBF_PATCHPOINT) == 0);
 
-        GenTree* zero         = compiler->gtNewIconNode(0, TYP_INT);
-        GenTree* ppCounterRef = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
-        GenTree* ppCounterAsg = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterRef, zero);
+        const int initialCounterValue = JitConfig.JitPatchpointInitialCounter();
+        GenTree*  initialCounterNode  = compiler->gtNewIconNode(initialCounterValue, TYP_INT);
+        GenTree*  ppCounterRef        = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
+        GenTree*  ppCounterAsg        = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterRef, initialCounterNode);
 
         compiler->fgNewStmtNearEnd(block, ppCounterAsg);
     }

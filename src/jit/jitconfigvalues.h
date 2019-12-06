@@ -402,6 +402,7 @@ CONFIG_INTEGER(JitGuardedDevirtualizationGuessBestClass, W("JitGuardedDevirtuali
 #endif // DEBUG
 
 CONFIG_INTEGER(JitPatchpoint, W("JitPatchpoint"), 0)
+CONFIG_INTEGER(JitPatchpointInitialCounter, W("JitPatchpointInitialCounter"), 5000)
 
 #if defined(DEBUG)
 // JitFunctionFile: Name of a file that contains a list of functions. If the currently compiled function is in the
