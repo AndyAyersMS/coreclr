@@ -15,9 +15,9 @@
 //
 // Policy decisions implemented here:
 //
-//    * One counter per stack frame, regardless of the number of patchpoints.
-//    * Shared counter value initialized to zero in prolog.
-//    * Patchpoint trees fully expanded into jit IR. Deferring expansion could
+//   * One counter per stack frame, regardless of the number of patchpoints.
+//   * Shared counter value initialized to zero in prolog.
+//   * Patchpoint trees fully expanded into jit IR. Deferring expansion could
 //       lead to more compact code and lessen size overhead for Tier0.
 //
 // Workarounds and limitations:
@@ -117,7 +117,7 @@ private:
     //
     //  ==>
     //
-    //  if (--ppCounter < 0)
+    //  if (--ppCounter <= 0)
     //  {
     //     ppHelper(&ppCounter, ilOffset);
     //  }
@@ -153,10 +153,10 @@ private:
 
         compiler->fgNewStmtAtEnd(block, ppCounterAsg);
 
-        // if (ppCounter < 0)
+        // if (ppCounter > 0), bypass helper call
         GenTree* ppCounterUpdated = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
         GenTree* zero             = compiler->gtNewIconNode(0, TYP_INT);
-        GenTree* compare          = compiler->gtNewOperNode(GT_GE, TYP_INT, ppCounterUpdated, zero);
+        GenTree* compare          = compiler->gtNewOperNode(GT_GT, TYP_INT, ppCounterUpdated, zero);
         GenTree* jmp              = compiler->gtNewOperNode(GT_JTRUE, TYP_VOID, compare);
 
         compiler->fgNewStmtAtEnd(block, jmp);
@@ -178,10 +178,16 @@ private:
     {
         assert((block->bbFlags & BBF_PATCHPOINT) == 0);
 
-        const int initialCounterValue = JitConfig.JitPatchpointInitialCounter();
-        GenTree*  initialCounterNode  = compiler->gtNewIconNode(initialCounterValue, TYP_INT);
-        GenTree*  ppCounterRef        = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
-        GenTree*  ppCounterAsg        = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterRef, initialCounterNode);
+        int initialCounterValue = JitConfig.JitPatchpointInitialCounter();
+
+        if (initialCounterValue < 0)
+        {
+            initialCounterValue = 0;
+        }
+
+        GenTree* initialCounterNode = compiler->gtNewIconNode(initialCounterValue, TYP_INT);
+        GenTree* ppCounterRef       = compiler->gtNewLclvNode(ppCounterLclNum, TYP_INT);
+        GenTree* ppCounterAsg       = compiler->gtNewOperNode(GT_ASG, TYP_INT, ppCounterRef, initialCounterNode);
 
         compiler->fgNewStmtNearEnd(block, ppCounterAsg);
     }

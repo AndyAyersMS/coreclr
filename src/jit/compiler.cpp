@@ -5441,11 +5441,6 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
 
     info.compFullName  = eeGetMethodFullName(methodHnd);
     info.compPerfScore = 0.0;
-
-    if (compileFlags->IsSet(JitFlags::JIT_FLAG_OSR))
-    {
-        printf("\nJIT: osr request at IL offset %d for %s\n", info.compILEntry, info.compFullName);
-    }
 #endif // defined(DEBUG) || defined(LATE_DISASM)
 
 #ifdef DEBUG
@@ -6239,9 +6234,9 @@ int Compiler::compCompileHelper(CORINFO_MODULE_HANDLE            classPtr,
 #ifdef DEBUG
     if (JitConfig.DumpJittedMethods() == 1 && !compIsForInlining())
     {
-        printf("Compiling %4d %s::%s, IL size = %u, hash=%08x %s\n", Compiler::jitTotalMethodCompiled,
+        printf("Compiling %4d %s::%s, IL size = %u, hash=%08x %s%s\n", Compiler::jitTotalMethodCompiled,
                info.compClassName, info.compMethodName, info.compILCodeSize, info.compMethodHash(),
-               compGetTieringName());
+               compGetTieringName(), opts.IsOSR() ? " OSR" : "");
     }
     if (compIsForInlining())
     {
