@@ -5771,29 +5771,8 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         frameContext.ContextFlags = CONTEXT_FULL;
         RtlCaptureContext(&frameContext);
 
-        // Unwind back to our caller in managed code
-        ULONG_PTR establisherFrame = 0; 
-        PVOID     handlerData = NULL;
-        static PT_RUNTIME_FUNCTION my_pdata;
-        static ULONG_PTR           my_imagebase;
-
-#ifdef FEATURE_PAL
-        {
-          EECodeInfo codeInfo((PCODE)ip);
-          my_imagebase = (UINT_PTR)codeInfo.GetModuleBase();
-          my_pdata = codeInfo.GetFunctionEntry();
-        }
-#else
-        if (!VolatileLoadWithoutBarrier(&my_imagebase))
-        {
-            ULONG_PTR imagebase = 0;
-            my_pdata = RtlLookupFunctionEntry(GetIP(&frameContext), &imagebase, NULL);
-            InterlockedExchangeT(&my_imagebase, imagebase);
-        }
-#endif
-
-        RtlVirtualUnwind(UNW_FLAG_NHANDLER, my_imagebase, GetIP(&frameContext), my_pdata,
-            &frameContext, &handlerData, &establisherFrame, NULL);
+        // Walk back to the original method frame
+        pThread->VirtualUnwindToFirstManagedCallFrame(&frameContext);
 
         // Remember RBP and RSP because new method will inherit them.
         UINT_PTR currentSP = GetSP(&frameContext);
@@ -5806,23 +5785,26 @@ void JIT_Patchpoint(int* counter, int ilOffset)
                 ppId, ip, GetIP(&frameContext));
         }
 
-        // Now unwind back to our caller's caller
+        // Now unwind back to the original method caller frame.
         EECodeInfo codeInfo(GetIP(&frameContext));
-        establisherFrame = 0; 
         frameContext.ContextFlags = CONTEXT_FULL;
+        ULONG_PTR establisherFrame = 0;
+        PVOID handlerData = NULL;
         RtlVirtualUnwind(UNW_FLAG_NHANDLER, codeInfo.GetModuleBase(), GetIP(&frameContext), codeInfo.GetFunctionEntry(), 
             &frameContext, &handlerData, &establisherFrame, NULL);
 
-        // Put RSP and RBP back to the values they had just before
-        // this helper was called.
+        // Now, set FP and SP back to the values they had just before this helper was called,
+        // since the new method must have access to the original method frame.
         //
-        // RSP should be 16-byte aligned, since the original method
-        // is not a leaf.
-        // 
-        // Misalign it by eight so that on entry the OSR method sees
-        // the expected unaligned RSP (because it thinks it is called)
+        // TODO: if we access the patchpointInfo here, we can trim the original frame down to
+        // just its live portion, saving some stack space.
+
+#if defined(_TARGET_AMD64_)
+        // If calls push the return address, we need to simulate that here, so the new
+        // method sees the "expected" SP misalgnment on entry.
         _ASSERTE(currentSP % 16 == 0);
         currentSP -= 8;
+#endif
 
         SetSP(&frameContext, currentSP);
         frameContext.Rbp = currentFP;
@@ -5832,8 +5814,8 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         // we hit the patchpoint.
         if ((verbose > 0 && triggerTransition) || (verbose > 1))
         {
-            printf("### Runtime: patchpoint [%d] 0x%p TRANSITION%s RSP %p RBP %p RIP %p (prev RBP %p)\n", 
-                ppId, ip, triggerTransition? "" : " (existing)", currentSP, currentFP, osrVariant, *(char**)currentFP);
+            printf("### Runtime: patchpoint [%d] 0x%p TRANSITION%s RSP %p RBP %p RIP %p (prev RBP ?)\n",
+                   ppId, ip, triggerTransition? "" : " (existing)", currentSP, currentFP, osrVariant , *(char**)currentFP);
         }
 #endif
         
