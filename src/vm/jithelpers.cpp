@@ -5611,12 +5611,12 @@ void JIT_Patchpoint(int* counter, int ilOffset)
 
     // Fetch or setup patchpoint info for this patchpoint.
     PatchpointInfo * ppInfo = NULL;
-    BOOL hasData = g_pJitPatchpointTable->GetValueSpeculative(ip, &(HashDatum)ppInfo);
+    BOOL hasData = g_pJitPatchpointTable->GetValueSpeculative(ip, (HashDatum*)&ppInfo);
 
     if (!hasData)
     {
         CrstHolder lock(&g_pJitPatchpointCrst);
-        hasData = g_pJitPatchpointTable->GetValue(ip, &((HashDatum)ppInfo));
+        hasData = g_pJitPatchpointTable->GetValue(ip, (HashDatum*)&ppInfo);
 
         if (!hasData)
         {
@@ -5762,7 +5762,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
 #ifdef FEATURE_HIJACK
         // We can't crawl the stack of a thread that currently has a hijack pending
         // (since the hijack routine won't be recognized by any code manager). So we
-        // undo any hijack, the EE will re-attempt it later.
+        // Undo any hijack, the EE will re-attempt it later.
         pThread->UnhijackThread();
 #endif
         
@@ -5777,11 +5777,20 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         static PT_RUNTIME_FUNCTION my_pdata;
         static ULONG_PTR           my_imagebase;
 
-        if (!VolatileLoadWithoutBarrier(&my_imagebase)) {
+#ifdef FEATURE_PAL
+        {
+          EECodeInfo codeInfo((PCODE)ip);
+          my_imagebase = (UINT_PTR)codeInfo.GetModuleBase();
+          my_pdata = codeInfo.GetFunctionEntry();
+        }
+#else
+        if (!VolatileLoadWithoutBarrier(&my_imagebase))
+        {
             ULONG_PTR imagebase = 0;
             my_pdata = RtlLookupFunctionEntry(GetIP(&frameContext), &imagebase, NULL);
             InterlockedExchangeT(&my_imagebase, imagebase);
         }
+#endif
 
         RtlVirtualUnwind(UNW_FLAG_NHANDLER, my_imagebase, GetIP(&frameContext), my_pdata,
             &frameContext, &handlerData, &establisherFrame, NULL);

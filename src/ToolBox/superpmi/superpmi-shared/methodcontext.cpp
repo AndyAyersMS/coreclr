@@ -6414,7 +6414,7 @@ int MethodContext::dumpMethodIdentityInfoToBuffer(char* buff, int len)
     {
         t = sprintf_s(buff, len, "OSR IL Offset: %u", info.osrInfo.ilOffset);
         buff += t;
-        len =- t;
+        len -= t;
     }
 
     return (int)(buff - obuff);
