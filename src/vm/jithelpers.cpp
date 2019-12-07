@@ -5814,7 +5814,7 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         // we hit the patchpoint.
         if ((verbose > 0 && triggerTransition) || (verbose > 1))
         {
-            printf("### Runtime: patchpoint [%d] 0x%p TRANSITION%s RSP %p RBP %p RIP %p (prev RBP ?)\n",
+            printf("### Runtime: patchpoint [%d] 0x%p TRANSITION%s RSP %p RBP %p RIP %p (prev RBP %p)\n",
                    ppId, ip, triggerTransition? "" : " (existing)", currentSP, currentFP, osrVariant , *(char**)currentFP);
         }
 #endif
