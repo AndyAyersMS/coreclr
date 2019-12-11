@@ -423,7 +423,7 @@ operate more or less as it does today.
 This alternative version can be used any time the original method reaches the
 inspiring patchpoint.
 
-### 3.3.2 Option 2: Partial Tailored Method with Transition Prolog
+#### 3.3.2 Option 2: Partial Tailored Method with Transition Prolog
 
 If the runtime also passes the triggering stack frame to the jit, the jit can
 incorporate the values in that frame (or information derived from the frame
@@ -434,7 +434,7 @@ more optimizable with the additional context, and since OSR alternatives are
 likely to be lightly used there may not be much downside to specializing exactly
 for this trigger instance. This alternative likely implies synchronous OSR.
 
-### 3.3.3 Option 3: Full Method with Multiple Entry Points
+#### 3.3.3 Option 3: Full Method with Multiple Entry Points
 
 Instead of generating an alternative that can only be used to transition from
 one specific patchpoint, the alternative method can offer multiple entry points
@@ -445,7 +445,7 @@ might also require reworking or suppressing some optimizations where we assume
 that the jit method entry dominates all the code in the method � this would no
 longer be true.
 
-### 3.3.4 Option 4: Method Fragment
+#### 3.3.4 Option 4: Method Fragment
 
 If the alternative method is just a fragment of the entire method, then in
 addition to a specialized entry point, the jit will have to create specialized
@@ -453,7 +453,7 @@ exit points that either transition back to the unoptimized method, or else use
 synchronous OSR to invoke jitting of the method code that comes after the
 fragment.
 
-### 3.3.5 A Proposed Experiment
+#### 3.3.5 A Proposed Experiment
 
 Given the large number of options here, we need some way to illuminate the best
 path forward. One key point is how often likely we are to reach a triggering
@@ -482,7 +482,7 @@ effective different approaches might be.
 the OSR method frame incorporates the (live portion of the) original method
 frame instead of supplanting it.**
 
-## 3.4 Transitions
+### 3.4 Transitions
 
 A transition can happen once an OSR capable method reaches a patchpoint where a
 suitable alternative version is ready. Because transitions will likely require
@@ -627,7 +627,7 @@ Debugging through an OSR transition (say a single-step that triggers OSR) may
 require special consideration. This is something that needs further
 investigation.
 
-** Prototype: The OSR methods have somewhat unusual unwind records that may be
+**Prototype: The OSR methods have somewhat unusual unwind records that may be
 confusing the debugger stack trace.**
 
 ### 4.6 Proposed Tier-0 Optimizations
@@ -685,8 +685,8 @@ prolog and duplicates its saves, and then a subsequent "shrink wrapped" prolog
 &amp; epilog that saves any additional registers in a disjoint area.
 
 **Prototype: runtime recovers most callee-saves from original method via virtual
-unwind; new method just saves what is needed in its own save area. The only register
-save live on the old frame is the saved FP.**
+unwind; new method just saves what is needed in its own save area. The only
+register save live on the old frame is the saved FP.**
 
 ### 4.9 Patchpoints in Try Regions
 
@@ -1142,7 +1142,7 @@ this to better debug optimized code. The really strong motivations for
 deoptimization may come about when the system is optimizing based on
 "currently true" information that has now become invalid.
 
-## 7.1 Applicability to R2R
+### 7.1 Applicability to R2R
 
 Still, we might want to consider allowing transitions from R2R optimized code.
 Currently such methods can be rejitted but would not be eligible for OSR, and as
@@ -1164,12 +1164,12 @@ optimized jitted versions. To our knowledge, runtime systems that want to
 transition out of optimized code into some other optimized version always go via
 unoptimized intermediaries.
 
-Nevertheless, if we restricted patchpoints to just blocks from the "root
-method" and made some modest restrictions on optimization (no CSEs or loop
-invariant code motion across a patchpoint) we might be able to migrate from R2R
-optimized code into optimized code. And this might work reasonably well given
-the modest amounts of inlining we currently do in R2R&mdash;the chances of inlining
-a method with a hot loop in R2R are fairly small.
+Nevertheless, if we restricted patchpoints to just blocks from the "root method"
+and made some modest restrictions on optimization (no CSEs or loop invariant
+code motion across a patchpoint) we might be able to migrate from R2R optimized
+code into optimized code. And this might work reasonably well given the modest
+amounts of inlining we currently do in R2R &mdash; the chances of inlining a
+method with a hot loop in R2R are fairly small.
 
 ## 8 References
 
