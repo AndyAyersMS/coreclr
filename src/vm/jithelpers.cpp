@@ -5809,7 +5809,6 @@ void JIT_Patchpoint(int* counter, int ilOffset)
         SetSP(&frameContext, currentSP);
         frameContext.Rbp = currentFP;
 
-#if _DEBUG
         // Note we can get here w/o triggering, if there is an existing OSR method and
         // we hit the patchpoint.
         if ((verbose > 0 && triggerTransition) || (verbose > 1))
@@ -5817,7 +5816,6 @@ void JIT_Patchpoint(int* counter, int ilOffset)
             printf("### Runtime: patchpoint [%d] 0x%p TRANSITION%s RSP %p RBP %p RIP %p (prev RBP %p)\n",
                    ppId, ip, triggerTransition? "" : " (existing)", currentSP, currentFP, osrVariant , *(char**)currentFP);
         }
-#endif
         
         // Install new entry point as IP
         SetIP(&frameContext, osrVariant);
