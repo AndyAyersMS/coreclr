@@ -1960,12 +1960,12 @@ void Compiler::fgComputeLifeLIR(VARSET_TP& life, BasicBlock* block, VARSET_VALAR
 
             case GT_STORE_BLK:
             {
-                GenTree* dest = node->gtOp.gtOp1;
+                GenTree* dest = node->AsOp()->gtOp1;
 
                 if (dest->OperIsLocalAddr())
                 {
                     GenTreeLclVarCommon* const lclVarNode = dest->AsLclVarCommon();
-                    LclVarDsc&                 varDsc     = lvaTable[lclVarNode->gtLclNum];
+                    LclVarDsc&                 varDsc     = lvaTable[lclVarNode->GetLclNum()];
 
                     if (varDsc.lvTracked)
                     {
@@ -1977,7 +1977,7 @@ void Compiler::fgComputeLifeLIR(VARSET_TP& life, BasicBlock* block, VARSET_VALAR
 
                             // Remove the store. DCE will iteratively clean up any ununsed operands.
                             dest->SetUnusedValue();
-                            node->gtOp.gtOp2->SetUnusedValue();
+                            node->AsOp()->gtOp2->SetUnusedValue();
 
                             // If the store is marked as a late argument, it is referenced by a call. Instead of
                             // removing
